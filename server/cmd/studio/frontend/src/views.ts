@@ -9,10 +9,15 @@ import {
   getStaticEffects,
   getEvents,
   saveSpells,
+  saveSummonings,
+  saveCoachCards,
+  saveFighterCards,
+  saveStaticEffects,
   type EffectDef,
   type Spell,
   type SpellEdit,
 } from "./backend";
+import { editFormHTML, wireEditForm, type EditFormSpec } from "./editform";
 import { mountTable, fmtList, boolBadge, type Column, type Facet } from "./table";
 import { loadNames, label, iconCell, wireIconCells, nameOf } from "./names";
 import {
@@ -318,7 +323,13 @@ export function viewCards(c: HTMLElement) {
       const drawCoach = () =>
         mountTable(host, {
           rows: coach,
-          onDraw: (h) => wireIconCells(h),
+          onDraw: (h) => {
+            wireIconCells(h);
+            wireEditForm(
+              h,
+              coach.map((r) => coachCardForm(r))
+            );
+          },
           columns: [
             { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("coachCard", r.ID, 44), width: "56px", align: "center" },
             {
@@ -338,6 +349,7 @@ export function viewCards(c: HTMLElement) {
             { key: "type", label: "Type", kind: "select", value: (r) => String(r.Type) },
             { key: "set", label: "Set", kind: "select", value: (r) => String(r.Set) },
           ],
+          detail: (r) => editFormHTML(coachCardForm(r)),
         });
       const drawFighter = () =>
         mountTable(host, {
@@ -345,6 +357,10 @@ export function viewCards(c: HTMLElement) {
           onDraw: (h) => {
             wireIconCells(h);
             wireCrosslinks(h);
+            wireEditForm(
+              h,
+              fighter.map((r) => fighterCardForm(r))
+            );
           },
           columns: [
             { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("fighterCard", r.ID, 44), width: "56px", align: "center" },
@@ -386,7 +402,9 @@ export function viewCards(c: HTMLElement) {
                 ["\u2726", "Effects", String(r.Effects?.length ?? 0)],
                 ["\u25C9", "Value", String(r.Value)],
               ],
-            }) + effectsDetail(r.Effects),
+            }) +
+            editFormHTML(fighterCardForm(r)) +
+            effectsDetail(r.Effects),
         });
 
       drawCoach();
@@ -437,15 +455,124 @@ export function viewSummonings(c: HTMLElement) {
         { key: "MP", label: "MP", value: (r) => r.MP, align: "right" },
         { key: "SpellID", label: "Spell", value: (r) => nameOf("spells", r.SpellID) || String(r.SpellID), render: (r) => esc(label("spells", r.SpellID)) },
       ],
+      onDraw: (h) => {
+        wireIconCells(h);
+        wireCrosslinks(h);
+        wireEditForm(
+          h,
+          rows.map((r) => summoningForm(r))
+        );
+      },
+      detail: (r) =>
+        entityHero({
+          kind: "",
+          id: r.ID,
+          name: nameOf("summons", r.ID) || `Summon ${r.ID}`,
+          effects: null,
+          stats: [
+            [gameIcon("hp", 16) || "\u2665", "HP", String(r.HP)],
+            [gameIcon("ap", 16) || "\u25C8", "AP", String(r.AP)],
+            [gameIcon("mp", 16) || "\u2316", "MP", String(r.MP)],
+          ],
+        }) +
+        `<div class="detail-block"><div class="detail-title">Cast spell</div>${crosslinkSpell(r.SpellID)}</div>` +
+        editFormHTML(summoningForm(r)),
     });
   });
+}
+
+// summoningForm declares the editable-field spec for one summoning.
+function summoningForm(r: {
+  ID: number;
+  HP: number;
+  AP: number;
+  MP: number;
+  Gfx: number;
+  SpellID: number;
+}): EditFormSpec {
+  return {
+    id: r.ID,
+    title: `Edit summoning #${r.ID}`,
+    fields: [
+      { key: "hp", label: "HP", type: "number", value: r.HP, min: 0 },
+      { key: "ap", label: "AP", type: "number", value: r.AP, min: 0 },
+      { key: "mp", label: "MP", type: "number", value: r.MP, min: 0 },
+      { key: "gfx", label: "Gfx", type: "number", value: r.Gfx },
+      { key: "spellId", label: "Spell ID", type: "number", value: r.SpellID },
+    ],
+    save: (v) =>
+      saveSummonings([
+        {
+          id: r.ID,
+          hp: v.hp as number,
+          ap: v.ap as number,
+          mp: v.mp as number,
+          gfx: v.gfx as number,
+          spellId: v.spellId as number,
+        },
+      ]),
+  };
+}
+
+// fighterCardForm declares editable scalar fields for a fighter card (effects
+// are shown/edited separately and preserved on save).
+function fighterCardForm(r: {
+  ID: number;
+  Type: number;
+  Value: number;
+  ScriptID: number;
+  SubType: number;
+}): EditFormSpec {
+  return {
+    id: r.ID,
+    title: `Edit fighter card #${r.ID}`,
+    fields: [
+      { key: "type", label: "Type", type: "number", value: r.Type, min: 0, max: 255, hint: "1 weapon / 2 pet / 3 cloak / 4 hat / 5 dofus" },
+      { key: "value", label: "Value", type: "number", value: r.Value },
+      { key: "scriptId", label: "Script ID", type: "number", value: r.ScriptID },
+      { key: "subType", label: "SubType", type: "number", value: r.SubType },
+    ],
+    save: (v) =>
+      saveFighterCards([
+        {
+          id: r.ID,
+          type: v.type as number,
+          value: v.value as number,
+          scriptId: v.scriptId as number,
+          subType: v.subType as number,
+        },
+      ]),
+  };
+}
+
+// coachCardForm declares editable scalar fields for a coach card.
+function coachCardForm(r: { ID: number; Type: number; Value: number; Set: number }): EditFormSpec {
+  return {
+    id: r.ID,
+    title: `Edit coach card #${r.ID}`,
+    fields: [
+      { key: "type", label: "Type", type: "number", value: r.Type },
+      { key: "value", label: "Value", type: "number", value: r.Value },
+      { key: "set", label: "Set", type: "number", value: r.Set },
+    ],
+    save: (v) =>
+      saveCoachCards([
+        { id: r.ID, type: v.type as number, value: v.value as number, set: v.set as number },
+      ]),
+  };
+}
+
+// crosslinkSpell renders a clickable chip to a spell by id (or a dash).
+function crosslinkSpell(spellId: number): string {
+  if (!spellId) return `<span class="detail-empty">\u2014</span>`;
+  const name = nameOf("spells", spellId) || `Spell ${spellId}`;
+  return `<button class="xlink" data-xview="spells" data-xquery="${esc(name)}">${esc(name)} <span class="xlink-ico">\u2197</span></button>`;
 }
 
 export function viewStaticEffects(c: HTMLElement) {
   withLoad(c, "Static Effects", "staticEffects.dat", getStaticEffects, (host, rows) => {
     mountTable(host, {
       rows,
-      onDraw: (h) => wireCrosslinks(h),
       searchText: (r) =>
         `${r.ID} ${r.EffectAreaType} ${r.ScriptID} ${(r.Effects ?? []).map((e) => decodeEffectText(e)).join(" ")}`,
       exportName: "static-effects",
@@ -461,8 +588,15 @@ export function viewStaticEffects(c: HTMLElement) {
         { key: "Max", label: "Max exec", value: (r) => r.MaxExecutionCount, align: "right" },
         { key: "fx", label: "Effect", value: (r) => (r.Effects?.length ?? 0), render: (r) => effectsSummary(r.Effects) },
       ],
-      detail: (r) => `
-        <div class="detail-grid">
+      onDraw: (h) => {
+        wireCrosslinks(h);
+        wireEditForm(
+          h,
+          rows.map((r) => staticEffectForm(r))
+        );
+      },
+      detail: (r) =>
+        `<div class="detail-grid">
           <div><span>Area params</span><b class="mono">${fmtList(r.AreaParams)}</b></div>
           <div><span>App. triggers</span><b class="mono">${fmtList(r.ApplicationTriggers)}</b></div>
           <div><span>Unapp. triggers</span><b class="mono">${fmtList(r.UnapplicationTriggers)}</b></div>
@@ -470,9 +604,39 @@ export function viewStaticEffects(c: HTMLElement) {
           <div><span>Deactivation delay</span><b class="mono">${fmtList(r.DeactivationDelay)}</b></div>
           <div><span>App. condition</span><b>${r.ApplicationCondition}</b></div>
         </div>
+        ${editFormHTML(staticEffectForm(r))}
         ${effectsDetail(r.Effects)}`,
     });
   });
+}
+
+function staticEffectForm(r: {
+  ID: number;
+  ScriptID: number;
+  AreaShapeID: number;
+  MaxExecutionCount: number;
+  TargetsToShow: number;
+}): EditFormSpec {
+  return {
+    id: r.ID,
+    title: `Edit static effect #${r.ID}`,
+    fields: [
+      { key: "scriptId", label: "Script ID", type: "number", value: r.ScriptID },
+      { key: "areaShapeId", label: "Area shape", type: "number", value: r.AreaShapeID, hint: "1 point / 2 circle / 3 cross / 4 T" },
+      { key: "maxExecutionCount", label: "Max exec", type: "number", value: r.MaxExecutionCount },
+      { key: "targetsToShow", label: "Targets to show", type: "number", value: r.TargetsToShow },
+    ],
+    save: (v) =>
+      saveStaticEffects([
+        {
+          id: r.ID,
+          scriptId: v.scriptId as number,
+          areaShapeId: v.areaShapeId as number,
+          maxExecutionCount: v.maxExecutionCount as number,
+          targetsToShow: v.targetsToShow as number,
+        },
+      ]),
+  };
 }
 
 export function viewEvents(c: HTMLElement) {

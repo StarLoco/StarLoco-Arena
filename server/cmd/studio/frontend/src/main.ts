@@ -25,6 +25,8 @@ import { viewMaps } from "./maps";
 import { viewBuilder } from "./builder";
 import { viewAnimations } from "./animations";
 import { viewSpellbook } from "./spellbook";
+import { viewTranslations } from "./translations";
+import { viewDeploy } from "./deploy";
 
 // -------- App shell / navigation --------
 
@@ -38,12 +40,14 @@ interface NavEntry {
 
 const NAV: NavEntry[] = [
   { id: "overview", label: "Overview", icon: "\u25C8", section: "Studio", phase: 0 },
+  { id: "deploy", label: "Deploy", icon: "\u2B06", section: "Studio", phase: 0 },
   { id: "spellbook", label: "Spellbook", icon: "\u2727", section: "Game Data", phase: 1 },
   { id: "spells", label: "Spells", icon: "\u2726", section: "Game Data", phase: 1 },
   { id: "cards", label: "Cards", icon: "\u2617", section: "Game Data", phase: 1 },
   { id: "summonings", label: "Summonings", icon: "\u269C", section: "Game Data", phase: 1 },
   { id: "staticEffects", label: "Static Effects", icon: "\u2622", section: "Game Data", phase: 1 },
   { id: "events", label: "Events", icon: "\u26A1", section: "Game Data", phase: 1 },
+  { id: "translations", label: "Translations", icon: "\u2709", section: "Game Data", phase: 1 },
   { id: "assets", label: "Asset Browser", icon: "\u25A6", section: "Assets", phase: 2 },
   { id: "sprites", label: "Sprites (TGA)", icon: "\u25A3", section: "Assets", phase: 3 },
   { id: "animations", label: "Animations", icon: "\u2637", section: "Assets", phase: 6 },
@@ -205,7 +209,9 @@ function renderPage() {
 
   // Phase 1 data views.
   const dataViews: Record<string, (c: HTMLElement) => void> = {
+    deploy: viewDeploy,
     spellbook: viewSpellbook,
+    translations: viewTranslations,
     spells: viewSpells,
     cards: viewCards,
     summonings: viewSummonings,

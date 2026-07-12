@@ -78,6 +78,51 @@ export interface TransEdit {
   value: string;
 }
 
+export interface SummoningEdit {
+  id: number;
+  hp: number;
+  ap: number;
+  mp: number;
+  gfx: number;
+  spellId: number;
+}
+export interface CoachCardEdit {
+  id: number;
+  type: number;
+  value: number;
+  set: number;
+}
+export interface FighterCardEdit {
+  id: number;
+  type: number;
+  value: number;
+  scriptId: number;
+  subType: number;
+}
+export interface StaticEffectEdit {
+  id: number;
+  scriptId: number;
+  areaShapeId: number;
+  maxExecutionCount: number;
+  targetsToShow: number;
+}
+
+export interface PushFileStatus {
+  name: string;
+  jarEntry: string;
+  localOk: boolean;
+  inClient: boolean;
+  differs: boolean;
+  localHash: string;
+  clientHash: string;
+  error: string;
+}
+export interface PushStatus {
+  clientJar: string;
+  files: PushFileStatus[];
+  error: string;
+}
+
 export interface Spell {
   ID: number;
   ActionPointsCost: number;
@@ -193,6 +238,12 @@ type AppBindings = {
   GetGameIcons(): Promise<Record<string, string>>;
   GetTranslations(): Promise<TranslationSet>;
   SaveTranslations(lang: string, edits: TransEdit[]): Promise<RepackResult>;
+  SaveSummonings(edits: SummoningEdit[]): Promise<ExportResult>;
+  SaveCoachCards(edits: CoachCardEdit[]): Promise<ExportResult>;
+  SaveFighterCards(edits: FighterCardEdit[]): Promise<ExportResult>;
+  SaveStaticEffects(edits: StaticEffectEdit[]): Promise<ExportResult>;
+  GetPushStatus(): Promise<PushStatus>;
+  PushDataToClient(names: string[]): Promise<RepackResult>;
   GetSpells(): Promise<Spell[]>;
   GetCoachCards(): Promise<CoachCard[]>;
   GetFighterCards(): Promise<FighterCard[]>;
@@ -597,6 +648,57 @@ export async function getGameIcons(): Promise<Record<string, string>> {
   const b = await bindings();
   if (!b) return {};
   return b.GetGameIcons();
+}
+
+// getTranslations returns every editable content.* string for the active
+// language (with the other language alongside as a reference).
+export async function getTranslations(): Promise<TranslationSet> {
+  const b = await bindings();
+  if (!b) return { lang: "en", altLang: "fr", rows: [], error: "no runtime" };
+  return b.GetTranslations();
+}
+
+// saveTranslations writes the edited strings back into i18n.jar (backup +
+// atomic repack) for the given language.
+export async function saveTranslations(
+  lang: string,
+  edits: TransEdit[]
+): Promise<RepackResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveTranslations(lang, edits);
+}
+
+export async function saveSummonings(edits: SummoningEdit[]): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveSummonings(edits);
+}
+export async function saveCoachCards(edits: CoachCardEdit[]): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveCoachCards(edits);
+}
+export async function saveFighterCards(edits: FighterCardEdit[]): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveFighterCards(edits);
+}
+export async function saveStaticEffects(edits: StaticEffectEdit[]): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveStaticEffects(edits);
+}
+
+export async function getPushStatus(): Promise<PushStatus> {
+  const b = await bindings();
+  if (!b) return { clientJar: "", files: [], error: "no runtime" };
+  return b.GetPushStatus();
+}
+export async function pushDataToClient(names: string[]): Promise<RepackResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.PushDataToClient(names);
 }
 
 export async function getSpells(): Promise<Spell[]> {
