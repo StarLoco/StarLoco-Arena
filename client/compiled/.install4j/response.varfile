@@ -1,0 +1,10 @@
+#install4j response file for Dofus-Arena 2.04 beta
+#Thu Jun 15 19:01:42 CEST 2017
+displayManual$Boolean=false
+createDesktopLinkAction$Boolean=true
+executeLauncherAction$Boolean=true
+sys.programGroup.linkDir=/usr/local/bin
+sys.languageId=fr
+sys.installationDir=C\:\\Users\\flore\\Desktop\\DofusArena2-offi
+sys.programGroup.enabled$Boolean=false
+sys.programGroup.allUsers$Boolean=false

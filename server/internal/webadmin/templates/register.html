@@ -1,0 +1,34 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="auth-wrap">
+  <div class="panel auth-card">
+    <div class="crest">✦</div>
+    <h1>Create your account</h1>
+    <p class="sub">Join {{ .ServerName }} and forge your legend.</p>
+
+    {{- if $d.Error }}
+    <div class="flash error"><span>✕</span><span>{{ $d.Error }}</span></div>
+    {{- end }}
+
+    <form class="form" method="post" action="/register">
+      <div class="field">
+        <label for="name">Account name</label>
+        <input type="text" id="name" name="name" value="{{ $d.Name }}" autocomplete="username" autofocus required>
+        <span class="hint">3–64 characters · letters, digits and . _ - only</span>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" required>
+        <span class="hint">At least 6 characters</span>
+      </div>
+      <div class="field">
+        <label for="password_confirm">Confirm password</label>
+        <input type="password" id="password_confirm" name="password_confirm" autocomplete="new-password" required>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Create account</button>
+    </form>
+
+    <p class="auth-alt">Already have an account? <a href="/login">Sign in</a></p>
+  </div>
+</div>
+{{ end }}

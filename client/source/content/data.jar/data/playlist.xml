@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<playlist>
+    <!-- <music fileName="jar:file:contents/musics.jar!/musics/fight.ogg"/> -->
+    <music fileName="jar:file:contents/musics.jar!/musics/island.ogg"/>
+</playlist>

@@ -1,0 +1,40 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="page-head">
+  <div class="crumbs"><a href="/admin">Admin</a> / <a href="/admin/accounts">Accounts</a> / New</div>
+  <h1>Create account</h1>
+</div>
+
+<div class="grid cols-2">
+  <div class="panel panel-pad">
+    {{- if $d.Error }}
+    <div class="flash error"><span>✕</span><span>{{ $d.Error }}</span></div>
+    {{- end }}
+    <form class="form" method="post" action="/admin/accounts/new">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <div class="field">
+        <label for="name">Account name</label>
+        <input type="text" id="name" name="name" value="{{ $d.Name }}" autofocus required>
+        <span class="hint">3–64 characters · letters, digits and . _ - only</span>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+        <span class="hint">At least 6 characters</span>
+      </div>
+      <div class="checkline">
+        <input type="checkbox" id="is_admin" name="is_admin" {{ if $d.IsAdmin }}checked{{ end }}>
+        <label for="is_admin">Grant administrator privileges</label>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Create account</button>
+        <a class="btn btn-ghost" href="/admin/accounts">Cancel</a>
+      </div>
+    </form>
+  </div>
+  <div class="panel panel-pad">
+    <h2>About new accounts</h2>
+    <p style="color:var(--ink-dim)">Accounts created here can log into both the game and this portal immediately. Admin accounts unlock the console and impersonation. The account starts without a coach until the player creates one in-game.</p>
+  </div>
+</div>
+{{ end }}

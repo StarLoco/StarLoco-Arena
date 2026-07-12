@@ -1,0 +1,67 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="page-head">
+  <div class="eyebrow">Admin console</div>
+  <h1>Overview</h1>
+  <p class="sub">Manage accounts, inspect player data, and impersonate when you need to help.</p>
+</div>
+
+{{ template "admin_tabs" "overview" }}
+
+<div class="grid cols-3" style="margin-bottom:26px">
+  <div class="panel stat">
+    <span class="label">Total accounts</span>
+    <span class="value">{{ $d.TotalAccounts }}</span>
+  </div>
+  <div class="panel stat">
+    <span class="label">Marked connected</span>
+    <span class="value teal">{{ $d.Connected }}</span>
+  </div>
+  <div class="panel stat">
+    <span class="label">Coaches online</span>
+    <span class="value emerald">{{ $d.OnlineCoaches }}</span>
+  </div>
+</div>
+
+<div class="grid cols-2" style="margin-bottom:26px">
+  <div class="panel stat">
+    <span class="label">Active fights</span>
+    <span class="value emerald">{{ $d.ActiveFights }}</span>
+  </div>
+  <div class="panel stat">
+    <span class="label">Server uptime</span>
+    <span class="value teal">{{ formatUptime $d.UptimeSeconds }}</span>
+  </div>
+</div>
+
+<div class="toolbar">
+  <h2 style="margin:0;font-family:var(--font-display)">Recent accounts</h2>
+  <div style="margin-left:auto" class="actions">
+    <a class="btn btn-ghost btn-sm" href="/admin/accounts">View all</a>
+    <a class="btn btn-primary btn-sm" href="/admin/accounts/new">New account</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>ID</th><th>Account</th><th>Coach</th><th>Status</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        {{- range $d.Recent }}
+        <tr>
+          <td class="mono">#{{ .ID }}</td>
+          <td class="name"><a class="rowlink" href="/admin/accounts/{{ .ID }}">{{ .Name }}</a></td>
+          <td>{{ if .CoachName }}{{ .CoachName }}{{ else }}<span class="mono">—</span>{{ end }}</td>
+          <td>{{ if .Connected }}<span class="badge online"><span class="dot"></span>Online</span>{{ else }}<span class="badge offline"><span class="dot"></span>Offline</span>{{ end }}</td>
+          <td>{{ if .IsAdmin }}<span class="badge admin"><span class="dot"></span>Admin</span>{{ else }}Player{{ end }}</td>
+        </tr>
+        {{- else }}
+        <tr><td colspan="5"><div class="empty">No accounts yet.</div></td></tr>
+        {{- end }}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{ end }}

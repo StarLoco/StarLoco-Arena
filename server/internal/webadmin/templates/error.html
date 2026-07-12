@@ -1,0 +1,10 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="errpage">
+  <div class="code">{{ $d.Code }}</div>
+  <p>{{ $d.Message }}</p>
+  <div class="actions" style="justify-content:center;margin-top:20px">
+    <a class="btn btn-primary" href="/">Back to home</a>
+  </div>
+</div>
+{{ end }}

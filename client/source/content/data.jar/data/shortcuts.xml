@@ -1,0 +1,135 @@
+<shortcuts>
+	<group name="debug">
+		<shortcut keyCode="0" ctrlKey="true" consoleCommand="!/debug/console" />
+		<shortcut shiftKey="true" keyCode="112" consoleCommand="?" />
+		<shortcut shiftKey="true" keyCode="113" consoleCommand="!/debug/fps" />
+		<shortcut shiftKey="true" keyCode="114" consoleCommand="!/admin/game/1 4 p" />
+		<shortcut shiftKey="true" keyCode="115" consoleCommand="!/common/chat" />
+		<shortcut shiftKey="true" keyCode="116" consoleCommand="!/debug/entityStatus" />
+		<shortcut shiftKey="true" keyCode="117" consoleCommand="!/xulor/propertyList" />
+		<shortcut shiftKey="true" keyCode="118" consoleCommand="!/xulor/load miniMapDialog" />
+		<shortcut shiftKey="true" keyCode="119" consoleCommand="!/debug/tooltip" />
+
+		<shortcut keyCode="112" ctrlKey="true" consoleCommand="!/debug/logoff" />
+	</group>
+
+	<group name="world">
+		<!-- Stats de Coach -->
+		<shortcut ctrlKey="true" keyCode="83" consoleCommand="!/world/statistics" />
+		<shortcut keyCode="120" consoleCommand="!/world/statistics" />
+		<!-- Classeur -->
+		<shortcut ctrlKey="true" keyCode="67" consoleCommand="!/world/inventory" />
+		<shortcut keyCode="119" consoleCommand="!/world/inventory" />
+		<!-- Inventaire + Classeur -->
+		<shortcut ctrlKey="true" keyCode="73" consoleCommand="!/world/inventory ; !/world/equipment" />
+		<shortcut keyCode="113" consoleCommand="!/world/inventory ; !/world/equipment" />
+		<!-- Fusion + Classeur -->
+		<shortcut ctrlKey="true" keyCode="70" consoleCommand="!/world/inventory ; !/world/fusion" />
+		<shortcut keyCode="114" consoleCommand="!/world/inventory ; !/world/fusion" />
+		<!-- Statistiques de classeur + Classeur -->
+		<shortcut ctrlKey="true" keyCode="75" consoleCommand="!/world/inventory ; !/world/inventoryStatistics" />
+		<shortcut keyCode="115" consoleCommand="!/world/inventory ; !/world/inventoryStatistics" />
+		<!-- Gestion des équipes -->
+		<shortcut id="teamManagement" ctrlKey="true" keyCode="69"  />
+		<shortcut id="teamManagement" keyCode="118" /><!--
+		<shortcut ctrlKey="true" keyCode="69" consoleCommand="!/world/teamManagement" />
+		<shortcut keyCode="118" consoleCommand="!/world/teamManagement" />
+		--><!-- Recherche d'adversaire -->
+		<shortcut keyCode="121" consoleCommand="!/world/randomFight" />
+		<shortcut ctrlKey="true" keyCode="84" consoleCommand="!/world/randomFight" />
+		<shortcut ctrlKey="true" keyCode="82" consoleCommand="!/world/randomFight" />
+		<!-- Menu --><!--
+		<shortcut keyCode="77" consoleCommand="!/debug/logoff" />
+		-->
+		<!-- Emotes en raccourci -->
+		<!--
+		<shortcut keyCode="49" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="50" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="51" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="52" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="53" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="54" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="55" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="56" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="57" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="48" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		-->
+		<!-- Déplacement -->
+		<shortcut keyCode="38" consoleCommand="!/world/move 7" />
+		<shortcut keyCode="40" consoleCommand="!/world/move 3" />
+		<shortcut keyCode="37" consoleCommand="!/world/move 5" />
+		<shortcut keyCode="39" consoleCommand="!/world/move 1" />
+		<!-- Selection du coach le plus proche + menu contextuel -->
+		<!--
+		<shortcut keyCode="9" consoleCommand="!/debug/logoff" />
+		-->
+	</group>
+
+	<group name="fight">
+		<!-- Passer son tour -->
+		<shortcut keyCode="35" consoleCommand="!/fight/endTurn" />
+		<!-- Abandonner -->
+		<shortcut keyCode="27" consoleCommand="!/fight/giveUp" />
+		<!-- Sélection du poing -->
+		<shortcut keyCode="9" consoleCommand="!/fight/closeCombat" />
+		<!-- Sélection des armes -->
+		<shortcut keyCode="0" consoleCommand="!/fight/selectWeapon 0" />
+		<!-- Sélection du sort -->
+		<shortcut keyCode="49" consoleCommand="!/fight/selectSpell 0" />
+		<shortcut keyCode="50" consoleCommand="!/fight/selectSpell 1" />
+		<shortcut keyCode="51" consoleCommand="!/fight/selectSpell 2" />
+		<shortcut keyCode="52" consoleCommand="!/fight/selectSpell 3" />
+		<shortcut keyCode="53" consoleCommand="!/fight/selectSpell 4" />
+		<shortcut keyCode="54" consoleCommand="!/fight/selectSpell 5" />
+		<!-- Utilisation d'une carte de coach -->
+		<shortcut keyCode="112" consoleCommand="!/fight/selectFighterCard 0" />
+		<shortcut keyCode="113" consoleCommand="!/fight/selectFighterCard 1" />
+		<shortcut keyCode="114" consoleCommand="!/fight/selectFighterCard 2" />
+		<shortcut keyCode="115" consoleCommand="!/fight/selectFighterCard 3" />
+		<!-- Emotes en raccourci -->
+		<!--
+		<shortcut keyCode="49" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="50" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="51" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="52" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="53" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="54" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="55" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="56" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="57" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		<shortcut keyCode="48" ctrlKey="true" consoleCommand="!/debug/logoff" />
+		-->
+		<!-- Déplacement -->
+		<shortcut keyCode="38" consoleCommand="!/fight/move 7" />
+		<shortcut keyCode="40" consoleCommand="!/fight/move 3" />
+		<shortcut keyCode="37" consoleCommand="!/fight/move 5" />
+		<shortcut keyCode="39" consoleCommand="!/fight/move 1" />
+		<!-- Tourner le Fighter -->
+		<shortcut keyCode="38" ctrlKey="true" consoleCommand="!/fight/setDirection 7" />
+		<shortcut keyCode="40" ctrlKey="true" consoleCommand="!/fight/setDirection 3" />
+		<shortcut keyCode="37" ctrlKey="true" consoleCommand="!/fight/setDirection 5" />
+		<shortcut keyCode="39" ctrlKey="true" consoleCommand="!/fight/setDirection 1" />
+	</group>
+
+	<group name="common">
+		<!-- Règle du jeu -->
+		<shortcut keyCode="112" consoleCommand="!/common/onlineHelp" />
+		<!-- Zoom in -->
+		<shortcut keyCode="107" consoleCommand="!/common/zoom +" />
+		<!-- Zoom out -->
+		<shortcut keyCode="109" consoleCommand="!/common/zoom -" />
+		<!-- Fermer toutes les fenêtres -->
+		<shortcut keyCode="27" consoleCommand="!/common/closeWindows" />
+		<!-- Ouvrir le menu -->
+		<shortcut keyCode="123" consoleCommand="!/common/openMenu" />
+		<!-- Chat -->
+		<shortcut keyRegExp="\p{L}|\p{Punct}" consoleCommand="!/common/chat ${keyChar}" />
+		<shortcut keyRegExp="\p{L}|\p{Punct}" shiftKey="true" consoleCommand="!/common/chat ${keyChar}" />
+		<shortcut keyRegExp="\p{Blank}" shiftKey="true" consoleCommand="!/common/chat space" />
+		<shortcut keyRegExp="\p{Blank}" consoleCommand="!/common/chat space" />
+		<shortcut keyCode="122" consoleCommand="!/common/chat none" />
+		<shortcut keyCode="10" consoleCommand="!/common/chat none" />
+		<shortcut ctrlKey="true" keyCode="32" consoleCommand="!/common/maximizeChat" />
+	</group>
+
+</shortcuts>

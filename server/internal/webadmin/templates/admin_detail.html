@@ -1,0 +1,81 @@
+{{ define "content" }}
+{{ $d := .Data }}
+{{ $view := $d.View }}
+{{ $detail := $view.Detail }}
+{{ $acc := $detail.Account }}
+{{ $coach := $detail.Coach }}
+
+<div class="page-head">
+  <div class="crumbs"><a href="/admin">Admin</a> / <a href="/admin/accounts">Accounts</a> / {{ $acc.Name }}</div>
+  <h1>{{ $acc.Name }}
+    {{ if $acc.IsAdmin }}<span class="badge admin" style="vertical-align:middle"><span class="dot"></span>Admin</span>{{ end }}
+    {{ if $acc.Connected }}<span class="badge online" style="vertical-align:middle"><span class="dot"></span>Connected</span>{{ end }}
+  </h1>
+  <p class="sub">Full stored data for account #{{ $acc.ID }}.</p>
+</div>
+
+<div class="panel panel-pad" style="margin-bottom:26px">
+  <h2>Admin actions</h2>
+  <div class="actions">
+    <form class="inline-form" method="post" action="/admin/accounts/{{ $acc.ID }}/impersonate">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <button class="btn btn-primary btn-sm" type="submit" {{ if $d.IsSelf }}disabled{{ end }}>◑ Impersonate</button>
+    </form>
+
+    {{- if $d.CanToggle }}
+    <form class="inline-form" method="post" action="/admin/accounts/{{ $acc.ID }}/toggle-admin">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <button class="btn btn-ghost btn-sm" type="submit">
+        {{ if $acc.IsAdmin }}Revoke admin{{ else }}Grant admin{{ end }}
+      </button>
+    </form>
+    {{- end }}
+
+    {{- if $d.CanDelete }}
+    <form class="inline-form" method="post" action="/admin/accounts/{{ $acc.ID }}/delete"
+          onsubmit="return confirm('Permanently delete {{ $acc.Name }} and ALL related data (coach, cards, fighters, teams, social)? This cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <button class="btn btn-danger btn-sm" type="submit">Delete account</button>
+    </form>
+    {{- else if not $d.IsSelf }}
+    <span class="badge warn"><span class="dot"></span>Connected — can't delete while online</span>
+    {{- end }}
+
+    {{- if $d.IsSelf }}
+    <span class="badge"><span class="dot"></span>This is you</span>
+    {{- end }}
+  </div>
+</div>
+
+<div class="grid cols-2" style="margin-bottom:26px">
+  <div class="panel panel-pad">
+    <h2>Account</h2>
+    <dl class="kv">
+      <dt>Account ID</dt><dd class="mono">#{{ $acc.ID }}</dd>
+      <dt>Name</dt><dd>{{ $acc.Name }}</dd>
+      <dt>Role</dt><dd>{{ if $acc.IsAdmin }}Administrator{{ else }}Player{{ end }}</dd>
+      <dt>Connected</dt><dd>{{ if $acc.Connected }}Yes{{ else }}No{{ end }}</dd>
+      <dt>Created</dt><dd class="mono">{{ $acc.CreatedAt.Format "2006-01-02 15:04" }}</dd>
+      <dt>Updated</dt><dd class="mono">{{ $acc.UpdatedAt.Format "2006-01-02 15:04" }}</dd>
+    </dl>
+  </div>
+  <div class="panel panel-pad">
+    <h2>Coach</h2>
+    {{- if $coach }}
+    <dl class="kv">
+      <dt>Coach name</dt><dd>{{ $coach.Name }} {{ if $view.CoachOnline }}<span class="badge online"><span class="dot"></span>Online</span>{{ end }}</dd>
+      <dt>Coach ID</dt><dd class="mono">#{{ $coach.ID }}</dd>
+      <dt>Appearance</dt><dd>{{ sexLabel $coach.Sex }} · skin {{ $coach.Skin }} · hair {{ $coach.Hair }}</dd>
+      <dt>Position</dt><dd class="mono">({{ $coach.PosX }}, {{ $coach.PosY }}, {{ $coach.PosZ }})</dd>
+      <dt>Created</dt><dd class="mono">{{ $coach.CreatedAt.Format "2006-01-02 15:04" }}</dd>
+    </dl>
+    {{- else }}
+    <div class="empty">No coach created for this account.</div>
+    {{- end }}
+  </div>
+</div>
+
+{{ if $coach }}
+{{ template "coach_data" $view }}
+{{ end }}
+{{ end }}

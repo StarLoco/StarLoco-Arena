@@ -1,0 +1,28 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="auth-wrap">
+  <div class="panel auth-card">
+    <div class="crest">⚔</div>
+    <h1>Sign in</h1>
+    <p class="sub">Enter the arena, {{ .ServerName }} awaits.</p>
+
+    {{- if $d.Error }}
+    <div class="flash error"><span>✕</span><span>{{ $d.Error }}</span></div>
+    {{- end }}
+
+    <form class="form" method="post" action="/login">
+      <div class="field">
+        <label for="name">Account name</label>
+        <input type="text" id="name" name="name" value="{{ $d.Name }}" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+    </form>
+
+    <p class="auth-alt">No account yet? <a href="/register">Create one</a></p>
+  </div>
+</div>
+{{ end }}

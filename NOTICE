@@ -1,0 +1,67 @@
+DofusArena2-06
+Copyright (c) 2026 StarLoco
+
+This product includes original software (the Go server under server/, the tools
+under tools/, and project documentation) licensed under the MIT License — see
+LICENSE.
+
+It ALSO redistributes third-party and copyrighted material for preservation and
+interoperability purposes. That material is NOT covered by this project's MIT
+license and remains the property of its respective owners. This NOTICE is an
+attribution aid, not a grant of rights. See DISCLAIMER.md.
+
+===============================================================================
+Copyrighted game material — © Ankama Games
+===============================================================================
+  - DofusArena 2 retail client and launcher .............. client/compiled/
+  - Decompiled client / game-logic source (reference) .... client/source/,
+                                                           server/data/stc/
+  - Game data (breeds, cards, spells, maps, etc.) ........ server/data/*.dat,
+                                                           *.ade, *.amw, maps/
+
+  "DofusArena", "Dofus", and all related assets are trademarks and/or
+  copyrighted works of Ankama Games. All rights reserved by Ankama.
+
+===============================================================================
+Bundled Java Runtime — © Oracle Corporation / Sun Microsystems
+===============================================================================
+  - Oracle/Sun JRE 1.6.0_45 .............................. client/compiled/jre/
+
+  Distributed under the Oracle Binary Code License Agreement for the Java SE
+  Platform. Java is a registered trademark of Oracle and/or its affiliates.
+
+===============================================================================
+Third-party libraries bundled inside the client
+===============================================================================
+  The retail client and its decompiled sources embed a number of third-party
+  Java libraries, each governed by its own license, including (non-exhaustive):
+
+  - JOGL / JOAL (Java bindings for OpenGL/OpenAL) ......... BSD
+  - GNU Trove (primitive collections) .................... LGPL
+  - Apache Commons / Log4j ............................... Apache-2.0
+  - JDOM (XML) .......................................... JDOM License (BSD-style)
+  - FengGUI (GUI toolkit) ............................... BSD/LGPL
+  - LuaJava (Kepler Project) ............................ MIT
+  - JOrbis (Ogg Vorbis) ................................. LGPL
+  - PostgreSQL JDBC Driver .............................. BSD-2-Clause
+
+  Refer to each library's upstream project for authoritative license terms.
+
+===============================================================================
+Go module dependencies (server/)
+===============================================================================
+  Fetched at build time via Go modules; each retains its own license:
+
+  - gorm.io/gorm and driver adapters ..................... MIT
+  - glebarez/sqlite (pure-Go SQLite) ..................... MIT
+  - golang-migrate/migrate ............................... MIT
+  - knadh/koanf (configuration) .......................... MIT
+  - rs/zerolog (logging) ................................. MIT
+  - wailsapp/wails/v2 (studio desktop tool) .............. MIT
+  - golang.org/x/crypto .................................. BSD-3-Clause
+
+===============================================================================
+Reverse-engineering tooling
+===============================================================================
+  - CFR (Class File Reader) decompiler ................... tools/cfr.jar
+    © Lee Benfield — used to produce the decompiled reference sources.

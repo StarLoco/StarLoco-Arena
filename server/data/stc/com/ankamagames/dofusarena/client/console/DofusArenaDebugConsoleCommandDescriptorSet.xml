@@ -1,0 +1,56 @@
+<commandList>
+
+	<!-- ADMIN -->
+	<commandSet cmdPattern="admin" name="admin" help="Catégorie 'admin'" level="100">
+		<commandSet cmdPattern="proxy" name="proxy">
+			<command cmdPattern="\w+\p{ASCII}*" class="com.ankamagames.dofusarena.client.console.command.admin.ProxyAdminCommand" name="*" />
+		</commandSet>
+		<commandSet cmdPattern="worldmanager" name="worldmanager">
+			<command cmdPattern="\w+\p{ASCII}*" class="com.ankamagames.dofusarena.client.console.command.admin.WorldManagerAdminCommand" name="*" />
+		</commandSet>
+		<commandSet cmdPattern="connection" name="connection">
+			<command cmdPattern="\w+\p{ASCII}*" class="com.ankamagames.dofusarena.client.console.command.admin.ConnectionAdminCommand" name="*" />
+		</commandSet>
+		<commandSet cmdPattern="game" name="game">
+			<command cmdPattern="\w+\p{ASCII}*" class="com.ankamagames.dofusarena.client.console.command.admin.GameAdminCommand" name="*" />
+		</commandSet>
+		<commandSet cmdPattern="chat" name="chat">
+			<command cmdPattern="\w+\p{ASCII}*" class="com.ankamagames.dofusarena.client.console.command.admin.ChatAdminCommand" name="*" />
+		</commandSet>
+	</commandSet>
+
+	<!-- DEBUG -->
+	<commandSet cmdPattern="debug" name="debug" help="Catégorie 'debug'">
+
+		<command cmdPattern="gc" class="com.ankamagames.baseImpl.client.proxyclient.base.console.command.debug.GarbageCollectorCommand" name="gc" help="Force le lancement du garbage collector" />
+		<command cmdPattern="fps" class="com.ankamagames.dofusarena.client.console.command.debug.FpsCommand" name="fps" help="Affiche / masque le FPS" />
+		<command cmdPattern="actionList" class="com.ankamagames.dofusarena.client.console.command.debug.ActionListCommand" name="actionList" help="Affiche des infos sur la pile d'action" />
+		<command cmdPattern="locate" class="com.ankamagames.dofusarena.client.console.command.debug.LocateCommand" name="locate" help="Indique la position visée par la caméra" />
+		<command cmdPattern="console" class="com.ankamagames.dofusarena.client.console.command.debug.ConsoleCommand" name="console" help="Console de debug" />
+
+		<command cmdPattern="logoff" class="com.ankamagames.dofusarena.client.console.command.debug.LogoffCommand" name="logoff" help="Deconnexion" />
+		<command cmdPattern="entityStatus" class="com.ankamagames.dofusarena.client.console.command.debug.EntityStatusCommand" name="entityStatus" help="Status de WakfuGameEntity" />
+		
+		<command cmdPattern="pref" argsPattern="(\w+)" class="com.ankamagames.dofusarena.client.console.command.debug.PrefCommand" name="pref" help="Pref" />
+
+		<commandSet cmdPattern="script" name="script" help="Commandes debug de Script">
+			<command cmdPattern="list" class="com.ankamagames.dofusarena.client.console.command.debug.script.ListCommand" name="list" help="Liste des scripts en mémoire" />
+			<command cmdPattern="run" argsPattern="(\w+)" class="com.ankamagames.dofusarena.client.console.command.debug.script.RunCommand" name="run" help="Lance un script" />
+			<command cmdPattern="runCommand" argsPattern="(.*)" class="com.ankamagames.dofusarena.client.console.command.debug.script.RunCommandCommand" name="runCommand" help="Exécute une commande lua" />
+		</commandSet>
+
+	</commandSet>
+
+	<!-- XULOR -->
+	<commandSet cmdPattern="xulor" name="xulor" help="Catégorie 'xulor'">
+		<command cmdPattern="infos" class="com.ankamagames.dofusarena.client.console.command.xulor.InfosCommand" name="infos" help="Infos de débug Xulor" />
+		<command cmdPattern="load" argsPattern="(\w+)" class="com.ankamagames.dofusarena.client.console.command.xulor.LoadCommand" name="load" help="Charge une interface" />
+		<command cmdPattern="unload" argsPattern="(\w+)" class="com.ankamagames.dofusarena.client.console.command.xulor.UnloadCommand" name="unload" help="Décharge une interface" />
+		<commandSet cmdPattern="property" name="property" help="Catégorie 'property'">
+			<command cmdPattern="list" class="com.ankamagames.dofusarena.client.console.command.xulor.property.ListCommand" name="list" help="Affiche la liste des propriétés mise à disposition par Xulor" />
+			<command cmdPattern="value" argsPattern="([a-zA-Z0-9.]+)" class="com.ankamagames.dofusarena.client.console.command.xulor.property.ValueCommand" name="value" help="Affiche la valeur de la propriété mise à disposition par Xulor" />
+		</commandSet>
+	</commandSet>
+
+</commandList>
+

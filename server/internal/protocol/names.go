@@ -1,0 +1,155 @@
+package protocol
+
+import "strconv"
+
+// recvOpcodeNames maps client->server opcodes to human-readable names for
+// packet-trace logging. Missing entries fall back to the numeric value.
+var recvOpcodeNames = map[RecvOpcode]string{
+	RecvDisconnect:                         "DISCONNECT",
+	RecvVersion:                            "VERSION",
+	RecvAuthentication:                     "AUTHENTICATION",
+	RecvCoachCreation:                      "COACH_CREATION",
+	RecvOpponentSearchRequest:              "OPPONENT_SEARCH_REQUEST",
+	RecvOpponentSearchCancel:               "OPPONENT_SEARCH_CANCEL",
+	RecvAddFriendMessage:                   "ADD_FRIEND",
+	RecvAddIgnoreMessage:                   "ADD_IGNORE",
+	RecvRemoveFriendMessage:                "REMOVE_FRIEND",
+	RecvRemoveIgnoreMessage:                "REMOVE_IGNORE",
+	RecvVicinityMessage:                    "VICINITY_MESSAGE",
+	RecvPrivateMessage:                     "PRIVATE_MESSAGE",
+	RecvFightInvitationRequestMessage:      "FIGHT_INVITATION_REQUEST",
+	RecvFightInvitationAcceptMessage:       "FIGHT_INVITATION_ACCEPT",
+	RecvFightInvitationRejectMessage:       "FIGHT_INVITATION_REJECT",
+	RecvSetReadyForFight:                   "SET_READY_FOR_FIGHT",
+	RecvFightCreationCancelMessage:         "FIGHT_CREATION_CANCEL",
+	RecvActorMovementRequest:               "ACTOR_MOVEMENT_REQUEST",
+	RecvItemExchangeInvitationRequest:      "ITEM_EXCHANGE_INVITATION_REQUEST",
+	RecvItemExchangeInvitationAnswer:       "ITEM_EXCHANGE_INVITATION_ANSWER",
+	RecvItemExchangeAddCard:                "ITEM_EXCHANGE_ADD_CARD",
+	RecvItemExchangeRemoveCard:             "ITEM_EXCHANGE_REMOVE_CARD",
+	RecvItemExchangeSetReady:               "ITEM_EXCHANGE_SET_READY",
+	RecvItemExchangeCancel:                 "ITEM_EXCHANGE_CANCEL",
+	RecvCoachEquipmentUpdateRequest:        "COACH_EQUIPMENT_UPDATE_REQUEST",
+	RecvCoachInventoryUpdateRequest:        "COACH_INVENTORY_UPDATE_REQUEST",
+	RecvFighterCreateRequest:               "FIGHTER_CREATE_REQUEST",
+	RecvFighterDeleteRequest:               "FIGHTER_DELETE_REQUEST",
+	RecvFighterInformationListRequest:      "FIGHTER_INFORMATION_LIST_REQUEST",
+	RecvFighterUpdateInventoryRequest:      "FIGHTER_UPDATE_INVENTORY_REQUEST",
+	RecvTeamPresetSaveRequest:              "TEAM_PRESET_SAVE_REQUEST",
+	RecvTeamPresetDeleteRequest:            "TEAM_PRESET_DELETE_REQUEST",
+	RecvTeamPresetListRequest:              "TEAM_PRESET_LIST_REQUEST",
+	RecvTeamMateSetReadyForPlacement:       "TEAM_MATE_SET_READY_FOR_PLACEMENT",
+	RecvMoveToFreePlacementRequest:         "MOVE_TO_FREE_PLACEMENT_REQUEST",
+	RecvTeamMateSetReadyForObservation:     "TEAM_MATE_SET_READY_FOR_OBSERVATION_REQUEST",
+	RecvTeamMateSetReadyForAction:          "TEAM_MATE_SET_READY_FOR_ACTION_REQUEST",
+	RecvFighterEndTurnRequest:              "FIGHTER_END_TURN_REQUEST",
+	RecvFighterCardUseRequest:              "FIGHTER_CARD_USE_REQUEST",
+	RecvSpellCastRequest:                   "SPELL_CAST_REQUEST",
+	RecvCloseCombatRequest:                 "CLOSE_COMBAT_REQUEST",
+	RecvGiveUpFightRequest:                 "GIVE_UP_FIGHT_REQUEST",
+	RecvFighterActorMovementRequest:        "FIGHTER_ACTOR_MOVEMENT_REQUEST",
+	RecvFighterActorDirectionChangeRequest: "FIGHTER_ACTOR_DIRECTION_CHANGE_REQUEST",
+	RecvEndFightDone:                       "END_FIGHT_DONE",
+	RecvConsoleAdminCommand:                "CONSOLE_ADMIN_COMMAND",
+}
+
+// sendOpcodeNames maps server->client opcodes to human-readable names.
+var sendOpcodeNames = map[SendOpcode]string{
+	SendInvalidVersion:                        "INVALID_VERSION",
+	SendAuthenticationResult:                  "AUTHENTICATION_RESULT",
+	SendWorldServerUnavailable:                "WORLD_SERVER_UNAVAILABLE",
+	SendCoachCreationRequest:                  "COACH_CREATION_REQUEST",
+	SendCoachCreationResult:                   "COACH_CREATION_RESULT",
+	SendCoachInformation:                      "COACH_INFORMATION",
+	SendOpponentFound:                         "OPPONENT_FOUND",
+	SendOpponentSearchError:                   "OPPONENT_SEARCH_ERROR",
+	SendOpponentSearchInProgress:              "OPPONENT_SEARCH_IN_PROGRESS",
+	SendOpponentSearchCancelResult:            "OPPONENT_SEARCH_CANCEL_RESULT",
+	SendPlayerStatisticsReport:                "PLAYER_STATISTICS_REPORT",
+	SendFriendListMessage:                     "FRIEND_LIST",
+	SendIgnoreListMessage:                     "IGNORE_LIST",
+	SendVicinityMessage:                       "VICINITY_MESSAGE",
+	SendPrivateMessage:                        "PRIVATE_MESSAGE",
+	SendFriendAddedMessage:                    "FRIEND_ADDED",
+	SendIgnoreAddedMessage:                    "IGNORE_ADDED",
+	SendFriendRemovedMessage:                  "FRIEND_REMOVED",
+	SendIgnoreRemovedMessage:                  "IGNORE_REMOVED",
+	SendUserNotFound:                          "USER_NOT_FOUND",
+	SendMemberNotFound:                        "MEMBER_NOT_FOUND",
+	SendActorSpawn:                            "ACTOR_SPAWN",
+	SendActorDespawn:                          "ACTOR_DESPAWN",
+	SendActorAppear:                           "ACTOR_APPEAR",
+	SendActorDisapear:                         "ACTOR_DISAPPEAR",
+	SendActorReposition:                       "ACTOR_REPOSITION",
+	SendFightInvitation:                       "FIGHT_INVITATION",
+	SendFightInvitationAccepted:               "FIGHT_INVITATION_ACCEPTED",
+	SendFightInvitationRejected:               "FIGHT_INVITATION_REJECTED",
+	SendFightInvitationError:                  "FIGHT_INVITATION_ERROR",
+	SendFightCreationCanceledMessage:          "FIGHT_CREATION_CANCELED",
+	SendReadyForFight:                         "READY_FOR_FIGHT",
+	SendActorMovement:                         "ACTOR_MOVEMENT",
+	SendActorTeleport:                         "ACTOR_TELEPORT",
+	SendEnterWorldInstance:                    "ENTER_WORLD_INSTANCE",
+	SendItemExchangeInvitationRequest:         "ITEM_EXCHANGE_INVITATION_REQUEST",
+	SendItemExchangeInvitationConfirmation:    "ITEM_EXCHANGE_INVITATION_CONFIRMATION",
+	SendItemExchangeCardAdded:                 "ITEM_EXCHANGE_CARD_ADDED",
+	SendItemExchangeCardRemoved:               "ITEM_EXCHANGE_CARD_REMOVED",
+	SendItemExchangeEnd:                       "ITEM_EXCHANGE_END",
+	SendItemExchangeUserReady:                 "ITEM_EXCHANGE_USER_READY",
+	SendCoachInventoryUpdateMessage:           "COACH_INVENTORY_UPDATE",
+	SendCoachEquipmentUpdateMessage:           "COACH_EQUIPMENT_UPDATE",
+	SendFighterCreateResult:                   "FIGHTER_CREATE_RESULT",
+	SendFighterDeletionResult:                 "FIGHTER_DELETION_RESULT",
+	SendFighterInformationList:                "FIGHTER_INFORMATION_LIST",
+	SendFighterUpdatedInformationInventory:    "FIGHTER_UPDATED_INVENTORY",
+	SendTeamPresetSave:                        "TEAM_PRESET_SAVE",
+	SendTeamPresetDeletion:                    "TEAM_PRESET_DELETION",
+	SendTeamPresetList:                        "TEAM_PRESET_LIST",
+	SendCreateFight:                           "CREATE_FIGHT",
+	SendStartPresentation:                     "START_PRESENTATION",
+	SendTeamMateSetReadyForPlacementMessage:   "TEAM_MATE_SET_READY_FOR_PLACEMENT",
+	SendEndPresentation:                       "END_PRESENTATION",
+	SendStartPlacement:                        "START_PLACEMENT",
+	SendMoveToFreePlacement:                   "MOVE_TO_FREE_PLACEMENT",
+	SendTeamMateSetReadyForObservationMessage: "TEAM_MATE_SET_READY_FOR_OBSERVATION",
+	SendEndPlacement:                          "END_PLACEMENT",
+	SendStartObservation:                      "START_OBSERVATION",
+	SendTeamMateSetReadyForActionMessage:      "TEAM_MATE_SET_READY_FOR_ACTION",
+	SendEndObservation:                        "END_OBSERVATION",
+	SendStartAction:                           "START_ACTION",
+	SendNewTableTurnBegin:                     "NEW_TABLE_TURN_BEGIN",
+	SendFighterTurnBegin:                      "FIGHTER_TURN_BEGIN",
+	SendFighterTurnEnd:                        "FIGHTER_TURN_END",
+	SendFighterCardUse:                        "FIGHTER_CARD_USE",
+	SendSpellCast:                             "SPELL_CAST",
+	SendCloseCombat:                           "CLOSE_COMBAT",
+	SendRunningEffectAction:                   "RUNNING_EFFECT_ACTION",
+	SendEffectAreaAction:                      "EFFECT_AREA_ACTION",
+	SendFightActionSequenceExecute:            "FIGHT_ACTION_SEQUENCE_EXECUTE",
+	SendEndFight:                              "END_FIGHT",
+	SendFighterTackled:                        "FIGHTER_TACKLED",
+	SendFighterDies:                           "FIGHTER_DIES",
+	SendFighterChangeDirection:                "FIGHTER_CHANGE_DIRECTION",
+	SendFighterMove:                           "FIGHTER_MOVE",
+	SendQueueNotification:                     "QUEUE_NOTIFICATION",
+	SendConsoleAdminCommandResult:             "CONSOLE_ADMIN_COMMAND_RESULT",
+	SendDefaultResult:                         "DEFAULT_RESULT",
+}
+
+// RecvName returns a human-readable name for a client->server opcode, or
+// the numeric value if unknown.
+func (o RecvOpcode) Name() string {
+	if name, ok := recvOpcodeNames[o]; ok {
+		return name
+	}
+	return strconv.Itoa(int(o))
+}
+
+// SendName returns a human-readable name for a server->client opcode, or
+// the numeric value if unknown.
+func (o SendOpcode) Name() string {
+	if name, ok := sendOpcodeNames[o]; ok {
+		return name
+	}
+	return strconv.Itoa(int(o))
+}

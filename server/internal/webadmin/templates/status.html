@@ -1,0 +1,30 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="page-head">
+  <div class="eyebrow">Live status</div>
+  <h1>Is the arena open?</h1>
+  <p class="sub">A quick public snapshot of the server — no login required.</p>
+</div>
+
+<div class="grid cols-3" style="margin-bottom:26px">
+  <div class="panel stat">
+    <span class="label">Players online</span>
+    <span class="value emerald">{{ $d.OnlinePlayers }}</span>
+  </div>
+  <div class="panel stat">
+    <span class="label">Fights in progress</span>
+    <span class="value emerald">{{ $d.ActiveFights }}</span>
+  </div>
+  <div class="panel stat">
+    <span class="label">Server uptime</span>
+    <span class="value teal">{{ formatUptime $d.UptimeSeconds }}</span>
+  </div>
+</div>
+
+<div class="panel panel-pad">
+  <p style="margin:0;color:var(--ink-dim)">
+    This page only shows aggregate counts — no player names or account details.
+    Want to join in? <a href="/register">Create an account</a>.
+  </p>
+</div>
+{{ end }}

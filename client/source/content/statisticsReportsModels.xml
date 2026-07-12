@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<reportModels>
+
+<!--
+    /**
+     * Par joueur
+     */
+    public  static final short      TOTAL_SPENT_TIME                = 1;
+    public  static final short      TOTAL_SPENT_TIME_IN_FIGHT       = 2;
+    public  static final short      LADDER_SOLO_TOTAL_FIGHTS        = 3;
+    public  static final short      LADDER_SOLO_TOTAL_WINS          = 4;
+    public  static final short      LADDER_SOLO_TOTAL_LOSSES        = 5;
+    public  static final short      LADDER_SOLO_STRENGTH            = 6;
+    public  static final short      LADDER_SOLO_CONSECUTIVE_WINS    = 7;
+    public  static final short      LADDER_SOLO_CONSECUTIVE_LOSSES  = 8;
+-->
+
+    <reportModel id="1" class="com.ankamagames.dofusarena.common.game.statistics.PlayerStatisticsReport">
+
+        <reportEntry id="1" typeId="long" default="0"/>
+        <reportEntry id="2" typeId="long" default="0"/>
+
+        <reportEntry id="3" typeId="int" default="0"/>
+        <reportEntry id="4" typeId="int" default="0"/>
+        <reportEntry id="5" typeId="int" default="0"/>
+
+        <reportEntry id="6" typeId="int" default="0"/>
+        <reportEntry id="7" typeId="int" default="0"/>
+        <reportEntry id="8" typeId="int" default="0"/>
+
+    </reportModel>
+
+</reportModels>

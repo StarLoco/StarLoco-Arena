@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+Class-Path: contents/i18n.jar ../lib/jogl.jar ../lib/jdom.jar ../lib/l
+ og4j.jar ../lib/tritonus_jorbis.jar ../lib/tritonus_share.jar ../lib/
+ jogg.jar ../lib/joal.jar ../lib/jorbis.jar ../lib/ostermillerutils.ja
+ r
+Main-Class: com.ankamagames.dofusarena.client.DofusArenaClient
+

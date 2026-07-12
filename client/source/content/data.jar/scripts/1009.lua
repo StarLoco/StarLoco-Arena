@@ -1,0 +1,1 @@
+SpellEffect.displayFlyingValue(0.4, 0.6, 0.8, true)

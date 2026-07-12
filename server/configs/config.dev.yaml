@@ -1,0 +1,66 @@
+# Local development configuration: SQLite (zero-ops, file-based), verbose
+# console logging, beta flag on. Use with:
+#
+#   go run ./cmd/server --config configs/config.dev.yaml
+#
+# See ../docs/06-config-and-ops.md.
+
+server:
+  name: "DofusArena (dev)"
+  listen_addr: ":5555"
+  admin_addr: "127.0.0.1:9090"
+  beta: true
+  version:
+    major: 2
+    revision: 4
+    build: "7025"
+
+database:
+  driver: sqlite
+  # NOTE: glebarez/go-sqlite only recognizes "_pragma=name(value)" DSN
+  # query params (not mattn/go-sqlite3-style "_journal_mode"/"_foreign_keys"
+  # shorthand, which it silently ignores rather than erroring on).
+  dsn: "file:arena.dev.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+  max_open_conns: 1
+  max_idle_conns: 1
+
+gamedata:
+  dir: "data"
+  warm_cache: false
+
+logging:
+  level: debug
+  format: console
+  # Set to true (or pass --trace-packets) to log every inbound/outbound
+  # wire packet with its opcode name and hex payload. Very verbose, but
+  # invaluable for debugging protocol/format mismatches against a real
+  # client.
+  trace_packets: true
+  # Write every run's full log to a fresh timestamped file in this
+  # directory (newest file = latest run). Makes packet traces readable
+  # from disk instead of copy-pasting the console.
+  dir: logs
+
+combat:
+  turn_clock: 30s
+  presentation_clock: 20s
+  placement_clock: 30s
+  observation_clock: 10s
+
+# Account web portal (register/login, per-user data view, admin console +
+# impersonation). See ../docs/10-web-portal.md.
+#
+# For local dev it's convenient to run BOTH the game server and the portal in
+# one process/command: set enabled: true and just `go run ./cmd/server`. In
+# production you'd typically leave enabled: false here and run the portal as a
+# separate process via `go run ./cmd/web` (which ignores this flag).
+web:
+  enabled: true
+  listen_addr: ":8080"
+  # Leave blank in dev (an ephemeral signing key is generated at startup);
+  # MUST be set to a strong random value in production so sessions survive
+  # restarts and are consistent across instances.
+  session_secret: ""
+  # Set true when served over HTTPS so the session cookie gets the Secure
+  # attribute; false lets http://localhost dev work.
+  secure_cookies: false

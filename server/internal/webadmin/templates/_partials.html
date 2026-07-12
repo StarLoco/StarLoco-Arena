@@ -1,0 +1,165 @@
+{{- /* _partials.html — shared sub-templates parsed into every page so both
+       the user account view and the admin deep-view render coach data
+       identically. Never rendered on its own. */ -}}
+
+{{- /* admin_tabs — the admin console's own sub-navigation (Overview /
+       Accounts / Monitoring), rendered by admin_dashboard.html,
+       admin_accounts.html, and admin_monitoring.html. Takes the current
+       sub-tab key ("overview" | "accounts" | "monitoring") as its dot
+       value, distinct from the top navbar's .Active (always "admin" for
+       every page in this console). */ -}}
+{{ define "admin_tabs" }}
+<div class="admin-tabs">
+  <a class="admin-tab {{ if eq . "overview" }}active{{ end }}" href="/admin">Overview</a>
+  <a class="admin-tab {{ if eq . "accounts" }}active{{ end }}" href="/admin/accounts">Accounts</a>
+  <a class="admin-tab {{ if eq . "monitoring" }}active{{ end }}" href="/admin/monitoring">Monitoring</a>
+</div>
+{{ end }}
+
+{{ define "coach_data" }}
+{{ $d := . }}
+{{ $detail := $d.Detail }}
+{{ $cards := $d.CardsSummary }}
+
+<div class="section-title">Inventory <span class="count">{{ $cards.Total }}</span></div>
+<div class="panel panel-pad">
+  {{- if $cards.Total }}
+    {{- if $cards.Equipped }}
+    <div class="eyebrow" style="margin-bottom:12px">Equipped</div>
+    <div class="cardlets" style="margin-bottom:20px">
+      {{- range $cards.Equipped }}
+      <div class="cardlet">
+        <div class="ct-top">
+          <span class="ct-title">Card</span>
+          <span class="ct-id">#{{ .ID }}</span>
+        </div>
+        <div class="ct-meta">
+          <span><b>Template</b> {{ .TemplateID }}</span>
+          <span><b>{{ slotLabel .Pos }}</b></span>
+          <span><b>Qty</b> {{ .Quantity }}</span>
+          <span><b>Flag</b> {{ cardFlagLabel .Flag }}</span>
+        </div>
+      </div>
+      {{- end }}
+    </div>
+    {{- end }}
+    {{- if $cards.Unequipped }}
+    <div class="eyebrow" style="margin-bottom:12px">In bag</div>
+    <div class="cardlets">
+      {{- range $cards.Unequipped }}
+      <div class="cardlet">
+        <div class="ct-top">
+          <span class="ct-title">Card</span>
+          <span class="ct-id">#{{ .ID }}</span>
+        </div>
+        <div class="ct-meta">
+          <span><b>Template</b> {{ .TemplateID }}</span>
+          <span><b>Qty</b> {{ .Quantity }}</span>
+          <span><b>Flag</b> {{ cardFlagLabel .Flag }}</span>
+        </div>
+      </div>
+      {{- end }}
+    </div>
+    {{- end }}
+  {{- else }}
+    <div class="empty">No cards yet.</div>
+  {{- end }}
+</div>
+
+<div class="section-title">Fighters <span class="count">{{ len $detail.Fighters }}</span></div>
+<div class="panel panel-pad">
+  {{- if $detail.Fighters }}
+  <div class="cardlets">
+    {{- range $detail.Fighters }}
+    <div class="cardlet">
+      <div class="ct-top">
+        <span class="ct-title">{{ .Fighter.Name }}</span>
+        <span class="ct-id">#{{ .Fighter.ID }}</span>
+      </div>
+      <div class="ct-meta">
+        <span><b>Breed</b> {{ .Fighter.Breed }}</span>
+        <span><b>{{ sexLabel .Fighter.Sex }}</b></span>
+        <span><b>Skin</b> {{ .Fighter.Skin }}</span>
+        <span><b>Budget</b> {{ .Fighter.Budget }}</span>
+        <span><b>Spells</b> {{ join ", " .SpellIDs }}</span>
+        <span><b>Objects</b> {{ join ", " .ObjectIDs }}</span>
+      </div>
+    </div>
+    {{- end }}
+  </div>
+  {{- else }}
+  <div class="empty">No fighters built yet.</div>
+  {{- end }}
+</div>
+
+<div class="section-title">Teams <span class="count">{{ len $detail.Teams }}</span></div>
+<div class="panel panel-pad">
+  {{- if $detail.Teams }}
+  <div class="cardlets">
+    {{- range $detail.Teams }}
+    <div class="cardlet">
+      <div class="ct-top">
+        <span class="ct-title">{{ .Name }}</span>
+        <span class="ct-id">Slot {{ .Slot }}</span>
+      </div>
+      <div class="ct-meta">
+        <span><b>Fighters</b>
+          {{- if .Fighters }}
+            {{- range $i, $f := .Fighters }}{{ if $i }}, {{ end }}{{ $f.Name }}{{ end }}
+          {{- else }} — {{ end }}
+        </span>
+      </div>
+    </div>
+    {{- end }}
+  </div>
+  {{- else }}
+  <div class="empty">No team presets saved.</div>
+  {{- end }}
+</div>
+
+<div class="grid cols-2">
+  <div>
+    <div class="section-title">Friends <span class="count">{{ len $detail.Friends }}</span></div>
+    <div class="panel panel-pad">
+      {{- if $detail.Friends }}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Coach</th><th>Notify</th></tr></thead>
+          <tbody>
+            {{- range $detail.Friends }}
+            <tr>
+              <td class="name">{{ if .Friend }}{{ .Friend.Name }}{{ else }}<span class="mono">#{{ .FriendID }}</span>{{ end }}</td>
+              <td>{{ if .Notify }}Yes{{ else }}No{{ end }}</td>
+            </tr>
+            {{- end }}
+          </tbody>
+        </table>
+      </div>
+      {{- else }}
+      <div class="empty">No friends added.</div>
+      {{- end }}
+    </div>
+  </div>
+  <div>
+    <div class="section-title">Ignored <span class="count">{{ len $detail.Ignored }}</span></div>
+    <div class="panel panel-pad">
+      {{- if $detail.Ignored }}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Coach</th></tr></thead>
+          <tbody>
+            {{- range $detail.Ignored }}
+            <tr>
+              <td class="name">{{ if .Ignored }}{{ .Ignored.Name }}{{ else }}<span class="mono">#{{ .IgnoredID }}</span>{{ end }}</td>
+            </tr>
+            {{- end }}
+          </tbody>
+        </table>
+      </div>
+      {{- else }}
+      <div class="empty">No one ignored.</div>
+      {{- end }}
+    </div>
+  </div>
+</div>
+{{ end }}

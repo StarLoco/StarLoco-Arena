@@ -1,0 +1,10 @@
+<commandList>
+    <command cmdPattern="(?:/w|/whisp)" argsPattern="(&quot;.*&quot;|[^&quot;][a-zA-Z_0-9'-]*[^&quot;])\s+(.*)" class="com.ankamagames.dofusarena.client.chat.console.command.PrivateContentCommand" name="/whisp" help="Whisp" />
+    <command cmdPattern="(?:/af|/addfriend)" argsPattern="(&quot;.*&quot;|[^&quot;][a-zA-Z_0-9'-]*[^&quot;])" class="com.ankamagames.dofusarena.client.chat.console.command.AddFriendCommand" name="/addfriend" help="Add Friend" />
+    <command cmdPattern="(?:/rf|/removefriend)" argsPattern="(&quot;.*&quot;|[^&quot;][a-zA-Z_0-9'-]*[^&quot;])" class="com.ankamagames.dofusarena.client.chat.console.command.RemoveFriendCommand" name="/removefriend" help="Remove Friend" />
+    <command cmdPattern="(?:/ai|/addignore)" argsPattern="(&quot;.*&quot;|[^&quot;][a-zA-Z_0-9'-]*[^&quot;])" class="com.ankamagames.dofusarena.client.chat.console.command.AddIgnoreCommand" name="/addignore" help="Add Ignore" />
+    <command cmdPattern="(?:/ri|/removeignore)" argsPattern="(&quot;.*&quot;|[^&quot;][a-zA-Z_0-9'-]*[^&quot;])" class="com.ankamagames.dofusarena.client.chat.console.command.RemoveIgnoreCommand" name="/removeignore" help="Remove Ignore" />
+    <command cmdPattern="(?:/lf|/listfriends)" argsPattern="" class="com.ankamagames.dofusarena.client.chat.console.command.ListFriendsCommand" name="/lf" help="Friend List" />
+    <command cmdPattern="(?:/li|/listignores)" argsPattern="" class="com.ankamagames.dofusarena.client.chat.console.command.ListIgnoresCommand" name="/li" help="Ignore List" />    
+    <command cmdPattern="(?:/h|/help)" argsPattern="" class="com.ankamagames.dofusarena.client.chat.console.command.HelpCommand" name="/help" help="Help" />
+</commandList>

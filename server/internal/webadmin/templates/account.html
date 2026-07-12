@@ -1,0 +1,48 @@
+{{ define "content" }}
+{{ $d := .Data }}
+{{ $detail := $d.Detail }}
+{{ $acc := $detail.Account }}
+{{ $coach := $detail.Coach }}
+
+<div class="page-head">
+  <div class="eyebrow">Your account</div>
+  <h1>{{ $acc.Name }}</h1>
+  <p class="sub">Everything we store about you, in one place.</p>
+</div>
+
+<div class="grid cols-2" style="margin-bottom:26px">
+  <div class="panel panel-pad">
+    <h2>Account</h2>
+    <dl class="kv">
+      <dt>Account ID</dt><dd class="mono">#{{ $acc.ID }}</dd>
+      <dt>Name</dt><dd>{{ $acc.Name }}</dd>
+      <dt>Role</dt><dd>{{ if $acc.IsAdmin }}<span class="badge admin"><span class="dot"></span>Administrator</span>{{ else }}Player{{ end }}</dd>
+      <dt>Status</dt><dd>{{ if $acc.Connected }}<span class="badge online"><span class="dot"></span>Connected</span>{{ else }}<span class="badge offline"><span class="dot"></span>Offline</span>{{ end }}</dd>
+      <dt>Created</dt><dd class="mono">{{ $acc.CreatedAt.Format "2006-01-02 15:04" }}</dd>
+    </dl>
+    {{- if not $d.ReadOnly }}
+    <div class="actions" style="margin-top:18px">
+      <a class="btn btn-ghost btn-sm" href="/account/password">Change password</a>
+    </div>
+    {{- end }}
+  </div>
+
+  <div class="panel panel-pad">
+    <h2>Coach</h2>
+    {{- if $coach }}
+    <dl class="kv">
+      <dt>Coach name</dt><dd>{{ $coach.Name }} {{ if $d.CoachOnline }}<span class="badge online"><span class="dot"></span>Online</span>{{ end }}</dd>
+      <dt>Coach ID</dt><dd class="mono">#{{ $coach.ID }}</dd>
+      <dt>Appearance</dt><dd>{{ sexLabel $coach.Sex }} · skin {{ $coach.Skin }} · hair {{ $coach.Hair }}</dd>
+      <dt>Position</dt><dd class="mono">({{ $coach.PosX }}, {{ $coach.PosY }}, {{ $coach.PosZ }})</dd>
+    </dl>
+    {{- else }}
+    <div class="empty">This account hasn't created a coach yet.</div>
+    {{- end }}
+  </div>
+</div>
+
+{{ if $coach }}
+{{ template "coach_data" $d }}
+{{ end }}
+{{ end }}

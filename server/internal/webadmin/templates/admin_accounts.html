@@ -1,0 +1,51 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="page-head">
+  <div class="crumbs"><a href="/admin">Admin</a> / Accounts</div>
+  <h1>Accounts</h1>
+  <p class="sub">{{ $d.Total }} account{{ if ne $d.Total 1 }}s{{ end }} total.</p>
+</div>
+
+{{ template "admin_tabs" "accounts" }}
+
+<div class="toolbar">
+  <form class="search" method="get" action="/admin/accounts">
+    <input type="search" name="q" value="{{ $d.Search }}" placeholder="Search by account or coach name…">
+    <button class="btn btn-ghost" type="submit">Search</button>
+    {{- if $d.Search }}<a class="btn btn-ghost" href="/admin/accounts">Clear</a>{{ end }}
+  </form>
+  <a class="btn btn-primary" href="/admin/accounts/new">New account</a>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>ID</th><th>Account</th><th>Coach</th><th>Status</th><th>Role</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{- range $d.Items }}
+        <tr>
+          <td class="mono">#{{ .ID }}</td>
+          <td class="name"><a class="rowlink" href="/admin/accounts/{{ .ID }}">{{ .Name }}</a></td>
+          <td>{{ if .CoachName }}{{ .CoachName }}{{ else }}<span class="mono">—</span>{{ end }}</td>
+          <td>{{ if .Connected }}<span class="badge online"><span class="dot"></span>Online</span>{{ else }}<span class="badge offline"><span class="dot"></span>Offline</span>{{ end }}</td>
+          <td>{{ if .IsAdmin }}<span class="badge admin"><span class="dot"></span>Admin</span>{{ else }}Player{{ end }}</td>
+          <td style="text-align:right"><a class="btn btn-ghost btn-sm" href="/admin/accounts/{{ .ID }}">Inspect</a></td>
+        </tr>
+        {{- else }}
+        <tr><td colspan="6"><div class="empty">No accounts match your search.</div></td></tr>
+        {{- end }}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{- if gt $d.TotalPages 1 }}
+<div class="pagination">
+  {{- if $d.HasPrev }}<a class="btn btn-ghost btn-sm" href="{{ $d.PrevQuery }}">← Prev</a>{{ else }}<span></span>{{ end }}
+  <span>Page {{ $d.Page }} of {{ $d.TotalPages }}</span>
+  {{- if $d.HasNext }}<a class="btn btn-ghost btn-sm" href="{{ $d.NextQuery }}">Next →</a>{{ else }}<span></span>{{ end }}
+</div>
+{{- end }}
+{{ end }}

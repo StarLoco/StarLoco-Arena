@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<fights>
+    <fight description="1 vs 1 : Random"
+           id="1"
+           coachByTeam="1"
+           teamNumber="2"
+           minFighterByTeam="1"
+           maxFighterByTeam="6"
+           budget="5000"
+           training="false"
+           ladderId="1"
+           ranked="true"/>
+
+    <fight description="1 vs 1 : Random, Training"
+           id="2"
+           coachByTeam="1"
+           teamNumber="2"
+           minFighterByTeam="1"
+           maxFighterByTeam="6"
+           budget="5000"
+           training="true"
+           ladderId="1"
+           ranked="true"/>
+
+    <fight description="1 vs 1 : Select"
+           id="3"
+           coachByTeam="1"
+           teamNumber="2"
+           minFighterByTeam="1"
+           maxFighterByTeam="6"
+           budget="5000"
+           training="false"
+           ladderId="1"
+           ranked="false"/>
+
+    <fight description="1 vs 1 : Select, Training"
+           id="4"
+           coachByTeam="1"
+           teamNumber="2"
+           minFighterByTeam="1"
+           maxFighterByTeam="6"
+           budget="5000"
+           training="true"
+           ladderId="1"
+           ranked="false"/>
+    
+</fights>

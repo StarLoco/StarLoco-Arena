@@ -1,0 +1,65 @@
+{{ define "content" }}
+{{ $d := .Data }}
+<div class="page-head">
+  <div class="crumbs"><a href="/admin">Admin</a> / Monitoring</div>
+  <h1>Monitoring</h1>
+  <p class="sub">Live health, stats, and Go's built-in profiler — proxied from the internal ops server.</p>
+</div>
+
+{{ template "admin_tabs" "monitoring" }}
+
+{{- if not $d.Configured }}
+<div class="panel panel-pad">
+  <h2>Not configured</h2>
+  <p style="color:var(--ink-dim)">
+    The observability server (<code class="mono">internal/adminhttp</code>) isn't configured for this
+    process. Set <code class="mono">server.admin_addr</code> in your config (e.g.
+    <code class="mono">127.0.0.1:9090</code>) and restart to enable health checks, stats, and profiling
+    here.
+  </p>
+</div>
+{{- else }}
+
+{{- if $d.FetchError }}
+<div class="flash error"><span>✕</span><span>{{ $d.FetchError }}</span></div>
+{{- else }}
+
+<div class="grid cols-4" style="margin-bottom:26px">
+  <div class="panel stat stat-sm">
+    <span class="label">Health</span>
+    <span class="value {{ if $d.Healthy }}emerald{{ else }}crimson{{ end }}">{{ if $d.Healthy }}OK{{ else }}Down{{ end }}</span>
+  </div>
+  <div class="panel stat stat-sm">
+    <span class="label">Uptime</span>
+    <span class="value teal">{{ formatUptime $d.UptimeSeconds }}</span>
+  </div>
+  <div class="panel stat stat-sm">
+    <span class="label">Online players</span>
+    <span class="value emerald">{{ $d.OnlinePlayers }}</span>
+  </div>
+  <div class="panel stat stat-sm">
+    <span class="label">Active fights</span>
+    <span class="value emerald">{{ $d.ActiveFights }}</span>
+  </div>
+</div>
+{{- end }}
+
+<div class="toolbar">
+  <h2 style="margin:0;font-family:var(--font-display)">Profiler (pprof)</h2>
+</div>
+<div class="panel panel-pad" style="margin-bottom:20px">
+  <p style="margin:0 0 16px;color:var(--ink-dim)">
+    Bound to <code class="mono">{{ $d.AdminHTTPAddr }}</code>, proxied through this authenticated
+    console. Text profiles render inline; binary ones (<code class="mono">profile</code>,
+    <code class="mono">trace</code>) download for use with
+    <code class="mono">go tool pprof</code> / <code class="mono">go tool trace</code>.
+  </p>
+  <div class="pprof-grid">
+    {{- range $d.Profiles }}
+    <a class="pprof-link" href="{{ .Href }}" target="_blank" rel="noopener">{{ .Name }}</a>
+    {{- end }}
+  </div>
+</div>
+
+{{- end }}
+{{ end }}

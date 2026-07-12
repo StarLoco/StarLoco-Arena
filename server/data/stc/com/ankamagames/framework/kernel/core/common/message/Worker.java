@@ -1,0 +1,389 @@
+/*     */ package com.ankamagames.framework.kernel.core.common.message;
+/*     */ 
+/*     */ import com.ankamagames.framework.kernel.core.monitor.Monitored;
+/*     */ import com.ankamagames.framework.kernel.utils.ExceptionFormatter;
+/*     */ import java.io.StringWriter;
+/*     */ import java.util.ArrayList;
+/*     */ import java.util.Collections;
+/*     */ import java.util.LinkedList;
+/*     */ import java.util.List;
+/*     */ import javax.media.opengl.GLException;
+/*     */ import javax.media.opengl.Threading;
+/*     */ import org.apache.log4j.Logger;
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ public final class Worker
+/*     */   extends Thread
+/*     */   implements Monitored
+/*     */ {
+/*  28 */   private static final Logger m_logger = Logger.getLogger(Worker.class);
+/*     */   
+/*  30 */   protected static final Worker m_instance = new Worker();
+/*     */   
+/*     */   public boolean m_running;
+/*  33 */   protected final LinkedList<Message> m_messages = new LinkedList();
+/*  34 */   protected final Object m_messagesMutex = new Object();
+/*     */   
+/*     */   private final List<String> m_lastExceptions;
+/*     */   
+/*     */   private int m_externalId;
+/*     */   
+/*     */   public int m_numPendingMessages;
+/*     */   public int m_numMaxPendingMessages;
+/*     */   public int m_numProcessedMessages;
+/*     */   public int m_numErroneousMessages;
+/*     */   public int m_numRaisedExceptions;
+/*     */   public final ArrayList<String> m_stackTraceReport;
+/*  46 */   private boolean m_standAloneThread = true;
+/*     */   
+/*     */ 
+/*     */ 
+/*     */   private Worker()
+/*     */   {
+/*  52 */     this.m_running = false;
+/*  53 */     super.setName("Worker");
+/*     */     
+/*  55 */     this.m_lastExceptions = Collections.synchronizedList(new ArrayList());
+/*  56 */     this.m_stackTraceReport = new ArrayList();
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public static Worker getInstance()
+/*     */   {
+/*  64 */     return m_instance;
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */   public void start()
+/*     */   {
+/*  71 */     if (!this.m_running) {
+/*  72 */       this.m_running = true;
+/*  73 */       final Worker workerThread = this;
+/*     */       
+/*  75 */       new Thread(new Runnable() {
+/*     */         public void run() {
+/*  77 */           Worker.this.setName("Worker");
+/*  78 */           Worker.m_logger.info("Worker running");
+/*  79 */           while (workerThread.m_running) {
+/*  80 */             Thread.yield();
+/*  81 */             workerThread.run();
+/*     */           }
+/*     */         }
+/*     */       })
+/*     */       
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*  84 */         .start();
+/*     */     }
+/*     */   }
+/*     */   
+/*     */   public void startInOpenGLThread()
+/*     */   {
+/*  90 */     if (!this.m_running) {
+/*  91 */       this.m_running = true;
+/*  92 */       this.m_standAloneThread = false;
+/*  93 */       final Worker workerThread = this;
+/*     */       
+/*  95 */       new Thread(new Runnable() {
+/*     */         public void run() {
+/*  97 */           Worker.this.setName("Worker (in OpenGL thread)");
+/*  98 */           Worker.m_logger.info("Worker running");
+/*  99 */           while (workerThread.m_running) {
+/* 100 */             Thread.yield();
+/*     */             try {
+/* 102 */               Threading.invokeOnOpenGLThread(workerThread);
+/*     */             } catch (GLException e) {
+/* 104 */               e.printStackTrace();
+/*     */             }
+/*     */           }
+/*     */         }
+/*     */       })
+/*     */       
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/* 109 */         .start();
+/*     */     }
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public void pushMessage(Message message)
+/*     */   {
+/* 118 */     if (message != null)
+/*     */     {
+/* 120 */       message.m_pushTime = System.currentTimeMillis();
+/*     */       
+/* 122 */       synchronized (this.m_messagesMutex) {
+/* 123 */         this.m_messages.addLast(message);
+/* 124 */         this.m_messagesMutex.notifyAll();
+/*     */         
+/* 126 */         this.m_numPendingMessages += 1;
+/* 127 */         if (this.m_numPendingMessages > this.m_numMaxPendingMessages) {
+/* 128 */           this.m_numMaxPendingMessages = this.m_numPendingMessages;
+/*     */         }
+/*     */       }
+/*     */     }
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */   public int getPendingMessageCount()
+/*     */   {
+/* 138 */     return this.m_numPendingMessages;
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public int getMaxPendingMessageCount()
+/*     */   {
+/* 146 */     return this.m_numMaxPendingMessages;
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public void resetStatisticsCounters()
+/*     */   {
+/* 154 */     this.m_numMaxPendingMessages = 0;
+/* 155 */     this.m_numProcessedMessages = 0;
+/* 156 */     this.m_numErroneousMessages = 0;
+/* 157 */     this.m_numRaisedExceptions = 0;
+/*     */     
+/* 159 */     this.m_lastExceptions.clear();
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public int getNbProcessedMessages()
+/*     */   {
+/* 168 */     return this.m_numProcessedMessages;
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public int getNbErroneousMessages()
+/*     */   {
+/* 177 */     return this.m_numErroneousMessages;
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public int getNbRaisedException()
+/*     */   {
+/* 186 */     return this.m_numRaisedExceptions;
+/*     */   }
+/*     */   
+/*     */   /* Error */
+/*     */   public Object[] getLastRaisedExceptions()
+/*     */   {
+/*     */     // Byte code:
+/*     */     //   0: aload_0
+/*     */     //   1: getfield 204	com/ankamagames/framework/kernel/core/common/message/Worker:m_lastExceptions	Ljava/util/List;
+/*     */     //   4: dup
+/*     */     //   5: astore_1
+/*     */     //   6: monitorenter
+/*     */     //   7: aload_0
+/*     */     //   8: getfield 204	com/ankamagames/framework/kernel/core/common/message/Worker:m_lastExceptions	Ljava/util/List;
+/*     */     //   11: invokeinterface 237 1 0
+/*     */     //   16: aload_1
+/*     */     //   17: monitorexit
+/*     */     //   18: areturn
+/*     */     //   19: aload_1
+/*     */     //   20: monitorexit
+/*     */     //   21: athrow
+/*     */     // Line number table:
+/*     */     //   Java source line #194	-> byte code offset #0
+/*     */     //   Java source line #195	-> byte code offset #7
+/*     */     //   Java source line #194	-> byte code offset #19
+/*     */     // Local variable table:
+/*     */     //   start	length	slot	name	signature
+/*     */     //   0	22	0	this	Worker
+/*     */     //   5	15	1	Ljava/lang/Object;	Object
+/*     */     // Exception table:
+/*     */     //   from	to	target	type
+/*     */     //   7	18	19	finally
+/*     */     //   19	21	19	finally
+/*     */   }
+/*     */   
+/*     */   public boolean isRunning()
+/*     */   {
+/* 204 */     return this.m_running;
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */   void wakeUp()
+/*     */   {
+/* 211 */     synchronized (this.m_messagesMutex) {
+/* 212 */       this.m_messagesMutex.notifyAll();
+/*     */     }
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public void run()
+/*     */   {
+/* 221 */     if (!this.m_standAloneThread) {
+/*     */       try {
+/* 223 */         ProcessScheduler.getInstance().update();
+/* 224 */         processMessages();
+/*     */       } catch (Exception e) {
+/* 226 */         e.printStackTrace();
+/*     */       }
+/* 228 */       return;
+/*     */     }
+/*     */     try
+/*     */     {
+/* 232 */       Message message = null;
+/*     */       
+/* 234 */       ProcessScheduler.getInstance().update();
+/*     */       
+/* 236 */       synchronized (this.m_messagesMutex) {
+/* 237 */         if (!this.m_messages.isEmpty()) {
+/* 238 */           message = (Message)this.m_messages.removeFirst();
+/* 239 */           this.m_numPendingMessages -= 1;
+/* 240 */           if (message == null)
+/* 241 */             this.m_numErroneousMessages += 1;
+/*     */         } else {
+/* 243 */           long timeToWait = ProcessScheduler.getInstance().getMaximalSleepTime();
+/* 244 */           if (timeToWait != 0L) {
+/* 245 */             this.m_messagesMutex.wait(timeToWait);
+/*     */           }
+/*     */         }
+/*     */       }
+/*     */       try {
+/* 250 */         if (message != null) {
+/* 251 */           message.execute();
+/* 252 */           message.release();
+/* 253 */           this.m_numProcessedMessages += 1;
+/*     */         }
+/*     */       }
+/*     */       catch (Throwable ex) {
+/* 257 */         if (message != null)
+/* 258 */           message.release();
+/* 259 */         storeException(ex);
+/*     */       }
+/*     */       return;
+/*     */     } catch (Throwable ex) {
+/* 263 */       storeException(ex);
+/*     */     }
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   protected void processMessages()
+/*     */     throws Exception
+/*     */   {
+/* 275 */     Message message = null;
+/*     */     
+/* 277 */     while (!this.m_messages.isEmpty())
+/*     */     {
+/* 279 */       Thread.yield();
+/*     */       
+/* 281 */       synchronized (this.m_messagesMutex) {
+/* 282 */         if (!this.m_messages.isEmpty()) {
+/* 283 */           message = (Message)this.m_messages.removeFirst();
+/* 284 */           this.m_numPendingMessages -= 1;
+/* 285 */           if (message == null) {
+/* 286 */             this.m_numErroneousMessages += 1;
+/*     */           }
+/*     */         }
+/*     */       }
+/*     */       try
+/*     */       {
+/* 292 */         if (message != null) {
+/* 293 */           message.execute();
+/* 294 */           message.release();
+/* 295 */           this.m_numProcessedMessages += 1;
+/*     */         }
+/*     */       }
+/*     */       catch (Throwable ex) {
+/* 299 */         if (message != null)
+/* 300 */           message.release();
+/* 301 */         storeException(ex);
+/*     */       }
+/*     */     }
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   private void storeException(Throwable ex)
+/*     */   {
+/* 314 */     m_logger.error("Exception catchée dans le Worker : ", ex);
+/* 315 */     StringWriter strException = ExceptionFormatter.toString(ex);
+/*     */     
+/* 317 */     this.m_numRaisedExceptions += 1;
+/* 318 */     synchronized (this.m_lastExceptions) {
+/* 319 */       if (this.m_numRaisedExceptions >= 10) {
+/* 320 */         this.m_lastExceptions.remove(0);
+/*     */       }
+/* 322 */       this.m_lastExceptions.add(strException.toString());
+/*     */     }
+/*     */   }
+/*     */   
+/*     */ 
+/*     */ 
+/*     */ 
+/*     */   public String getExternalName()
+/*     */   {
+/* 331 */     return "Worker";
+/*     */   }
+/*     */   
+/*     */   public int getExternalID() {
+/* 335 */     return this.m_externalId;
+/*     */   }
+/*     */   
+/*     */   public void setExternalID(int id) {
+/* 339 */     this.m_externalId = id;
+/*     */   }
+/*     */ }
+
+
+/* Location:              C:\Users\flore\Desktop\DofusArena2-offi\game\core.jar!\com\ankamagames\framework\kernel\core\common\message\Worker.class
+ * Java compiler version: 5 (49.0)
+ * JD-Core Version:       0.7.1
+ */

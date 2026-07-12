@@ -1,0 +1,14 @@
+package com.ankamagames.xulor.event;
+
+import com.ankamagames.xulor.template.IElement;
+
+public abstract class Event
+{
+  public abstract IElement getElement();
+}
+
+
+/* Location:              C:\Users\flore\Desktop\DofusArena2-offi\game\core.jar!\com\ankamagames\xulor\event\Event.class
+ * Java compiler version: 5 (49.0)
+ * JD-Core Version:       0.7.1
+ */

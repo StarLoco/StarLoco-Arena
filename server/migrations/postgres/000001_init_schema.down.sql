@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS team_fighters;
+DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS fighter_objects;
+DROP TABLE IF EXISTS fighter_spells;
+DROP TABLE IF EXISTS fighters;
+DROP TABLE IF EXISTS coach_ignored;
+DROP TABLE IF EXISTS coach_friends;
+DROP TABLE IF EXISTS coach_cards;
+ALTER TABLE accounts DROP CONSTRAINT IF EXISTS fk_accounts_coach;
+DROP TABLE IF EXISTS coachs;
+DROP TABLE IF EXISTS accounts;

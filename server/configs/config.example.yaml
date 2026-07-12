@@ -1,0 +1,60 @@
+# DofusArena Go server configuration.
+#
+# Copy this file to config.yaml (or point --config at your own copy) and
+# adjust values for your environment. Any value here can be overridden by
+# an environment variable prefixed with ARENA_ (nested keys use a double
+# underscore), e.g. ARENA_DATABASE__DSN, ARENA_SERVER__LISTEN_ADDR.
+#
+# See ../docs/06-config-and-ops.md for the full reference.
+
+server:
+  name: "DofusArena"
+  listen_addr: ":443"
+  admin_addr: "127.0.0.1:9090"
+  beta: false
+  version:
+    major: 2
+    revision: 4
+    build: "7025"
+
+database:
+  # One of: sqlite | postgres | mysql
+  driver: postgres
+  dsn: "host=localhost user=arena password=CHANGE_ME dbname=arena sslmode=disable"
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 30m
+  conn_max_idle_time: 5m
+
+gamedata:
+  dir: "data"
+  warm_cache: false
+
+logging:
+  level: info
+  format: console
+
+combat:
+  turn_clock: 30s
+  presentation_clock: 20s
+  placement_clock: 30s
+  observation_clock: 10s
+
+# Account web portal (register/login, per-user data view, admin console +
+# impersonation). See ../docs/10-web-portal.md.
+web:
+  # When true, the game server process (cmd/server) also hosts the portal on
+  # listen_addr. When false (recommended for production), run the portal as a
+  # separate process with `cmd/web`, which binds listen_addr regardless of
+  # this flag.
+  enabled: false
+  listen_addr: ":8080"
+  # REQUIRED in production: a strong random secret used to sign session
+  # cookies. An empty value falls back to an ephemeral per-startup key
+  # (sessions won't survive restarts / can't be shared across instances).
+  session_secret: "CHANGE_ME_TO_A_LONG_RANDOM_STRING"
+  # Set true when the portal is served over HTTPS (directly or behind a
+  # TLS-terminating proxy).
+  secure_cookies: true
+  # Optional public origin for absolute links, e.g. https://arena.example.com
+  base_url: ""
