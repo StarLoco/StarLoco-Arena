@@ -475,8 +475,18 @@ func (f *Fight) applyRunningEffect(caster, target *Fighter, def runningEffectDef
 		// on two fighters, never a bare cell. (EffectTeleport is handled
 		// separately in executeOneEffect, before target-fighter
 		// resolution even happens -- see the comment there.)
-		caster.Position, target.Position = target.Position, caster.Position
+		casterStart, targetStart := caster.Position, target.Position
+		caster.Position, target.Position = targetStart, casterStart
 		f.broadcastRunningEffect(eff, caster, target, 0, triggeringActionID)
+		// Both fighters may land on a ground effect-area (trap/glyph): the
+		// reference ExchangePosition.execute fires checkInAndOut for each,
+		// so e.g. Sacrieur's Assault can swap an enemy onto a trap.
+		// Previously the swap skipped this, so a trap under either fighter
+		// never triggered. Each fighter moved from its OWN old cell to the
+		// OTHER's old cell: caster casterStart->targetStart, target
+		// targetStart->casterStart.
+		f.checkInAndOut(casterStart, caster.Position, caster)
+		f.checkInAndOut(targetStart, target.Position, target)
 
 	case EffectRoot:
 		target.Properties |= PropertyRooted

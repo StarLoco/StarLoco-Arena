@@ -667,6 +667,39 @@ func TestEffectExchangePosition_SwapsCasterAndTarget(t *testing.T) {
 	}
 }
 
+// TestEffectExchangePosition_TriggersTrapOnLanding verifies a swap that lands
+// a fighter on a trap fires it (Sacrieur's Assault swapping an enemy onto a
+// trap), mirroring ExchangePosition.execute's checkInAndOut calls.
+func TestEffectExchangePosition_TriggersTrapOnLanding(t *testing.T) {
+	f, a, b := newTestFightForEffects(t)
+	f.Timeline = NewTimeline([]*Fighter{a, b})
+	a.Position = Point3{X: 0, Y: 0}
+	b.Position = Point3{X: 3, Y: 0}
+	b.Characteristics[HP].Value, b.Characteristics[HP].Max = 100, 100
+
+	// A trap on (0,0): after the swap b lands there -> trap deals 10.
+	f.effectAreas = newEffectAreaManager()
+	f.effectAreas.Add(&EffectArea{
+		ID:                  1,
+		Position:            Point3{X: 0, Y: 0},
+		Area:                AreaOfEffect{Shape: AreaPoint},
+		Caster:              a,
+		Effects:             []gamedata.EffectDef{{ActionID: 1, Params: []float32{10}}},
+		maxExecutionCount:   1,
+		applicationTriggers: map[EffectAreaTriggerKind]bool{EffectAreaTriggerEnter: true},
+	})
+
+	def := runningEffectDef{Kind: EffectExchangePosition}
+	f.applyRunningEffect(a, b, def, gamedata.EffectDef{}, -1)
+
+	if b.Position != (Point3{X: 0, Y: 0}) {
+		t.Fatalf("target should have swapped to {0,0}, got %v", b.Position)
+	}
+	if got := b.Characteristic(HP); got != 90 {
+		t.Errorf("swapped-onto-trap target HP = %d, want 90 (trap dealt 10)", got)
+	}
+}
+
 func TestEffectRoot_SetsRootedProperty(t *testing.T) {
 	f, a, b := newTestFightForEffects(t)
 	def := runningEffectDef{Kind: EffectRoot}
