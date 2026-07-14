@@ -659,7 +659,7 @@ export interface ValidationIssue {
   recordId: number;
 }
 export interface ValidationReport {
-  issues: ValidationIssue[];
+  issues: ValidationIssue[] | null;
   errors: number;
   warnings: number;
   infos: number;

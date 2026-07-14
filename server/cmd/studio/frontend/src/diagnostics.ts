@@ -31,41 +31,45 @@ export function viewDiagnostics(c: HTMLElement) {
     .catch((err) => {
       c.innerHTML =
         `<div class="page-head"><h1>${t("diag.title")}</h1><span class="sub">${t("diag.subtitle")}</span></div>` +
-        `<div class="placeholder"><div class="big">\u26A0</div><div>Could not validate.</div>` +
+        `<div class="placeholder"><div class="big">\u26A0</div><div>${t("diag.couldNotValidate")}</div>` +
         `<div class="mono" style="margin-top:6px;font-size:12.5px">${esc((err as Error).message)}</div></div>`;
     });
 }
 
 function render(c: HTMLElement, rep: ValidationReport) {
-  const total = rep.issues.length;
+  // A clean run may serialize issues as null (Go nil slice); treat as empty.
+  const issues = rep.issues ?? [];
+  const total = issues.length;
   const stat = (n: number, label: string, cls: string) =>
     `<div class="dg-stat ${cls}"><div class="dg-n">${n.toLocaleString()}</div><div class="dg-l">${label}</div></div>`;
 
   c.innerHTML = `
     <div class="page-head">
-      <h1>Diagnostics</h1>
+      <h1>${t("diag.title")}</h1>
       <span class="sub">${t("diag.checked", { n: rep.checked.toLocaleString() })}</span>
-      <div class="page-actions"><button class="rc-new" data-revalidate>Re-run</button></div>
+      <div class="page-actions"><button class="rc-new" data-revalidate>${t("diag.rerun")}</button></div>
     </div>
     <div class="dg-statband">
-      ${stat(rep.errors, "errors", "err")}
-      ${stat(rep.warnings, "warnings", "warn")}
-      ${stat(rep.infos, "infos", "info")}
-      ${stat(rep.checked, "checked", "ok")}
+      ${stat(rep.errors, t("diag.stat.errors"), "err")}
+      ${stat(rep.warnings, t("diag.stat.warnings"), "warn")}
+      ${stat(rep.infos, t("diag.stat.infos"), "info")}
+      ${stat(rep.checked, t("diag.stat.checked"), "ok")}
     </div>
     ${
       total === 0
         ? `<div class="dg-clean"><div class="dg-clean-ico">\u2714</div>
-             <div><b>${t("diag.allClear")}</b><div>No broken references or suspicious values found across ${rep.checked.toLocaleString()} records.</div></div>
+             <div><b>${t("diag.allClear")}</b><div>${t("diag.cleanBody", {
+            n: rep.checked.toLocaleString(),
+          })}</div></div>
            </div>`
         : `<div class="dg-toolbar">
              <div class="dg-filters">
-               <button class="dg-chip on" data-sev="">all (${total})</button>
-               ${rep.errors ? `<button class="dg-chip" data-sev="error">errors (${rep.errors})</button>` : ""}
-               ${rep.warnings ? `<button class="dg-chip" data-sev="warning">warnings (${rep.warnings})</button>` : ""}
-               ${rep.infos ? `<button class="dg-chip" data-sev="info">infos (${rep.infos})</button>` : ""}
+               <button class="dg-chip on" data-sev="">${t("diag.all")} (${total})</button>
+               ${rep.errors ? `<button class="dg-chip" data-sev="error">${t("diag.errors")} (${rep.errors})</button>` : ""}
+               ${rep.warnings ? `<button class="dg-chip" data-sev="warning">${t("diag.warnings")} (${rep.warnings})</button>` : ""}
+               ${rep.infos ? `<button class="dg-chip" data-sev="info">${t("diag.infos")} (${rep.infos})</button>` : ""}
              </div>
-             <input class="dg-search" type="search" placeholder="Filter by message or category\u2026" />
+             <input class="dg-search" type="search" placeholder="${t("diag.filterPlaceholder")}" />
            </div>
            <div class="dg-list"></div>`
     }`;
@@ -93,14 +97,14 @@ function render(c: HTMLElement, rep: ValidationReport) {
 
   const draw = () => {
     const q = search.value.trim().toLowerCase();
-    const rows = rep.issues.filter((is) => {
+    const rows = issues.filter((is) => {
       if (sevFilter && is.severity !== sevFilter) return false;
       if (q && !(`${is.message} ${is.category}`.toLowerCase().includes(q))) return false;
       return true;
     });
     listEl.innerHTML = rows.length
       ? rows.map(rowHTML).join("")
-      : `<div class="detail-empty">No issues match.</div>`;
+      : `<div class="detail-empty">${t("diag.noMatch")}</div>`;
     wireCrosslinks(listEl);
   };
 

@@ -9,6 +9,7 @@
 // how the client highlights castable cells.
 
 import { areaCells } from "./effectlore";
+import { t } from "./i18n";
 
 const HX = 20; // half tile width (compact)
 const HY = 10; // half tile height
@@ -128,18 +129,18 @@ export function spellAreaSVG(o: SpellAreaOpts): string {
 export function spellAreaBlock(o: SpellAreaOpts): string {
   const rangeTxt =
     o.rangeMin === o.rangeMax ? `${o.rangeMax}` : `${o.rangeMin}\u2013${o.rangeMax}`;
-  const flags = [o.onlyLine ? "line only" : "", o.aoeShape != null ? "with area of effect" : ""]
+  const flags = [o.onlyLine ? t("area.lineOnly") : "", o.aoeShape != null ? t("area.withAoe") : ""]
     .filter(Boolean)
     .join(" \u00B7 ");
   return `
     <div class="detail-block">
-      <div class="detail-title">Cast footprint</div>
+      <div class="detail-title">${t("area.title")}</div>
       <div class="spell-area">
         ${spellAreaSVG(o)}
         <div class="spell-area-legend">
-          <div><span class="sa-swatch caster"></span> caster</div>
-          <div><span class="sa-swatch range"></span> range ${rangeTxt}</div>
-          ${o.aoeShape != null ? `<div><span class="sa-swatch aoe"></span> area of effect</div>` : ""}
+          <div><span class="sa-swatch caster"></span> ${t("area.caster")}</div>
+          <div><span class="sa-swatch range"></span> ${t("area.range")} ${rangeTxt}</div>
+          ${o.aoeShape != null ? `<div><span class="sa-swatch aoe"></span> ${t("area.aoe")}</div>` : ""}
           ${flags ? `<div class="sa-flags">${flags}</div>` : ""}
         </div>
       </div>

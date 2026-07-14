@@ -34,8 +34,10 @@ export interface Facet<T> {
 export interface TableOptions<T> {
   columns: Column<T>[];
   rows: T[];
-  // detail renders the expanded drawer for a selected row (HTML string).
+  // detail renders the drawer body for a selected row (HTML string).
   detail?: (row: T) => string;
+  // drawerTitle produces the drawer header text for a row (defaults to none).
+  drawerTitle?: (row: T) => string;
   // searchText builds the haystack a row is matched against (defaults to
   // concatenating every column value).
   searchText?: (row: T) => string;
@@ -81,6 +83,63 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
   let query = "";
   let selected: number | null = null;
   let cursor = -1; // keyboard focus row (index into the filtered view)
+
+  // Build the persistent shell once: a .tb-main region that the table redraws
+  // into, plus a right-side overlay drawer (backdrop + panel) that survives
+  // table redraws so its mounted editors aren't torn down on sort/filter.
+  container.innerHTML = `
+    <div class="tb-main"></div>
+    <div class="tb-drawer-backdrop" hidden></div>
+    <aside class="tb-drawer" hidden>
+      <div class="tb-drawer-head">
+        <span class="tb-drawer-title"></span>
+        <button class="tb-drawer-close" title="Close (Esc)" aria-label="Close">\u00D7</button>
+      </div>
+      <div class="tb-drawer-body"></div>
+    </aside>`;
+  const mainEl = container.querySelector<HTMLElement>(".tb-main")!;
+  const drawerEl = container.querySelector<HTMLElement>(".tb-drawer")!;
+  const backdropEl = container.querySelector<HTMLElement>(".tb-drawer-backdrop")!;
+  const drawerBody = drawerEl.querySelector<HTMLElement>(".tb-drawer-body")!;
+  const drawerTitle = drawerEl.querySelector<HTMLElement>(".tb-drawer-title")!;
+
+  function closeDrawer() {
+    selected = null;
+    drawerEl.hidden = true;
+    backdropEl.hidden = true;
+    drawerBody.innerHTML = "";
+    // Reflect the de-selection in the table row highlight.
+    mainEl.querySelectorAll(".tb-row.sel").forEach((r) => r.classList.remove("sel"));
+  }
+
+  const drawerTitleFor = opts.drawerTitle;
+
+  // openDrawer fills and reveals the drawer for the row at absolute index `idx`,
+  // then runs onDraw against the drawer body so its lazy editors mount there.
+  function openDrawer(idx: number) {
+    if (!opts.detail) return;
+    const row = opts.rows[idx];
+    if (!row) return;
+    selected = idx;
+    drawerTitle.textContent = drawerTitleFor?.(row) ?? "";
+    drawerBody.innerHTML = opts.detail(row);
+    drawerEl.hidden = false;
+    backdropEl.hidden = false;
+    drawerBody.scrollTop = 0;
+    opts.onDraw?.(drawerBody);
+    // Highlight the selected row without a full redraw.
+    mainEl.querySelectorAll(".tb-row.sel").forEach((r) => r.classList.remove("sel"));
+    mainEl.querySelector<HTMLElement>(`.tb-row[data-idx="${idx}"]`)?.classList.add("sel");
+  }
+
+  backdropEl.addEventListener("click", closeDrawer);
+  drawerEl.querySelector<HTMLButtonElement>(".tb-drawer-close")!.addEventListener("click", closeDrawer);
+  container.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !drawerEl.hidden) {
+      ev.preventDefault();
+      closeDrawer();
+    }
+  });
 
   const facets = opts.facets ?? [];
   const toggleStates = new Map<string, ToggleState>();
@@ -253,23 +312,19 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
                 .join("");
               const isSel = selected === idx;
               const isCursor = viewIdx === cursor;
-              const detailRow =
-                isSel && opts.detail
-                  ? `<tr class="tb-detail-row"><td colspan="${opts.columns.length}">${opts.detail(
-                      row
-                    )}</td></tr>`
-                  : "";
+              // Detail now opens in a right-side drawer (see openDrawer); rows
+              // no longer expand inline.
               return `<tr class="tb-row ${isSel ? "sel" : ""} ${
                 isCursor ? "cursor" : ""
-              }" data-idx="${idx}" data-view="${viewIdx}">${cells}</tr>${detailRow}`;
+              }" data-idx="${idx}" data-view="${viewIdx}">${cells}</tr>`;
             })
             .join("");
 
     // Preserve the scroll position across the full re-render (clicking a row to
-    // expand its detail must NOT jump the list back to the top).
-    const prevScroll = container.querySelector<HTMLElement>(".tb-scroll")?.scrollTop ?? 0;
+    // select it must NOT jump the list back to the top).
+    const prevScroll = mainEl.querySelector<HTMLElement>(".tb-scroll")?.scrollTop ?? 0;
 
-    container.innerHTML = `
+    mainEl.innerHTML = `
       <div class="tb-toolbar">
         <div class="tb-search-wrap">
           <span class="tb-search-ico">\u2315</span>
@@ -294,11 +349,13 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
       </div>`;
 
     // Restore the scroll offset onto the freshly-rendered scroll region.
-    const scrollEl = container.querySelector<HTMLElement>(".tb-scroll");
+    const scrollEl = mainEl.querySelector<HTMLElement>(".tb-scroll");
     if (scrollEl) scrollEl.scrollTop = prevScroll;
 
     wire(data);
-    opts.onDraw?.(container);
+    // Hydrate any lazy content in the table body (icon cells etc.). The drawer
+    // is hydrated separately in openDrawer so its editors survive table redraws.
+    opts.onDraw?.(mainEl);
   }
 
   function wire(data: { row: T; idx: number }[]) {
@@ -408,12 +465,13 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
     });
 
     if (opts.detail) {
-      container.querySelectorAll<HTMLElement>(".tb-row").forEach((tr) => {
+      mainEl.querySelectorAll<HTMLElement>(".tb-row").forEach((tr) => {
         tr.addEventListener("click", () => {
           const idx = Number(tr.dataset.idx);
-          selected = selected === idx ? null : idx;
           cursor = Number(tr.dataset.view);
-          draw();
+          // Click the already-open row to close the drawer; otherwise open it.
+          if (selected === idx) closeDrawer();
+          else openDrawer(idx);
         });
       });
     }
@@ -435,9 +493,8 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
       } else if (ev.key === "Enter" && opts.detail && cursor >= 0 && cursor < data.length) {
         ev.preventDefault();
         const idx = data[cursor].idx;
-        selected = selected === idx ? null : idx;
-        draw();
-        container.querySelector<HTMLElement>(".tb-scroll")?.focus();
+        if (selected === idx) closeDrawer();
+        else openDrawer(idx);
       }
     });
   }

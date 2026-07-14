@@ -62,11 +62,11 @@ function mountEffectEditors(
 function eventForm(r: { ID: number; UseAutoDescription: boolean }): EditFormSpec {
   return {
     id: r.ID,
-    title: `Edit event #${r.ID}`,
+    title: t("form.event", { id: r.ID }),
     fields: [
       {
         key: "useAutoDescription",
-        label: "Use auto description",
+        label: t("field.useAutoDesc"),
         type: "bool",
         value: r.UseAutoDescription,
       },
@@ -171,6 +171,7 @@ async function withLoad<T>(
 export function viewSpells(c: HTMLElement) {
   withLoad(c, t("nav.spells"), "spells.dat", getSpells, (host, rows) => {
     const cols: Column<(typeof rows)[number]>[] = [
+      { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "70px" },
       { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("spell", r.ID, 44), width: "56px", align: "center" },
       {
         key: "name",
@@ -178,7 +179,6 @@ export function viewSpells(c: HTMLElement) {
         value: (r) => nameOf("spells", r.ID) || String(r.ID),
         render: (r) => `<span class="row-name">${esc(nameOf("spells", r.ID) || "\u2014")}</span>`,
       },
-      { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "70px" },
       { key: "AP", label: "AP", value: (r) => r.ActionPointsCost, align: "right", width: "56px" },
       {
         key: "range",
@@ -237,6 +237,7 @@ export function viewSpells(c: HTMLElement) {
           .map((e) => decodeEffectText(e))
           .join(" ")}`,
       detail: (r: Spell) => spellEditor(r),
+      drawerTitle: (r: Spell) => `${nameOf("spells", r.ID) || "Spell"} (${r.ID})`,
       onDraw: (c: HTMLElement) => {
         wireIconCells(c);
         wireSimulator(c);
@@ -301,7 +302,7 @@ function entityHero(opts: {
   const summary =
     opts.effects && opts.effects.length
       ? opts.effects.map((e) => decodeEffectText(e)).join(" \u00B7 ")
-      : "No attached effects.";
+      : t("hero.noEffects");
   const statHtml = opts.stats
     .map(
       ([ico, l, v]) =>
@@ -329,14 +330,14 @@ function spellHero(s: Spell): string {
   const summary =
     s.Effects && s.Effects.length
       ? s.Effects.map((e) => decodeEffectText(e)).join(" \u00B7 ")
-      : "No attached effects.";
+      : t("hero.noEffects");
   const stat = (ico: string, label: string, val: string) =>
     `<div class="hero-stat"><span class="hs-ico">${ico}</span><div><b>${esc(val)}</b><span>${esc(label)}</span></div></div>`;
   const apIco = gameIcon("ap", 18) || "\u25C8";
   const tags: string[] = [];
-  if (s.CastTestLineOfSight) tags.push(`<span class="hero-tag">line of sight</span>`);
-  if (s.CastOnlyLine) tags.push(`<span class="hero-tag">line only</span>`);
-  if (s.NeedFreeCell) tags.push(`<span class="hero-tag">free cell</span>`);
+  if (s.CastTestLineOfSight) tags.push(`<span class="hero-tag">${esc(t("hero.tagLos"))}</span>`);
+  if (s.CastOnlyLine) tags.push(`<span class="hero-tag">${esc(t("hero.tagLine"))}</span>`);
+  if (s.NeedFreeCell) tags.push(`<span class="hero-tag">${esc(t("hero.tagFree"))}</span>`);
   return `
     <div class="entity-hero">
       <div class="hero-icon">${iconCell("spell", s.ID, 72)}</div>
@@ -344,10 +345,10 @@ function spellHero(s: Spell): string {
         <div class="hero-title">${esc(name)} ${breed ? `<span class="hero-breed">${esc(breed)}</span>` : ""}</div>
         <div class="hero-summary">${esc(summary)}</div>
         <div class="hero-stats">
-          ${stat(apIco, "AP cost", String(s.ActionPointsCost))}
-          ${stat("\u2316", "Range", `${s.RangeMin}\u2013${s.RangeMax}`)}
-          ${stat("\u2726", "Effects", String(s.Effects?.length ?? 0))}
-          ${s.Price ? stat("\u25C9", "Price", s.Price.toLocaleString()) : ""}
+          ${stat(apIco, t("hero.apCost"), String(s.ActionPointsCost))}
+          ${stat("\u2316", t("hero.range"), `${s.RangeMin}\u2013${s.RangeMax}`)}
+          ${stat("\u2726", t("hero.effects"), String(s.Effects?.length ?? 0))}
+          ${s.Price ? stat("\u25C9", t("hero.price"), s.Price.toLocaleString()) : ""}
         </div>
         ${tags.length ? `<div class="hero-tags">${tags.join("")}</div>` : ""}
       </div>
@@ -373,26 +374,30 @@ function spellEditor(s: Spell): string {
       aoeSize: areaEff ? areaEff.AreaSize : null,
     })}
     <div class="spell-edit" data-spell="${s.ID}">
-      <div class="edit-title">Edit spell #${s.ID}</div>
+      <div class="edit-title">${esc(t("spell.editTitle", { id: s.ID }))}</div>
       <div class="edit-grid">
-        ${num("actionPointsCost", "AP cost", s.ActionPointsCost)}
-        ${num("rangeMin", "Range min", s.RangeMin)}
-        ${num("rangeMax", "Range max", s.RangeMax)}
-        ${num("castFrequencyMaxPerTurn", "Freq/turn", s.CastFrequencyMaxPerTurn)}
-        ${num("castFrequencyMaxPerPlayer", "Freq/target", s.CastFrequencyMaxPerPlayer)}
-        ${num("castFrequencyMinInterval", "Min interval", s.CastFrequencyMinInterval)}
-        ${num("price", "Price", s.Price, -2147483648, 2147483647)}
+        ${num("actionPointsCost", t("spell.apCost"), s.ActionPointsCost)}
+        ${num("rangeMin", t("spell.rangeMin"), s.RangeMin)}
+        ${num("rangeMax", t("spell.rangeMax"), s.RangeMax)}
+        ${num("castFrequencyMaxPerTurn", t("spell.freqTurn"), s.CastFrequencyMaxPerTurn)}
+        ${num("castFrequencyMaxPerPlayer", t("spell.freqTarget"), s.CastFrequencyMaxPerPlayer)}
+        ${num("castFrequencyMinInterval", t("spell.minInterval"), s.CastFrequencyMinInterval)}
+        ${num("price", t("spell.price"), s.Price, -2147483648, 2147483647)}
       </div>
       <div class="edit-checks">
-        ${chk("castTestLineOfSight", "Test LOS", s.CastTestLineOfSight)}
-        ${chk("castOnlyLine", "Only line", s.CastOnlyLine)}
-        ${chk("needFreeCell", "Needs free cell", s.NeedFreeCell)}
+        ${chk("castTestLineOfSight", t("spell.testLos"), s.CastTestLineOfSight)}
+        ${chk("castOnlyLine", t("spell.onlyLine"), s.CastOnlyLine)}
+        ${chk("needFreeCell", t("spell.needFreeCell"), s.NeedFreeCell)}
       </div>
-      <label class="edit-full"><span>Criterion</span><input class="edit-in mono" type="text" data-f="criterion" value="${esc(
-        s.Criterion
-      )}" /></label>
+      <div class="edit-full">
+        <span>${esc(t("spell.criterion"))}</span>
+        <input class="edit-in mono" type="text" data-f="criterion" placeholder="${esc(
+          t("spell.criterionPlaceholder")
+        )}" value="${esc(s.Criterion)}" />
+        <div class="edit-hint">${esc(t("spell.criterionHint"))}</div>
+      </div>
       <div class="edit-actions">
-        <button class="primary" data-save-spell="${s.ID}">Save to spells.dat</button>
+        <button class="primary" data-save-spell="${s.ID}">${esc(t("spell.save"))}</button>
         <span class="edit-status" data-status="${s.ID}"></span>
       </div>
     </div>
@@ -427,11 +432,11 @@ function onSaveSpell(host: HTMLElement, id: number) {
     criterion: getStr("criterion"),
   };
 
-  if (statusEl) statusEl.textContent = "Saving\u2026";
+  if (statusEl) statusEl.textContent = t("spell.saving");
   saveSpells([edit])
     .then((res) => {
       if (statusEl)
-        statusEl.innerHTML = `<span class="ok">Saved ${res.bytes} B \u00B7 backup created</span>`;
+        statusEl.innerHTML = `<span class="ok">${esc(t("spell.saved", { bytes: res.bytes }))}</span>`;
       markClean(`spell:${id}`);
     })
     .catch((err) => {
@@ -473,6 +478,60 @@ function trackSpellDirty(form: HTMLElement, s: Spell) {
   });
 }
 
+// openSpellDrawer renders the full editable spell detail (hero + footprint +
+// edit form + simulator + effect/script editors) in a standalone right-side
+// overlay drawer. Reused by the Grimoire so clicking a spell opens the same
+// editor as the Spells table instead of redirecting. Ensures the Lua script
+// index is loaded so the script editor resolves.
+export async function openSpellDrawer(s: Spell) {
+  await loadScriptIndex().catch(() => {});
+  // Tear down any previously-open standalone spell drawer.
+  document.querySelectorAll(".sd-standalone").forEach((el) => el.remove());
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "tb-drawer-backdrop sd-standalone";
+  const drawer = document.createElement("aside");
+  drawer.className = "tb-drawer sd-standalone";
+  drawer.innerHTML = `
+    <div class="tb-drawer-head">
+      <span class="tb-drawer-title">${esc(nameOf("spells", s.ID) || "Spell")} (${s.ID})</span>
+      <button class="tb-drawer-close" title="Close (Esc)" aria-label="Close">\u00D7</button>
+    </div>
+    <div class="tb-drawer-body">${spellEditor(s)}</div>`;
+  document.body.appendChild(backdrop);
+  document.body.appendChild(drawer);
+
+  const body = drawer.querySelector<HTMLElement>(".tb-drawer-body")!;
+  wireIconCells(body);
+  wireSimulator(body);
+  wireCrosslinks(body);
+  body.querySelectorAll<HTMLElement>(".fe-mount:not([data-fe-done])").forEach((mount) => {
+    mount.dataset.feDone = "1";
+    if (Number(mount.dataset.feSpell) === s.ID) mountEffectEditor(mount, s.ID, s.Effects);
+  });
+  body.querySelectorAll<HTMLElement>(".sc-mount").forEach((mount) => {
+    mountScriptEditor(mount, Number(mount.dataset.scScript));
+  });
+  body.querySelectorAll<HTMLElement>(".spell-edit").forEach((form) => trackSpellDirty(form, s));
+
+  const close = () => {
+    backdrop.remove();
+    drawer.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (ev: KeyboardEvent) => {
+    if (ev.key === "Escape") close();
+  };
+  backdrop.addEventListener("click", close);
+  drawer.querySelector<HTMLButtonElement>(".tb-drawer-close")!.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  // Save is delegated on the drawer body.
+  body.addEventListener("click", (ev) => {
+    const el = ev.target as HTMLElement;
+    if (el.dataset.saveSpell != null) onSaveSpell(body, Number(el.dataset.saveSpell));
+  });
+}
+
 export function viewCards(c: HTMLElement) {
   c.innerHTML = pageHead(t("nav.cards"), t("view.cards.sub")) + `<div class="loading">${esc(t("common.loading"))}</div>`;
   Promise.all([getCoachCards(), getFighterCards(), loadNames()])
@@ -485,7 +544,11 @@ export function viewCards(c: HTMLElement) {
       installJsonButton(c, "cards", () => viewCards(c));
       const tabs = document.createElement("div");
       tabs.className = "subtabs";
-      tabs.innerHTML = `<button class="subtab active" data-t="coach">Coach cards (${coach.length})</button><button class="subtab" data-t="fighter">Fighter cards (${fighter.length})</button>`;
+      tabs.innerHTML = `<button class="subtab active" data-t="coach">${esc(
+        t("cards.tabCoach", { n: coach.length })
+      )}</button><button class="subtab" data-t="fighter">${esc(
+        t("cards.tabFighter", { n: fighter.length })
+      )}</button>`;
       c.appendChild(tabs);
       const host = document.createElement("div");
       host.className = "table-host";
@@ -502,6 +565,7 @@ export function viewCards(c: HTMLElement) {
             );
           },
           columns: [
+            { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
             { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("coachCard", r.ID, 44), width: "56px", align: "center" },
             {
               key: "name",
@@ -509,7 +573,6 @@ export function viewCards(c: HTMLElement) {
               value: (r) => nameOf("coachCards", r.ID) || String(r.ID),
               render: (r) => `<span class="row-name">${esc(nameOf("coachCards", r.ID) || "\u2014")}</span>`,
             },
-            { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
             { key: "Type", label: "Type", value: (r) => r.Type, align: "right" },
             { key: "Value", label: "Value", value: (r) => r.Value, align: "right" },
             { key: "Set", label: "Set", value: (r) => r.Set, align: "right" },
@@ -521,6 +584,7 @@ export function viewCards(c: HTMLElement) {
             { key: "set", label: "Set", kind: "select", value: (r) => String(r.Set) },
           ],
           detail: (r) => editFormHTML(coachCardForm(r)),
+          drawerTitle: (r) => `${nameOf("coachCards", r.ID) || "Coach card"} (${r.ID})`,
         });
       const drawFighter = () =>
         mountTable(host, {
@@ -538,6 +602,7 @@ export function viewCards(c: HTMLElement) {
             );
           },
           columns: [
+            { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
             { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("fighterCard", r.ID, 44), width: "56px", align: "center" },
             {
               key: "name",
@@ -545,7 +610,6 @@ export function viewCards(c: HTMLElement) {
               value: (r) => nameOf("fighterCards", r.ID) || String(r.ID),
               render: (r) => `<span class="row-name">${esc(nameOf("fighterCards", r.ID) || "\u2014")}</span>`,
             },
-            { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
             { key: "Type", label: "Type", value: (r) => r.Type, render: (r) => fighterCardType(r.Type), align: "center" },
             { key: "Value", label: "Value", value: (r) => r.Value, align: "right" },
             { key: "SubType", label: "SubType", value: (r) => r.SubType, align: "right" },
@@ -574,13 +638,14 @@ export function viewCards(c: HTMLElement) {
               badge: ({ 1: "Weapon", 2: "Pet", 3: "Cloak", 4: "Hat", 5: "Dofus" } as Record<number, string>)[r.Type],
               effects: r.Effects,
               stats: [
-                ["\u2726", "Effects", String(r.Effects?.length ?? 0)],
-                ["\u25C9", "Value", String(r.Value)],
+                ["\u2726", t("hero.effects"), String(r.Effects?.length ?? 0)],
+                ["\u25C9", t("hero.value"), String(r.Value)],
               ],
             }) +
             editFormHTML(fighterCardForm(r)) +
             `<div class="fe-mount" data-fe-kind="card" data-fe-id="${r.ID}"></div>` +
             `<div class="sc-mount" data-sc-script="${r.ScriptID}"></div>`,
+          drawerTitle: (r) => `${nameOf("fighterCards", r.ID) || "Fighter card"} (${r.ID})`,
         });
 
       drawCoach();
@@ -660,7 +725,10 @@ function summonHero(r: {
           ${stat(gameIcon("ap", 15) || "\u25C8", "AP", r.AP)}
           ${stat(gameIcon("mp", 15) || "\u2316", "MP", r.MP)}
         </div>
-        <div class="hero-sub-line">Creature gfx ${r.Gfx} \u00B7 casts ${crosslinkSpell(r.SpellID)}</div>
+        <div class="hero-sub-line">${t("hero.summonLine", {
+          gfx: r.Gfx,
+          spell: crosslinkSpell(r.SpellID),
+        })}</div>
       </div>
     </div>`;
 }
@@ -677,6 +745,7 @@ export function viewSummonings(c: HTMLElement) {
         { key: "mp", label: "MP", kind: "range", value: (r) => r.MP },
       ],
       columns: [
+        { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
         {
           key: "icon",
           label: "",
@@ -694,7 +763,6 @@ export function viewSummonings(c: HTMLElement) {
           value: (r) => nameOf("summons", r.ID) || String(r.ID),
           render: (r) => `<span class="row-name">${esc(nameOf("summons", r.ID) || "\u2014")}</span>`,
         },
-        { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
         { key: "HP", label: "HP", value: (r) => r.HP, align: "right" },
         { key: "AP", label: "AP", value: (r) => r.AP, align: "right" },
         { key: "MP", label: "MP", value: (r) => r.MP, align: "right" },
@@ -710,6 +778,7 @@ export function viewSummonings(c: HTMLElement) {
         mountSummonThumbs(h, rows);
       },
       detail: (r) => summonHero(r) + editFormHTML(summoningForm(r)),
+      drawerTitle: (r) => `${nameOf("summons", r.ID) || "Summon"} (${r.ID})`,
     });
     if (host.parentElement) {
       installNewButton(host.parentElement, "summoning", t("common.newSummon"), () => viewSummonings(c));
@@ -729,13 +798,13 @@ function summoningForm(r: {
 }): EditFormSpec {
   return {
     id: r.ID,
-    title: `Edit summoning #${r.ID}`,
+    title: t("form.summoning", { id: r.ID }),
     fields: [
-      { key: "hp", label: "HP", type: "number", value: r.HP, min: 0 },
-      { key: "ap", label: "AP", type: "number", value: r.AP, min: 0 },
-      { key: "mp", label: "MP", type: "number", value: r.MP, min: 0 },
-      { key: "gfx", label: "Gfx", type: "number", value: r.Gfx },
-      { key: "spellId", label: "Spell ID", type: "number", value: r.SpellID },
+      { key: "hp", label: t("field.hp"), type: "number", value: r.HP, min: 0 },
+      { key: "ap", label: t("field.ap"), type: "number", value: r.AP, min: 0 },
+      { key: "mp", label: t("field.mp"), type: "number", value: r.MP, min: 0 },
+      { key: "gfx", label: t("field.gfx"), type: "number", value: r.Gfx },
+      { key: "spellId", label: t("field.spellId"), type: "number", value: r.SpellID },
     ],
     save: (v) =>
       saveSummonings([
@@ -762,12 +831,12 @@ function fighterCardForm(r: {
 }): EditFormSpec {
   return {
     id: r.ID,
-    title: `Edit fighter card #${r.ID}`,
+    title: t("form.fighterCard", { id: r.ID }),
     fields: [
-      { key: "type", label: "Type", type: "number", value: r.Type, min: 0, max: 255, hint: "1 weapon / 2 pet / 3 cloak / 4 hat / 5 dofus" },
-      { key: "value", label: "Value", type: "number", value: r.Value },
-      { key: "scriptId", label: "Script ID", type: "number", value: r.ScriptID },
-      { key: "subType", label: "SubType", type: "number", value: r.SubType },
+      { key: "type", label: t("field.type"), type: "number", value: r.Type, min: 0, max: 255, hint: t("hint.fighterType") },
+      { key: "value", label: t("field.value"), type: "number", value: r.Value },
+      { key: "scriptId", label: t("field.scriptId"), type: "number", value: r.ScriptID },
+      { key: "subType", label: t("field.subType"), type: "number", value: r.SubType },
     ],
     save: (v) =>
       saveFighterCards([
@@ -786,11 +855,11 @@ function fighterCardForm(r: {
 function coachCardForm(r: { ID: number; Type: number; Value: number; Set: number }): EditFormSpec {
   return {
     id: r.ID,
-    title: `Edit coach card #${r.ID}`,
+    title: t("form.coachCard", { id: r.ID }),
     fields: [
-      { key: "type", label: "Type", type: "number", value: r.Type },
-      { key: "value", label: "Value", type: "number", value: r.Value },
-      { key: "set", label: "Set", type: "number", value: r.Set },
+      { key: "type", label: t("field.type"), type: "number", value: r.Type },
+      { key: "value", label: t("field.value"), type: "number", value: r.Value },
+      { key: "set", label: t("field.set"), type: "number", value: r.Set },
     ],
     save: (v) =>
       saveCoachCards([
@@ -847,6 +916,7 @@ export function viewStaticEffects(c: HTMLElement) {
         ${editFormHTML(staticEffectForm(r))}
         ${effectsDetail(r.Effects)}
         <div class="sc-mount" data-sc-script="${r.ScriptID}"></div>`,
+      drawerTitle: (r) => `Static effect #${r.ID}`,
     });
     if (host.parentElement)
       installJsonButton(host.parentElement, "staticEffects", () => viewStaticEffects(c));
@@ -862,12 +932,12 @@ function staticEffectForm(r: {
 }): EditFormSpec {
   return {
     id: r.ID,
-    title: `Edit static effect #${r.ID}`,
+    title: t("form.staticEffect", { id: r.ID }),
     fields: [
-      { key: "scriptId", label: "Script ID", type: "number", value: r.ScriptID },
-      { key: "areaShapeId", label: "Area shape", type: "number", value: r.AreaShapeID, hint: "1 point / 2 circle / 3 cross / 4 T" },
-      { key: "maxExecutionCount", label: "Max exec", type: "number", value: r.MaxExecutionCount },
-      { key: "targetsToShow", label: "Targets to show", type: "number", value: r.TargetsToShow },
+      { key: "scriptId", label: t("field.scriptId"), type: "number", value: r.ScriptID },
+      { key: "areaShapeId", label: t("field.areaShape"), type: "number", value: r.AreaShapeID, hint: t("hint.areaShape") },
+      { key: "maxExecutionCount", label: t("field.maxExec"), type: "number", value: r.MaxExecutionCount },
+      { key: "targetsToShow", label: t("field.targetsToShow"), type: "number", value: r.TargetsToShow },
     ],
     save: (v) =>
       saveStaticEffects([
@@ -903,6 +973,7 @@ export function viewEvents(c: HTMLElement) {
         { key: "hasfx", label: "Has effects", kind: "toggle", value: (r) => (r.Effects?.length ?? 0) > 0 },
       ],
       columns: [
+        { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
         { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("event", r.ID, 44), width: "56px", align: "center" },
         {
           key: "name",
@@ -910,7 +981,6 @@ export function viewEvents(c: HTMLElement) {
           value: (r) => nameOf("events", r.ID) || String(r.ID),
           render: (r) => `<span class="row-name">${esc(nameOf("events", r.ID) || "\u2014")}</span>`,
         },
-        { key: "ID", label: "ID", value: (r) => r.ID, align: "right", width: "80px" },
         { key: "Auto", label: "Auto description", value: (r) => (r.UseAutoDescription ? 1 : 0), render: (r) => boolBadge(r.UseAutoDescription), align: "center" },
         { key: "fx", label: "Effect", value: (r) => (r.Effects?.length ?? 0), render: (r) => effectsSummary(r.Effects) },
       ],
@@ -921,10 +991,11 @@ export function viewEvents(c: HTMLElement) {
           name: nameOf("events", r.ID) || `Event ${r.ID}`,
           badge: r.UseAutoDescription ? "auto" : undefined,
           effects: r.Effects,
-          stats: [["\u2726", "Effects", String(r.Effects?.length ?? 0)]],
+          stats: [["\u2726", t("hero.effects"), String(r.Effects?.length ?? 0)]],
         }) +
         editFormHTML(eventForm(r)) +
         `<div class="fe-mount" data-fe-kind="event" data-fe-id="${r.ID}"></div>`,
+      drawerTitle: (r) => `${nameOf("events", r.ID) || "Event"} (${r.ID})`,
     });
     if (host.parentElement) installJsonButton(host.parentElement, "events", () => viewEvents(c));
   });

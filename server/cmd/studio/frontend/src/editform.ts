@@ -7,6 +7,7 @@
 
 import type { ExportResult } from "./backend";
 import { setDirty, markClean } from "./dirty";
+import { t } from "./i18n";
 
 export type FieldType = "number" | "text" | "bool";
 
@@ -68,7 +69,7 @@ export function editFormHTML(spec: EditFormSpec): string {
       <div class="edit-grid">${rest.map(field).join("")}</div>
       ${bools.length ? `<div class="edit-checks">${bools.map(field).join("")}</div>` : ""}
       <div class="edit-actions">
-        <button class="primary" data-ef-save>\u2B07 Save to .dat</button>
+        <button class="primary" data-ef-save>\u2B07 ${esc(t("ef.save"))}</button>
         <span class="edit-status" data-ef-status></span>
       </div>
     </div>`;
@@ -82,8 +83,8 @@ export function wireEditForm(root: HTMLElement, specs: EditFormSpec[]): void {
     // Stop drawer collapse when interacting with the form.
     form.addEventListener("mousedown", (e) => e.stopPropagation());
     form.addEventListener("click", (e) => {
-      const t = e.target as HTMLElement;
-      if (!t.matches("[data-ef-save]")) e.stopPropagation();
+      const tgt = e.target as HTMLElement;
+      if (!tgt.matches("[data-ef-save]")) e.stopPropagation();
     });
     const id = Number(form.dataset.efId);
     const spec = byId.get(id);
@@ -124,15 +125,16 @@ export function wireEditForm(root: HTMLElement, specs: EditFormSpec[]): void {
         else values[f.key] = inp.value;
       });
       saveBtn.disabled = true;
-      status.textContent = "Saving\u2026";
+      status.textContent = t("ef.saving");
       status.className = "edit-status";
       try {
         const res = await spec.save(values);
-        status.textContent = `Saved \u00B7 backup ${res.backupPath?.split(/[\\/]/).pop() ?? "created"}`;
+        const backup = res.backupPath?.split(/[\\/]/).pop();
+        status.textContent = backup ? t("ef.saved", { name: backup }) : t("ef.savedNoBackup");
         status.className = "edit-status ok";
         markClean(dkey); // saved -> no longer dirty
       } catch (err) {
-        status.textContent = `Failed: ${(err as Error).message}`;
+        status.textContent = t("ef.failed", { msg: (err as Error).message });
         status.className = "edit-status err";
       } finally {
         saveBtn.disabled = false;

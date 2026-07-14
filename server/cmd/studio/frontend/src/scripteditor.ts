@@ -13,6 +13,7 @@ import {
 } from "./backend";
 import { highlightLua } from "./luahl";
 import { setDirty, markClean } from "./dirty";
+import { t } from "./i18n";
 
 // scriptIdSet caches which script ids actually have a Lua file, so views can
 // badge "has script" at a glance without a fetch per row. Loaded once.
@@ -50,16 +51,16 @@ export function mountScriptEditor(host: HTMLElement, scriptId: number) {
   if (!scriptId || scriptId <= 0) {
     host.innerHTML = `
       <div class="sc-editor">
-        <div class="sc-head"><b>Lua script</b></div>
-        <div class="detail-empty">This record has no script link (ScriptID 0).</div>
+        <div class="sc-head"><b>${esc(t("script.title"))}</b></div>
+        <div class="detail-empty">${esc(t("script.noLink"))}</div>
       </div>`;
     return;
   }
 
   host.innerHTML = `
     <div class="sc-editor">
-      <div class="sc-head"><b>Lua script</b> <span class="sc-id">scripts/${scriptId}.lua</span></div>
-      <div class="sc-loading">Loading script\u2026</div>
+      <div class="sc-head"><b>${esc(t("script.title"))}</b> <span class="sc-id">scripts/${scriptId}.lua</span></div>
+      <div class="sc-loading">${esc(t("script.loading"))}</div>
     </div>`;
 
   getSpellScript(scriptId)
@@ -74,27 +75,27 @@ function render(host: HTMLElement, sc: SpellScript) {
   const editor = host.querySelector<HTMLElement>(".sc-editor")!;
   if (!sc.exists) {
     editor.innerHTML = `
-      <div class="sc-head"><b>Lua script</b> <span class="sc-id">${esc(sc.entry)}</span></div>
-      <div class="detail-empty">No script file <span class="mono">${esc(
-        sc.entry
-      )}</span> in data.jar. This spell references a script id that ships no file.</div>`;
+      <div class="sc-head"><b>${esc(t("script.title"))}</b> <span class="sc-id">${esc(sc.entry)}</span></div>
+      <div class="detail-empty">${t("script.noFile", {
+        entry: `<span class="mono">${esc(sc.entry)}</span>`,
+      })}</div>`;
     return;
   }
 
   const lineCount = sc.source.split("\n").length;
   editor.innerHTML = `
     <div class="sc-head">
-      <b>Lua script</b>
+      <b>${esc(t("script.title"))}</b>
       <span class="sc-id">${esc(sc.entry)}</span>
-      <span class="sc-meta">${lineCount} lines \u00B7 ${sc.bytes} B</span>
+      <span class="sc-meta">${esc(t("script.lines", { n: lineCount, bytes: sc.bytes }))}</span>
     </div>
     <div class="sc-codewrap">
       <pre class="sc-hl mono" aria-hidden="true"></pre>
       <textarea class="sc-code mono" spellcheck="false" wrap="off">${esc(sc.source)}</textarea>
     </div>
     <div class="sc-actions">
-      <button class="primary" data-save>\u2B07 Save to data.jar</button>
-      <button data-revert>Revert</button>
+      <button class="primary" data-save>\u2B07 ${esc(t("script.save"))}</button>
+      <button data-revert>${esc(t("script.revert"))}</button>
       <span class="sc-status" data-status></span>
     </div>`;
 
@@ -141,7 +142,7 @@ function render(host: HTMLElement, sc: SpellScript) {
     const dirty = ta.value !== baseline;
     setDirty(dkey, dirty);
     if (dirty) {
-      status.textContent = "Unsaved changes";
+      status.textContent = t("script.unsaved");
       status.className = "sc-status dirty";
     } else {
       status.textContent = "";
@@ -164,13 +165,13 @@ function render(host: HTMLElement, sc: SpellScript) {
     e.stopPropagation();
     const btn = e.currentTarget as HTMLButtonElement;
     btn.disabled = true;
-    status.textContent = "Saving\u2026";
+    status.textContent = t("script.saving");
     status.className = "sc-status";
     try {
       const res = await saveSpellScript(sc.scriptId, ta.value);
-      status.textContent = `Saved \u00B7 backup ${
-        res.backupPath?.split(/[\\/]/).pop() ?? "created"
-      }`;
+      const backup = res.backupPath?.split(/[\\/]/).pop();
+      status.textContent =
+        t("script.saved", { bytes: res.bytes ?? 0 }) + (backup ? ` \u00B7 ${backup}` : "");
       status.className = "sc-status ok";
       // The saved value becomes the new baseline; the editor is now clean.
       baseline = ta.value;

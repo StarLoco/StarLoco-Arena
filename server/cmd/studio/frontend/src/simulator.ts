@@ -12,6 +12,7 @@
 
 import type { EffectDef } from "./backend";
 import { gameIcon } from "./effectlore";
+import { t } from "./i18n";
 
 // A minimal caster/target stat sheet the simulator lets you edit.
 export interface SimStats {
@@ -134,21 +135,21 @@ export function simulatorHTML(effects: EffectDef[] | null): string {
       <div class="sim-bar"><div class="sim-bar-fill" data-sim-bar></div></div>
       <div class="sim-cols">
         <div class="sim-col sim-attacker">
-          <div class="sim-col-h">Attacker</div>
+          <div class="sim-col-h">${t("sim.attacker")}</div>
           ${slider("dmg", "flat Dmg", 0, 100, 0)}
           ${slider("dmgElem", "flat elem Dmg", 0, 100, 0)}
           ${slider("dmgPct", "Dmg %", 0, 300, 0)}
           ${slider("dmgElemPct", "elem Dmg %", 0, 300, 0)}
         </div>
         <div class="sim-col sim-defender">
-          <div class="sim-col-h">Defender</div>
+          <div class="sim-col-h">${t("sim.defender")}</div>
           ${slider("res", "flat Res", 0, 100, 0)}
           ${slider("resElem", "flat elem Res", 0, 100, 0)}
           ${slider("resPct", "Res %", 0, 100, 0)}
           ${slider("resElemPct", "elem Res %", 0, 100, 0)}
         </div>
       </div>
-      <div class="sim-note">Physical damage ignores stats (base roll only). Values mirror the server's exact ComputeHPLoss formula.</div>
+      <div class="sim-note">${t("sim.note")}</div>
     </div>`;
 }
 

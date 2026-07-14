@@ -327,8 +327,8 @@ function applyPendingFocus(main: HTMLElement) {
 }
 
 function overviewPage(): string {
-  const dataRow = pathRow("Data directory", paths.dataDir, paths.dataDirValid, "data");
-  const clientRow = pathRow("Client directory", paths.clientDir, paths.clientDirValid, "client");
+  const dataRow = pathRow(t("overview.dataDir"), paths.dataDir, paths.dataDirValid, "data");
+  const clientRow = pathRow(t("overview.clientDir"), paths.clientDir, paths.clientDirValid, "client");
 
   const jump = (view: string, icon: string, title: string, desc: string) =>
     `<button class="ov-jump" data-nav-jump="${view}">
@@ -342,7 +342,7 @@ function overviewPage(): string {
       <div class="ov-hero-badge">DA</div>
       <div>
         <h1 class="ov-hero-title">DofusArena Studio</h1>
-        <p class="ov-hero-sub">Reverse-engineering workbench &mdash; browse the game's spells, cards, sprites, animations and arenas, all decoded to human terms.</p>
+        <p class="ov-hero-sub">${esc(t("overview.hero.sub"))}</p>
       </div>
     </div>
 
@@ -359,21 +359,18 @@ function overviewPage(): string {
 
     <div class="ov-section-title">${esc(t("overview.jumpIn"))}</div>
     <div class="ov-jumps">
-      ${jump("spellbook", "\u2727", t("nav.spellbook"), "Every spell by class, with live damage sim")}
-      ${jump("cards", "\u2617", t("nav.cards"), "Weapons, pets, cloaks, hats & dofus")}
-      ${jump("scripts", "\u2328", t("nav.scripts"), "Edit spell scripts in-place, with highlighting")}
-      ${jump("sprites", "\u25A3", t("nav.sprites"), "The full gfx.jar tile atlas")}
-      ${jump("animations", "\u2637", t("nav.animations"), "Play, onion-skin & export .sba")}
-      ${jump("maps", "\u25C6", t("nav.maps"), "Isometric arena viewer")}
-      ${jump("assets", "\u25A6", t("nav.assets"), "Browse & extract every jar")}
+      ${jump("spellbook", "\u2727", t("nav.spellbook"), t("overview.jump.spellbook"))}
+      ${jump("cards", "\u2617", t("nav.cards"), t("overview.jump.cards"))}
+      ${jump("scripts", "\u2328", t("nav.scripts"), t("overview.jump.scripts"))}
+      ${jump("sprites", "\u25A3", t("nav.sprites"), t("overview.jump.sprites"))}
+      ${jump("animations", "\u2637", t("nav.animations"), t("overview.jump.animations"))}
+      ${jump("maps", "\u25C6", t("nav.maps"), t("overview.jump.maps"))}
+      ${jump("assets", "\u25A6", t("nav.assets"), t("overview.jump.assets"))}
     </div>
 
     <div class="card">
-      <h2>Sources</h2>
-      <p class="hint">
-        The studio auto-detects the repo's <code>data/</code> and
-        <code>client-compiled/</code> folders. Override them here if needed.
-      </p>
+      <h2>${esc(t("overview.sources"))}</h2>
+      <p class="hint">${t("overview.sourcesHint")}</p>
       ${dataRow}
       ${clientRow}
     </div>
@@ -447,10 +444,10 @@ function pathRow(label: string, value: string, valid: boolean, kind: string): st
     <div class="path-row">
       <div class="path-info">
         <div class="path-label">${esc(label)}</div>
-        <div class="path-value ${value ? "" : "empty"}">${value ? esc(value) : "not set"}</div>
+        <div class="path-value ${value ? "" : "empty"}">${value ? esc(value) : esc(t("overview.notSet"))}</div>
       </div>
-      <span class="pill ${valid ? "ok" : "err"}">${valid ? "valid" : "missing"}</span>
-      <button data-pick="${kind}">Change\u2026</button>
+      <span class="pill ${valid ? "ok" : "err"}">${valid ? esc(t("overview.valid")) : esc(t("overview.missing"))}</span>
+      <button data-pick="${kind}">${esc(t("overview.change"))}</button>
     </div>
   `);
 }

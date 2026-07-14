@@ -1,11 +1,12 @@
 // spellbook.ts -- a beautiful class-organized view of every spell, grouped by
-// breed with the client's own class background art. Clicking a spell jumps to
-// the Spells view filtered on it. This turns a flat 138-row table into a
-// browsable, game-like grimoire.
+// breed with the client's own class background art. Clicking a spell opens the
+// full editable spell drawer (same editor as the Spells table) in a right-side
+// overlay. This turns a flat 138-row table into a browsable, game-like grimoire.
 
 import { getSpells, type Spell } from "./backend";
 import { loadNames, nameOf, label, iconCell, wireIconCells } from "./names";
 import { loadLore, decodeEffectText, gameIcon } from "./effectlore";
+import { openSpellDrawer } from "./views";
 import { t } from "./i18n";
 
 function esc(v: unknown): string {
@@ -88,10 +89,8 @@ function render(container: HTMLElement, spells: Spell[]) {
 
   container.querySelectorAll<HTMLElement>(".sb-spell").forEach((el) => {
     el.addEventListener("click", () => {
-      const name = nameOf("spells", Number(el.dataset.spell)) || el.dataset.spell!;
-      window.dispatchEvent(
-        new CustomEvent("studio:navigate", { detail: { view: "spells", query: name } })
-      );
+      const spell = spells.find((s) => s.ID === Number(el.dataset.spell));
+      if (spell) openSpellDrawer(spell);
     });
   });
 }

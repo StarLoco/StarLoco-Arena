@@ -37,6 +37,33 @@ export async function loadLore(): Promise<void> {
   loaded = true;
 }
 
+// areaShapeOptions returns the known area-shape ids with human labels, for the
+// effect editor's shape dropdown. Sourced from the backend lore table.
+export function areaShapeOptions(): Array<{ id: number; label: string }> {
+  return Object.keys(areaShapes)
+    .map((k) => ({ id: Number(k), label: areaShapes[Number(k)] }))
+    .sort((a, b) => a.id - b.id);
+}
+
+// areaShapeName resolves a shape id to its label (or "" if unknown).
+export function areaShapeName(id: number): string {
+  return areaShapes[id] ?? "";
+}
+
+// targetConditionBits returns every known FightTargetValidator bit + label, so
+// the editor can render one checkbox per condition instead of a raw bitmask.
+export function targetConditionBits(): Array<{ bit: number; label: string }> {
+  return Object.keys(targetConds)
+    .map((k) => ({ bit: Number(k), label: targetConds[Number(k)] }))
+    .sort((a, b) => a.bit - b.bit);
+}
+
+// effectKind returns the semantic "kind" for an actionId (e.g. summon, set_area,
+// damage) so the editor can adapt the params control to what the value means.
+export function effectKind(actionId: number): string {
+  return lore[actionId]?.kind ?? "";
+}
+
 // gameIcon returns an <img> tag for a named client icon, or "" if unavailable.
 export function gameIcon(name: string, size = 16, cls = ""): string {
   const url = gameIcons[name];
@@ -285,6 +312,8 @@ export function decodeEffectHTML(e: EffectDef): string {
     chips.push(xlink("staticEffects", String(aid), `area #${aid}`, "\u2622"));
   }
 
+  // Meta chips (targets/duration/crit/area) now flow inline on the SAME line as
+  // the headline, so a simple effect reads as one legible sentence-row.
   const meta: string[] = [];
   if (tgt) meta.push(`<span class="fx-meta-t">${esc(tgt)}</span>`);
   if (dur) meta.push(`<span class="fx-meta-d">${esc(dur)}</span>`);
@@ -301,14 +330,12 @@ export function decodeEffectHTML(e: EffectDef): string {
     <div class="fx-line ${s ? "" : "fx-unknown"}">
       <span class="fx-dot" style="background:${color}"></span>
       <div class="fx-body">
-        <div class="fx-headline">
-          <b class="fx-verb">${esc(verb)}</b>
-          ${chips.join("")}
-          <span class="fx-action mono" title="raw actionID">#${e.ActionID}</span>
-        </div>
-        ${meta.length ? `<div class="fx-meta">${meta.join("")}</div>` : ""}
+        <b class="fx-verb">${esc(verb)}</b>
+        ${chips.join("")}
+        ${meta.join("")}
       </div>
       ${grid}
+      <span class="fx-action mono" title="raw actionID">#${e.ActionID}</span>
     </div>`;
 }
 

@@ -204,6 +204,12 @@ func (a *App) ValidateData() (ValidationReport, error) {
 		return issues[i].RecordID < issues[j].RecordID
 	})
 
+	// Never return a nil slice: it marshals to JSON null and breaks the
+	// frontend's rep.issues.length on a clean run. An empty (but non-nil)
+	// slice marshals to [].
+	if issues == nil {
+		issues = []ValidationIssue{}
+	}
 	rep := ValidationReport{Issues: issues, Checked: checked}
 	for _, is := range issues {
 		switch is.Severity {
