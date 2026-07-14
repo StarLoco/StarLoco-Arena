@@ -53,6 +53,12 @@ body {
   user-select: none;
 }
 
+/* The HTML [hidden] attribute must always win over any element display rule
+   (flex/grid/etc.), otherwise a hidden dropdown/panel still renders. */
+[hidden] {
+  display: none !important;
+}
+
 #app {
   height: 100vh;
   display: grid;
@@ -142,6 +148,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+/* The [hidden] attribute must win over display:flex, else an empty results
+   box shows as a small pill for nothing. */
+.gs-results[hidden] {
+  display: none;
 }
 .gs-item {
   display: flex;
@@ -1330,15 +1341,18 @@ table.detail-tb td {
 /* ---------- Map viewer (Phase 4) ---------- */
 .map-layout {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 210px 1fr;
   gap: 12px;
   height: calc(100vh - 150px);
+  min-height: 0;
 }
 .map-list {
   background: var(--bg-elev);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden; /* names/badges must wrap, never scroll sideways */
+  min-height: 0;
 }
 .map-list-toolbar {
   position: sticky;
@@ -1370,11 +1384,18 @@ table.detail-tb td {
 .map-item-id {
   font-weight: 600;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .map-item-meta {
   font-size: 11px;
   color: var(--text-faint);
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .map-stage {
@@ -2332,6 +2353,9 @@ button.mini-primary:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.dp-review-body[hidden] {
+  display: none;
 }
 .dp-review-file {
   border: 1px solid var(--border-soft);

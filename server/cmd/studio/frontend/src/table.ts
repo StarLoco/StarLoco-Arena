@@ -263,6 +263,10 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
             })
             .join("");
 
+    // Preserve the scroll position across the full re-render (clicking a row to
+    // expand its detail must NOT jump the list back to the top).
+    const prevScroll = container.querySelector<HTMLElement>(".tb-scroll")?.scrollTop ?? 0;
+
     container.innerHTML = `
       <div class="tb-toolbar">
         <div class="tb-search-wrap">
@@ -286,6 +290,10 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
           <tbody>${body}</tbody>
         </table>
       </div>`;
+
+    // Restore the scroll offset onto the freshly-rendered scroll region.
+    const scrollEl = container.querySelector<HTMLElement>(".tb-scroll");
+    if (scrollEl) scrollEl.scrollTop = prevScroll;
 
     wire(data);
     opts.onDraw?.(container);

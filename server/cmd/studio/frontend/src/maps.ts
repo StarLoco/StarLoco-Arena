@@ -619,9 +619,10 @@ export function viewMaps(container: HTMLElement) {
           fill = null;
         } else if (view.overlays.altitude && c.hasStanding) {
           fill = altColor(c.standingAlt, minA, maxA);
-        } else if (view.overlays.walkable) {
-          // Green = walkable, RED = blocked terrain (has a non-walkable surface).
-          fill = c.walkable ? "rgba(62,207,142,0.45)" : "rgba(224,64,64,0.5)";
+        } else if (view.overlays.walkable && c.walkable) {
+          // "Walkable" overlay highlights ONLY walkable cells (green). Blocked
+          // cells are shown by the separate "Non-walkable" toggle, not here.
+          fill = "rgba(62,207,142,0.45)";
         }
 
         // Non-walkable filter: show ONLY blocked TERRAIN cells (solid red).
