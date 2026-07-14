@@ -293,15 +293,12 @@ function renderPage() {
   // Placeholder for phases not yet implemented in the frontend.
   main.innerHTML = h(`
     <div class="page-head">
-      <h1>${esc(entry.label)}</h1>
+      <h1>${esc(t("nav." + entry.id))}</h1>
       <span class="sub">roadmap phase ${entry.phase}</span>
     </div>
     <div class="placeholder">
       <div class="big">${entry.icon}</div>
-      <div><b>${esc(entry.label)}</b> lands in Phase ${entry.phase}.</div>
-      <div style="margin-top:6px;font-size:12.5px">
-        This view is wired into the shell and will be filled in as the phases are implemented.
-      </div>
+      <div><b>${esc(t("nav." + entry.id))}</b> \u2014 phase ${entry.phase}.</div>
     </div>
   `);
 }

@@ -36,6 +36,7 @@ import { jsonButton, wireJsonButton } from "./jsonio";
 import { mountScriptEditor, loadScriptIndex, hasScript } from "./scripteditor";
 import { mountAnimThumb } from "./animthumb";
 import { spellAreaBlock } from "./spellarea";
+import { t } from "./i18n";
 import { setDirty, markClean } from "./dirty";
 
 // mountEffectEditors finds every fe-mount placeholder inside root and mounts a
@@ -145,13 +146,13 @@ async function withLoad<T>(
   fetcher: () => Promise<T[]>,
   build: (c: HTMLElement, rows: T[]) => void
 ) {
-  container.innerHTML = `${pageHead(title, sub)}<div class="loading">Loading\u2026</div>`;
+  container.innerHTML = `${pageHead(title, sub)}<div class="loading">${esc(t("common.loading"))}</div>`;
   try {
     // Ensure name maps + effect semantics are ready so tables render
     // "Name (id)" and effects decode to human sentences.
     await Promise.all([loadNames(), loadLore()]);
     const rows = await fetcher();
-    container.innerHTML = pageHead(title, `${rows.length} records \u00B7 ${sub}`);
+    container.innerHTML = pageHead(title, `${rows.length} ${t("common.records")} \u00B7 ${sub}`);
     const host = document.createElement("div");
     host.className = "table-host";
     container.appendChild(host);
@@ -159,16 +160,16 @@ async function withLoad<T>(
   } catch (err) {
     container.innerHTML =
       pageHead(title, sub) +
-      `<div class="placeholder"><div class="big">\u26A0</div><div>Could not load ${esc(
-        title
-      )}.</div><div style="margin-top:6px;font-size:12.5px" class="mono">${esc(
+      `<div class="placeholder"><div class="big">\u26A0</div><div>${esc(
+        t("common.couldNotLoad", { what: title.toLowerCase() })
+      )}</div><div style="margin-top:6px;font-size:12.5px" class="mono">${esc(
         (err as Error).message
       )}</div></div>`;
   }
 }
 
 export function viewSpells(c: HTMLElement) {
-  withLoad(c, "Spells", "spells.dat", getSpells, (host, rows) => {
+  withLoad(c, t("nav.spells"), "spells.dat", getSpells, (host, rows) => {
     const cols: Column<(typeof rows)[number]>[] = [
       { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("spell", r.ID, 44), width: "56px", align: "center" },
       {
@@ -281,7 +282,7 @@ export function viewSpells(c: HTMLElement) {
       if (t.closest(".spell-edit") && t.dataset.saveSpell == null) ev.stopPropagation();
     });
     if (host.parentElement) {
-      installNewButton(host.parentElement, "spell", "New spell", () => viewSpells(c));
+      installNewButton(host.parentElement, "spell", t("common.newSpell"), () => viewSpells(c));
       installJsonButton(host.parentElement, "spells", () => viewSpells(c));
     }
   });
@@ -473,13 +474,12 @@ function trackSpellDirty(form: HTMLElement, s: Spell) {
 }
 
 export function viewCards(c: HTMLElement) {
-  c.innerHTML = pageHead("Cards", "cards.dat \u00B7 coach + fighter cards") + `<div class="loading">Loading\u2026</div>`;
+  c.innerHTML = pageHead(t("nav.cards"), t("view.cards.sub")) + `<div class="loading">${esc(t("common.loading"))}</div>`;
   Promise.all([getCoachCards(), getFighterCards(), loadNames()])
     .then(([coach, fighter]) => {
-      c.innerHTML = pageHead(
-        "Cards",
-        `${coach.length} coach \u00B7 ${fighter.length} fighter \u00B7 cards.dat`,
-        newRecordButton("fighterCard", "New fighter card") + newRecordButton("coachCard", "New coach card")
+      c.innerHTML = pageHead(t("nav.cards"),
+        t("view.cards.count", { coach: coach.length, fighter: fighter.length }),
+        newRecordButton("fighterCard", t("cards.newFighter")) + newRecordButton("coachCard", t("cards.newCoach"))
       );
       wireNewRecordButton(c, () => viewCards(c));
       installJsonButton(c, "cards", () => viewCards(c));
@@ -595,7 +595,7 @@ export function viewCards(c: HTMLElement) {
     })
     .catch((err) => {
       c.innerHTML =
-        pageHead("Cards", "cards.dat") +
+        pageHead(t("nav.cards"), "cards.dat") +
         `<div class="placeholder"><div class="big">\u26A0</div><div>Could not load cards.</div><div class="mono" style="margin-top:6px;font-size:12.5px">${esc(
           (err as Error).message
         )}</div></div>`;
@@ -666,7 +666,7 @@ function summonHero(r: {
 }
 
 export function viewSummonings(c: HTMLElement) {
-  withLoad(c, "Summonings", "summoning.dat", getSummonings, (host, rows) => {
+  withLoad(c, t("nav.summonings"), "summoning.dat", getSummonings, (host, rows) => {
     mountTable(host, {
       rows,
       searchText: (r) => `${r.ID} ${nameOf("summons", r.ID)}`,
@@ -712,7 +712,7 @@ export function viewSummonings(c: HTMLElement) {
       detail: (r) => summonHero(r) + editFormHTML(summoningForm(r)),
     });
     if (host.parentElement) {
-      installNewButton(host.parentElement, "summoning", "New summoning", () => viewSummonings(c));
+      installNewButton(host.parentElement, "summoning", t("common.newSummon"), () => viewSummonings(c));
       installJsonButton(host.parentElement, "summonings", () => viewSummonings(c));
     }
   });
@@ -807,7 +807,7 @@ function crosslinkSpell(spellId: number): string {
 }
 
 export function viewStaticEffects(c: HTMLElement) {
-  withLoad(c, "Static Effects", "staticEffects.dat", getStaticEffects, (host, rows) => {
+  withLoad(c, t("nav.staticEffects"), "staticEffects.dat", getStaticEffects, (host, rows) => {
     mountTable(host, {
       rows,
       searchText: (r) =>
@@ -883,7 +883,7 @@ function staticEffectForm(r: {
 }
 
 export function viewEvents(c: HTMLElement) {
-  withLoad(c, "Events", "events.dat", getEvents, (host, rows) => {
+  withLoad(c, t("nav.events"), "events.dat", getEvents, (host, rows) => {
     mountTable(host, {
       rows,
       onDraw: (h) => {

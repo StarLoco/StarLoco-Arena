@@ -13,6 +13,7 @@ import {
 import { loadNames, nameOf } from "./names";
 import { mountScriptEditor } from "./scripteditor";
 import { link, wireCrosslinks } from "./crosslink";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -57,7 +58,7 @@ function buildRefIndex(
 }
 
 export function viewScripts(c: HTMLElement) {
-  c.innerHTML = `<div class="page-head"><h1>Lua Scripts</h1><span class="sub">data.jar \u00B7 scripts/*.lua</span></div><div class="loading">Loading scripts\u2026</div>`;
+  c.innerHTML = `<div class="page-head"><h1>${esc(t("nav.scripts"))}</h1><span class="sub">${esc(t("view.scripts.sub"))}</span></div><div class="loading">${esc(t("view.scripts.loading"))}</div>`;
 
   Promise.all([
     listScriptIDs(),
@@ -72,8 +73,8 @@ export function viewScripts(c: HTMLElement) {
     })
     .catch((err) => {
       c.innerHTML =
-        `<div class="page-head"><h1>Lua Scripts</h1><span class="sub">data.jar</span></div>` +
-        `<div class="placeholder"><div class="big">\u26A0</div><div>Could not load scripts.</div><div class="mono" style="margin-top:6px;font-size:12.5px">${esc(
+        `<div class="page-head"><h1>${esc(t("nav.scripts"))}</h1><span class="sub">data.jar</span></div>` +
+        `<div class="placeholder"><div class="big">\u26A0</div><div>${esc(t("common.couldNotLoad", { what: t("nav.scripts").toLowerCase() }))}</div><div class="mono" style="margin-top:6px;font-size:12.5px">${esc(
           (err as Error).message
         )}</div></div>`;
     });
@@ -87,8 +88,8 @@ function renderList(
   const used = ids.filter((id) => (refIndex.get(id)?.length ?? 0) > 0).length;
   c.innerHTML = `
     <div class="page-head">
-      <h1>Lua Scripts</h1>
-      <span class="sub">${ids.length} scripts \u00B7 ${used} referenced \u00B7 data.jar</span>
+      <h1>${esc(t("nav.scripts"))}</h1>
+      <span class="sub">${esc(t("view.scripts.count", { n: ids.length, used }))}</span>
     </div>
     <div class="sv-wrap">
       <div class="sv-list">

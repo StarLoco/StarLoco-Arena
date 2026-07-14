@@ -4,6 +4,7 @@
 // larger inspector with dimensions + the source path.
 
 import { listSprites, getSprite, type SpriteInfo } from "./backend";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -17,15 +18,15 @@ const spriteCache = new Map<string, string>();
 
 export function viewSprites(container: HTMLElement) {
   container.innerHTML = `
-    <div class="page-head"><h1>Sprites</h1><span class="sub">gfx.jar \u00B7 TGA \u2192 PNG</span></div>
-    <div class="loading">Loading sprite catalog\u2026</div>`;
+    <div class="page-head"><h1>${esc(t("view.sprites.title"))}</h1><span class="sub">${esc(t("view.sprites.sub"))}</span></div>
+    <div class="loading">${esc(t("common.loading"))}</div>`;
 
   listSprites()
     .then((sprites) => render(container, sprites))
     .catch((err) => {
       container.innerHTML =
-        `<div class="page-head"><h1>Sprites</h1><span class="sub">gfx.jar</span></div>` +
-        `<div class="placeholder"><div class="big">\u26A0</div><div>Could not load sprites.</div><div class="mono" style="margin-top:6px;font-size:12.5px">${esc(
+        `<div class="page-head"><h1>${esc(t("view.sprites.title"))}</h1><span class="sub">gfx.jar</span></div>` +
+        `<div class="placeholder"><div class="big">\u26A0</div><div>${esc(t("common.couldNotLoad", { what: t("view.sprites.title").toLowerCase() }))}</div><div class="mono" style="margin-top:6px;font-size:12.5px">${esc(
           (err as Error).message
         )}</div></div>`;
     });
@@ -36,7 +37,7 @@ function render(container: HTMLElement, sprites: SpriteInfo[]) {
   let tileSize = 128;
 
   container.innerHTML = `
-    <div class="page-head"><h1>Sprites</h1><span class="sub">${sprites.length} tiles \u00B7 gfx.jar \u00B7 TGA \u2192 PNG</span></div>
+    <div class="page-head"><h1>${esc(t("view.sprites.title"))}</h1><span class="sub">${esc(t("view.sprites.count", { n: sprites.length }))}</span></div>
     <div class="sprite-toolbar">
       <div class="tb-search-wrap">
         <span class="tb-search-ico">\u2315</span>

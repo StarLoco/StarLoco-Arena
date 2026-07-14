@@ -6,6 +6,7 @@
 import { getSpells, type Spell } from "./backend";
 import { loadNames, nameOf, label, iconCell, wireIconCells } from "./names";
 import { loadLore, decodeEffectText, gameIcon } from "./effectlore";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -16,14 +17,14 @@ function esc(v: unknown): string {
 
 export function viewSpellbook(container: HTMLElement) {
   container.innerHTML = `
-    <div class="page-head"><h1>Spellbook</h1><span class="sub">spells by class</span></div>
-    <div class="loading">Loading\u2026</div>`;
+    <div class="page-head"><h1>${esc(t("nav.spellbook"))}</h1><span class="sub">${esc(t("view.spellbook.sub"))}</span></div>
+    <div class="loading">${esc(t("common.loading"))}</div>`;
 
   Promise.all([loadNames(), loadLore(), getSpells()])
     .then(([, , spells]) => render(container, spells))
     .catch((err) => {
-      container.innerHTML = `<div class="page-head"><h1>Spellbook</h1></div>
-        <div class="placeholder"><div class="big">\u26A0</div><div>Could not load spells.</div>
+      container.innerHTML = `<div class="page-head"><h1>${esc(t("nav.spellbook"))}</h1></div>
+        <div class="placeholder"><div class="big">\u26A0</div><div>${esc(t("common.couldNotLoad", { what: t("nav.spells").toLowerCase() }))}</div>
         <div class="mono" style="margin-top:6px;font-size:12px">${esc((err as Error).message)}</div></div>`;
     });
 }
@@ -45,7 +46,7 @@ function render(container: HTMLElement, spells: Spell[]) {
   const sections = breeds
     .map((breedId) => {
       const list = byBreed.get(breedId)!.sort((a, b) => a.ActionPointsCost - b.ActionPointsCost || a.ID - b.ID);
-      const breedName = breedId ? label("breeds", breedId) : "Generic / no class";
+      const breedName = breedId ? label("breeds", breedId) : t("view.spellbook.generic");
       const bg = breedId ? iconCell("breedBg", breedId, 340) : "";
       const cards = list
         .map((s) => {
@@ -80,7 +81,7 @@ function render(container: HTMLElement, spells: Spell[]) {
     .join("");
 
   container.innerHTML = `
-    <div class="page-head"><h1>Spellbook</h1><span class="sub">${spells.length} spells \u00B7 ${breeds.length} classes</span></div>
+    <div class="page-head"><h1>${esc(t("nav.spellbook"))}</h1><span class="sub">${esc(t("view.spellbook.count", { spells: spells.length, breeds: breeds.length }))}</span></div>
     <div class="sb-wrap">${sections}</div>`;
 
   wireIconCells(container);

@@ -11,6 +11,7 @@ import {
   type JarInfo,
   type AssetEntry,
 } from "./backend";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -53,7 +54,7 @@ export function viewAssets(container: HTMLElement) {
   };
 
   container.innerHTML = `
-    <div class="page-head"><h1>Asset Browser</h1><span class="sub">client jars &middot; browse &amp; preview</span></div>
+    <div class="page-head"><h1>${t("nav.assets")}</h1><span class="sub">${t("view.assets.sub")}</span></div>
     <div class="assets-layout">
       <div class="assets-jars" id="jarList"><div class="loading">Loading jars\u2026</div></div>
       <div class="assets-entries" id="entryPane"></div>

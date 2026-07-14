@@ -33,6 +33,7 @@ import {
   TILE_HY,
 } from "./isorender";
 import { setDirty, markClean } from "./dirty";
+import { t } from "./i18n";
 
 type Tool = "select" | "paint" | "stack" | "erase" | "marker";
 
@@ -89,7 +90,7 @@ export function viewBuilder(container: HTMLElement) {
   };
 
   container.innerHTML = `
-    <div class="page-head"><h1>Map Builder</h1><span class="sub">create &amp; edit fight maps</span></div>
+    <div class="page-head"><h1>${t("nav.builder")}</h1><span class="sub">${t("view.builder.sub")}</span></div>
     <div class="builder-toolbar" id="bToolbar"></div>
     <div class="builder-layout">
       <div class="builder-palette" id="bPalette"></div>

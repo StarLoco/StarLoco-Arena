@@ -13,6 +13,7 @@ import {
   type TransEdit,
 } from "./backend";
 import { setDirty } from "./dirty";
+import { t } from "./i18n";
 import { iconCell, wireIconCells } from "./names";
 
 function esc(v: unknown): string {
@@ -64,8 +65,8 @@ export function viewTranslations(container: HTMLElement) {
   };
 
   container.innerHTML = `
-    <div class="page-head"><h1>Translations</h1><span class="sub">edit the client's i18n strings</span></div>
-    <div class="loading">Loading\u2026</div>`;
+    <div class="page-head"><h1>${esc(t("nav.translations"))}</h1><span class="sub">${esc(t("view.translations.sub"))}</span></div>
+    <div class="loading">${esc(t("common.loading"))}</div>`;
 
   load();
 
@@ -110,13 +111,24 @@ export function viewTranslations(container: HTMLElement) {
   function draw() {
     // Keep the global unsaved-changes guard in sync on every (re)render.
     setDirty(`trans:${state.lang}`, state.edits.size > 0);
+    // Map the row-kind to a cat.* translation key (falls back to KIND_LABELS).
+    const catKey: Record<string, string> = {
+      spell: "cat.spells",
+      fighterCard: "cat.fighterCards",
+      coachCard: "cat.coachCards",
+      breed: "cat.classes",
+      summon: "cat.summons",
+      event: "cat.events",
+      effect: "cat.effects",
+    };
+    const kindLabel = (k: string) => (catKey[k] ? t(catKey[k]) : KIND_LABELS[k] ?? k);
     const kinds = [...new Set(state.rows.map((r) => r.kind))];
-    const chips = [`<button class="tr-chip ${state.kind === "" ? "on" : ""}" data-kind="">all</button>`]
+    const chips = [`<button class="tr-chip ${state.kind === "" ? "on" : ""}" data-kind="">${esc(t("cat.all"))}</button>`]
       .concat(
         kinds.map(
           (k) =>
             `<button class="tr-chip ${state.kind === k ? "on" : ""}" data-kind="${esc(k)}">${esc(
-              KIND_LABELS[k] ?? k
+              kindLabel(k)
             )}</button>`
         )
       )
@@ -146,16 +158,16 @@ export function viewTranslations(container: HTMLElement) {
 
     container.innerHTML = `
       <div class="page-head">
-        <h1>Translations</h1>
-        <span class="sub">${state.rows.length} strings \u00B7 editing <b>${esc(state.lang.toUpperCase())}</b></span>
+        <h1>${esc(t("nav.translations"))}</h1>
+        <span class="sub">${t("view.translations.count", { n: state.rows.length, lang: state.lang.toUpperCase() })}</span>
       </div>
       <div class="tr-toolbar">
         <div class="tb-search-wrap">
           <span class="tb-search-ico">\u2315</span>
-          <input class="tb-search" id="trSearch" placeholder="Search names, ids, values\u2026" value="${esc(state.filter)}" />
+          <input class="tb-search" id="trSearch" placeholder="${esc(t("tr.search"))}" value="${esc(state.filter)}" />
         </div>
-        <label class="tr-toggle"><input type="checkbox" id="trEmpty" ${state.onlyEmpty ? "checked" : ""}/> missing only</label>
-        <label class="tr-toggle"><input type="checkbox" id="trChanged" ${state.onlyChanged ? "checked" : ""}/> changed only</label>
+        <label class="tr-toggle"><input type="checkbox" id="trEmpty" ${state.onlyEmpty ? "checked" : ""}/> ${esc(t("tr.missingOnly"))}</label>
+        <label class="tr-toggle"><input type="checkbox" id="trChanged" ${state.onlyChanged ? "checked" : ""}/> ${esc(t("tr.changedOnly"))}</label>
         <select id="trLang" class="pref-select tr-lang">
           <option value="en" ${state.lang === "en" ? "selected" : ""}>English</option>
           <option value="fr" ${state.lang === "fr" ? "selected" : ""}>Français</option>
@@ -165,9 +177,9 @@ export function viewTranslations(container: HTMLElement) {
       <div class="tr-scroll">
         <table class="tr-table">
           <thead><tr>
-            <th></th><th>String</th><th>${esc(state.lang.toUpperCase())} (editing)</th><th>${esc(state.altLang.toUpperCase())} (ref)</th>
+            <th></th><th>${esc(t("tr.string"))}</th><th>${esc(t("tr.editing", { lang: state.lang.toUpperCase() }))}</th><th>${esc(t("tr.ref", { lang: state.altLang.toUpperCase() }))}</th>
           </tr></thead>
-          <tbody>${rowsHtml || `<tr><td colspan="4" class="tb-empty">No matching strings.</td></tr>`}</tbody>
+          <tbody>${rowsHtml || `<tr><td colspan="4" class="tb-empty">${esc(t("common.noMatch"))}</td></tr>`}</tbody>
         </table>
       </div>
       ${saveBar()}`;
@@ -181,10 +193,10 @@ export function viewTranslations(container: HTMLElement) {
     const n = state.edits.size;
     return `
       <div class="tr-savebar ${n ? "active" : ""}">
-        <span class="tr-savecount">${n ? `<b>${n}</b> unsaved change${n === 1 ? "" : "s"}` : "No unsaved changes"}</span>
+        <span class="tr-savecount">${n ? t("tr.unsaved", { n: `<b>${n}</b>` }) : esc(t("tr.noChanges"))}</span>
         <div class="tr-savebar-actions">
-          <button id="trRevert" ${n ? "" : "disabled"}>Revert</button>
-          <button id="trSave" class="primary" ${n ? "" : "disabled"}>Save to i18n.jar</button>
+          <button id="trRevert" ${n ? "" : "disabled"}>${esc(t("common.revert"))}</button>
+          <button id="trSave" class="primary" ${n ? "" : "disabled"}>${esc(t("tr.saveTo"))}</button>
         </div>
         <span class="tr-savestatus" id="trStatus"></span>
       </div>`;

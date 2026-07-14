@@ -19,6 +19,7 @@ import {
   type LayerRef,
 } from "./backend";
 import { encodeGif, type GifFrame } from "./gifenc";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -41,7 +42,7 @@ interface Layer {
 
 export function viewAnimations(container: HTMLElement) {
   container.innerHTML = `
-    <div class="page-head"><h1>Animations</h1><span class="sub">.sba (Sprite Byte Animation) &middot; player</span></div>
+    <div class="page-head"><h1>${t("nav.animations")}</h1><span class="sub">${t("view.animations.sub")}</span></div>
     <div class="assets-layout">
       <div class="assets-entries" id="animList"><div class="loading">Loading animations\u2026</div></div>
       <div class="assets-preview" id="animView" style="grid-column: span 2"><div class="preview-empty">Select an animation to play it.</div></div>

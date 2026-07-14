@@ -21,6 +21,7 @@ import {
   type MapRender,
   type MapDrawable,
 } from "./backend";
+import { t } from "./i18n";
 
 // pendingMapId lets a cross-link (e.g. a Diagnostics "Fight map 5" issue)
 // deep-link straight to a specific map: main.ts calls focusMap(id) when
@@ -94,7 +95,7 @@ function esc(v: unknown): string {
 
 export function viewMaps(container: HTMLElement) {
   container.innerHTML = `
-    <div class="page-head"><h1>Maps</h1><span class="sub">isometric viewer</span></div>
+    <div class="page-head"><h1>${t("nav.maps")}</h1><span class="sub">${t("view.maps.sub")}</span></div>
     <div class="map-layout">
       <div class="map-list" id="mapList"><div class="loading">Loading maps\u2026</div></div>
       <div class="map-stage">
