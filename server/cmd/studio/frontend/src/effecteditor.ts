@@ -14,6 +14,7 @@ import {
 } from "./backend";
 import { decodeEffectHTML, actionOptions, gameIcon } from "./effectlore";
 import { setDirty, markClean } from "./dirty";
+import { wireCrosslinks } from "./crosslink";
 
 // EffectParentKind selects which .dat file the effects are written back to.
 export type EffectParentKind = "spell" | "card" | "event";
@@ -245,6 +246,9 @@ export function mountEffectEditor(
         btn.disabled = false;
       }
     });
+
+    // Make any cross-link chips in the per-row previews (summon/area) clickable.
+    wireCrosslinks(host);
   }
 
   // applyField writes a field edit into the draft; redraw only the preview (on
@@ -277,7 +281,10 @@ export function mountEffectEditor(
     }
     if (redrawPreview) {
       const row = host.querySelector<HTMLElement>(`.fe-row[data-i="${i}"] .fe-preview`);
-      if (row) row.innerHTML = decodeEffectHTML(dtoToEffectDef(d));
+      if (row) {
+        row.innerHTML = decodeEffectHTML(dtoToEffectDef(d));
+        wireCrosslinks(row); // re-wire summon/area links in the updated preview
+      }
     }
     recomputeDirty();
   }

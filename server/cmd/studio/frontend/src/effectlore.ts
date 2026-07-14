@@ -278,6 +278,12 @@ export function decodeEffectHTML(e: EffectDef): string {
     const sid = Math.round(e.Params[0]);
     chips.push(xlink("summonings", String(sid), `summon #${sid}`, "\u2726"));
   }
+  // Cross-link: SET_EFFECT_AREA (set_area) references a static-effect-area
+  // template via Params[0] (see combat/effectarea.go applySetEffectArea).
+  if (s && s.kind === "set_area" && e.Params && e.Params.length) {
+    const aid = Math.round(e.Params[0]);
+    chips.push(xlink("staticEffects", String(aid), `area #${aid}`, "\u2622"));
+  }
 
   const meta: string[] = [];
   if (tgt) meta.push(`<span class="fx-meta-t">${esc(tgt)}</span>`);
