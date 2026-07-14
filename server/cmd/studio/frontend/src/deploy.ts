@@ -19,6 +19,7 @@ import {
   type BackupDiff,
   type PushDiff,
 } from "./backend";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -136,7 +137,7 @@ function renderPushDiff(d: PushDiff): string {
 
 export function viewDeploy(container: HTMLElement) {
   container.innerHTML = `
-    <div class="page-head"><h1>Deploy</h1><span class="sub">push edited data into the compiled client</span></div>
+    <div class="page-head"><h1>${esc(t("deploy.title"))}</h1><span class="sub">${esc(t("deploy.subtitle"))}</span></div>
     <div class="loading">Checking client\u2026</div>`;
 
   const selected = new Set<string>();
@@ -209,7 +210,7 @@ export function viewDeploy(container: HTMLElement) {
       .join("");
 
     container.innerHTML = `
-      <div class="page-head"><h1>Deploy</h1><span class="sub">push edited data into the compiled client</span></div>
+      <div class="page-head"><h1>${esc(t("deploy.title"))}</h1><span class="sub">${esc(t("deploy.subtitle"))}</span></div>
 
       <div class="card dp-target">
         <div class="dp-target-ico">\u2699</div>
@@ -232,10 +233,8 @@ export function viewDeploy(container: HTMLElement) {
       ${
         changed
           ? `<div class="dp-review">
-               <button class="dp-review-btn" id="dpReviewBtn">\u25B8 Review all ${changed} pending change${
-              changed === 1 ? "" : "s"
-            }</button>
-               <button class="dp-review-btn" id="dpChangelogBtn" title="Download a Markdown changelog of every pending change">\u2B07 Changelog</button>
+               <button class="dp-review-btn" id="dpReviewBtn">\u25B8 ${esc(t("deploy.reviewAll", { n: changed }))}</button>
+               <button class="dp-review-btn" id="dpChangelogBtn" title="Download a Markdown changelog of every pending change">\u2B07 ${esc(t("deploy.changelog"))}</button>
                <div class="dp-review-body" id="dpReviewBody" hidden></div>
              </div>`
           : ""
@@ -247,12 +246,12 @@ export function viewDeploy(container: HTMLElement) {
         <div class="dp-summary">${
           changed
             ? `<b>${changed}</b> file${changed === 1 ? "" : "s"} differ from the client`
-            : "The client is up to date with your edits"
+            : t("deploy.upToDate")
         }</div>
         <button class="primary dp-push" id="dpPush" ${
           selected.size && !pushBlocked() ? "" : "disabled"
         }>
-          \u2B06 Push ${selected.size || ""} to client
+          \u2B06 ${t("deploy.push", { n: selected.size || "" })}
         </button>
         <span class="dp-status" id="dpStatus"></span>
       </div>
@@ -518,7 +517,7 @@ export function viewDeploy(container: HTMLElement) {
         else selected.delete(cb.dataset.push!);
         const btn = container.querySelector<HTMLButtonElement>("#dpPush")!;
         btn.disabled = selected.size === 0 || pushBlocked();
-        btn.textContent = `\u2B06 Push ${selected.size || ""} to client`;
+        btn.textContent = `\u2B06 ${t("deploy.push", { n: selected.size || "" })}`;
       });
     });
     container.querySelector<HTMLButtonElement>("#dpPush")?.addEventListener("click", async () => {

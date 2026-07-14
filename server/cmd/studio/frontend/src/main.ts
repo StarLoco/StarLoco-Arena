@@ -34,6 +34,7 @@ import { viewDiagnostics } from "./diagnostics";
 import { listScriptIDs } from "./backend";
 import { confirmDiscardIfDirty, onDirtyChange, dirtyCount, isAnyDirty } from "./dirty";
 import { mountGlobalSearch, invalidateSearchIndex } from "./globalsearch";
+import { t, setUILang } from "./i18n";
 
 // -------- App shell / navigation --------
 
@@ -101,18 +102,18 @@ function renderShell() {
   let navHtml = `
     <div class="brand">
       <div class="logo">DA</div>
-      <div class="title"><b>DofusArena Studio</b><span>Data &amp; Asset Explorer</span></div>
+      <div class="title"><b>DofusArena Studio</b><span>${esc(t("app.subtitle"))}</span></div>
     </div>
     <div class="gs-host" id="gsHost"></div>
     <div class="nav-scroll">`;
   for (const [section, entries] of sections) {
-    navHtml += `<div class="nav-section">${esc(section)}</div>`;
+    navHtml += `<div class="nav-section">${esc(t("section." + section))}</div>`;
     for (const e of entries) {
       const badge = navBadge(e);
       navHtml += `
         <div class="nav-item ${e.id === current ? "active" : ""}" data-nav="${e.id}">
           <span class="ico">${e.icon}</span>
-          <span>${esc(e.label)}</span>
+          <span>${esc(t("nav." + e.id))}</span>
           ${badge}
         </div>`;
     }
@@ -159,8 +160,8 @@ function renderStatus() {
   const dataOk = paths.dataDirValid;
   const clientOk = paths.clientDirValid;
   status.innerHTML = h(`
-    <span><span class="dot ${dataOk ? "ok" : "err"}"></span>data ${dataOk ? "loaded" : "not found"}</span>
-    <span><span class="dot ${clientOk ? "ok" : "err"}"></span>client ${clientOk ? "detected" : "not found"}</span>
+    <span><span class="dot ${dataOk ? "ok" : "err"}"></span>${t(dataOk ? "status.data.loaded" : "status.data.missing")}</span>
+    <span><span class="dot ${clientOk ? "ok" : "err"}"></span>${t(clientOk ? "status.client.detected" : "status.client.missing")}</span>
     <span class="spacer"></span>
     <span class="dirty-indicator" id="dirtyInd" hidden></span>
     <span class="mono" id="envline"></span>
@@ -181,7 +182,7 @@ function renderDirtyIndicator(n: number) {
     el.textContent = "";
   } else {
     el.hidden = false;
-    el.textContent = `\u25CF ${n} unsaved change${n === 1 ? "" : "s"}`;
+    el.textContent = "\u25CF " + t(n === 1 ? "status.unsaved" : "status.unsaved.plural", { n });
   }
 }
 
@@ -349,25 +350,25 @@ function overviewPage(): string {
     </div>
 
     <div class="ov-statband">
-      ${overviewStat(counts?.spells, "Spells")}
-      ${overviewStat(counts ? counts.coachCards + counts.fighterCards : undefined, "Cards")}
-      ${overviewStat(counts?.summonings, "Summonings")}
-      ${overviewStat(counts?.staticEffects, "Static effects")}
-      ${overviewStat(counts?.events, "Events")}
-      ${overviewStat(scriptCount ?? undefined, "Lua scripts")}
+      ${overviewStat(counts?.spells, t("overview.stat.spells"))}
+      ${overviewStat(counts ? counts.coachCards + counts.fighterCards : undefined, t("overview.stat.cards"))}
+      ${overviewStat(counts?.summonings, t("overview.stat.summonings"))}
+      ${overviewStat(counts?.staticEffects, t("overview.stat.staticEffects"))}
+      ${overviewStat(counts?.events, t("overview.stat.events"))}
+      ${overviewStat(scriptCount ?? undefined, t("overview.stat.scripts"))}
     </div>
 
     ${healthCard()}
 
-    <div class="ov-section-title">Jump in</div>
+    <div class="ov-section-title">${esc(t("overview.jumpIn"))}</div>
     <div class="ov-jumps">
-      ${jump("spellbook", "\u2727", "Spellbook", "Every spell by class, with live damage sim")}
-      ${jump("cards", "\u2617", "Cards", "Weapons, pets, cloaks, hats & dofus")}
-      ${jump("scripts", "\u2328", "Lua Scripts", "Edit spell scripts in-place, with highlighting")}
-      ${jump("sprites", "\u25A3", "Sprites", "The full gfx.jar tile atlas")}
-      ${jump("animations", "\u2637", "Animations", "Play, onion-skin & export .sba")}
-      ${jump("maps", "\u25C6", "Maps", "Isometric arena viewer")}
-      ${jump("assets", "\u25A6", "Assets", "Browse & extract every jar")}
+      ${jump("spellbook", "\u2727", t("nav.spellbook"), "Every spell by class, with live damage sim")}
+      ${jump("cards", "\u2617", t("nav.cards"), "Weapons, pets, cloaks, hats & dofus")}
+      ${jump("scripts", "\u2328", t("nav.scripts"), "Edit spell scripts in-place, with highlighting")}
+      ${jump("sprites", "\u25A3", t("nav.sprites"), "The full gfx.jar tile atlas")}
+      ${jump("animations", "\u2637", t("nav.animations"), "Play, onion-skin & export .sba")}
+      ${jump("maps", "\u25C6", t("nav.maps"), "Isometric arena viewer")}
+      ${jump("assets", "\u25A6", t("nav.assets"), "Browse & extract every jar")}
     </div>
 
     <div class="card">
@@ -381,10 +382,10 @@ function overviewPage(): string {
     </div>
 
     <div class="card">
-      <h2>Preferences</h2>
-      <p class="hint">Language used for names &amp; descriptions (from the client's i18n).</p>
+      <h2>${esc(t("overview.preferences"))}</h2>
+      <p class="hint">${esc(t("overview.prefLang"))}</p>
       <div class="pref-row">
-        <div class="pref-label">Language</div>
+        <div class="pref-label">${esc(t("overview.language"))}</div>
         <select id="langSelect" class="pref-select">
           ${langState.options
             .map(
@@ -410,11 +411,11 @@ function overviewStat(n: number | undefined, label: string): string {
 // green banner reflecting the last validation, with a jump to Diagnostics. It
 // shows a neutral "checking" state until the async validation resolves.
 function healthCard(): string {
-  const open = `<button class="ov-health-go" data-nav-jump="diagnostics">Open Diagnostics \u2192</button>`;
+  const open = `<button class="ov-health-go" data-nav-jump="diagnostics">${esc(t("overview.health.openDiag"))} \u2192</button>`;
   if (!healthReport) {
     return `<div class="ov-health checking">
       <span class="ovh-ico">\u25CC</span>
-      <div class="ovh-body"><b>Checking data integrity\u2026</b></div>
+      <div class="ovh-body"><b>${esc(t("overview.health.checking"))}</b></div>
     </div>`;
   }
   const r = healthReport;
@@ -438,8 +439,8 @@ function healthCard(): string {
   }
   return `<div class="ov-health ok">
     <span class="ovh-ico">\u2714</span>
-    <div class="ovh-body"><b>Data integrity: all clear</b>
-      <div>${r.checked.toLocaleString()} records validated with no issues.</div></div>
+    <div class="ovh-body"><b>${esc(t("overview.health.clean"))}</b>
+      <div>${t("diag.checked", { n: r.checked.toLocaleString() })}.</div></div>
     ${open}
   </div>`;
 }
@@ -479,10 +480,11 @@ function wireOverview() {
   const langSel = document.querySelector<HTMLSelectElement>("#langSelect");
   langSel?.addEventListener("change", async () => {
     langState = await setLanguage(langSel.value);
+    setUILang(langState.current); // switch the app's own UI language too
     await loadNames(true); // refresh cached names for the new language
     invalidateSearchIndex(); // re-index global search in the new language
     await refreshCounts();
-    renderShell(); // re-render shell (search box) + page with new names
+    renderShell(); // re-render shell (nav/status/page) in the new language
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((btn) => {
@@ -527,6 +529,7 @@ async function refreshCounts() {
 async function boot() {
   paths = await getPaths();
   langState = await getLanguage();
+  setUILang(langState.current); // align the app UI language with the saved pref
   renderShell();
   loadNames(); // warm the name cache in the background
   if (paths.dataDirValid) refreshCounts();

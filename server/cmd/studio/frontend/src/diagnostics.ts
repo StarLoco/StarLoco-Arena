@@ -6,6 +6,7 @@
 
 import { validateData, type ValidationIssue, type ValidationReport } from "./backend";
 import { link, wireCrosslinks } from "./crosslink";
+import { t } from "./i18n";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -22,14 +23,14 @@ const SEV_META: Record<string, { glyph: string; label: string }> = {
 
 export function viewDiagnostics(c: HTMLElement) {
   c.innerHTML = `
-    <div class="page-head"><h1>Diagnostics</h1><span class="sub">data-integrity validation</span></div>
-    <div class="dg-loading">Validating game data\u2026</div>`;
+    <div class="page-head"><h1>${t("diag.title")}</h1><span class="sub">${t("diag.subtitle")}</span></div>
+    <div class="dg-loading">${t("diag.validating")}</div>`;
 
   validateData()
     .then((rep) => render(c, rep))
     .catch((err) => {
       c.innerHTML =
-        `<div class="page-head"><h1>Diagnostics</h1><span class="sub">data-integrity validation</span></div>` +
+        `<div class="page-head"><h1>${t("diag.title")}</h1><span class="sub">${t("diag.subtitle")}</span></div>` +
         `<div class="placeholder"><div class="big">\u26A0</div><div>Could not validate.</div>` +
         `<div class="mono" style="margin-top:6px;font-size:12.5px">${esc((err as Error).message)}</div></div>`;
     });
@@ -43,7 +44,7 @@ function render(c: HTMLElement, rep: ValidationReport) {
   c.innerHTML = `
     <div class="page-head">
       <h1>Diagnostics</h1>
-      <span class="sub">${rep.checked.toLocaleString()} records checked</span>
+      <span class="sub">${t("diag.checked", { n: rep.checked.toLocaleString() })}</span>
       <div class="page-actions"><button class="rc-new" data-revalidate>Re-run</button></div>
     </div>
     <div class="dg-statband">
@@ -55,7 +56,7 @@ function render(c: HTMLElement, rep: ValidationReport) {
     ${
       total === 0
         ? `<div class="dg-clean"><div class="dg-clean-ico">\u2714</div>
-             <div><b>All clear.</b><div>No broken references or suspicious values found across ${rep.checked.toLocaleString()} records.</div></div>
+             <div><b>${t("diag.allClear")}</b><div>No broken references or suspicious values found across ${rep.checked.toLocaleString()} records.</div></div>
            </div>`
         : `<div class="dg-toolbar">
              <div class="dg-filters">

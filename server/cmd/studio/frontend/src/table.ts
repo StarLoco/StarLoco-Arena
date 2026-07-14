@@ -3,6 +3,8 @@
 // Phase 1 data view. Kept generic so each view only declares its columns,
 // optional facets and an optional detail renderer.
 
+import { t } from "./i18n";
+
 export interface Column<T> {
   key: string;
   label: string;
@@ -271,7 +273,7 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
       <div class="tb-toolbar">
         <div class="tb-search-wrap">
           <span class="tb-search-ico">\u2315</span>
-          <input class="tb-search" placeholder="Search ${opts.rows.length} rows\u2026" value="${esc(
+          <input class="tb-search" placeholder="${esc(t("common.search", { n: opts.rows.length }))}" value="${esc(
       query
     )}" />
           ${query ? `<button class="tb-search-clear" data-search-clear title="Clear search">\u00D7</button>` : ""}
@@ -279,7 +281,7 @@ export function mountTable<T>(container: HTMLElement, opts: TableOptions<T>) {
         <span class="tb-count"><b>${data.length.toLocaleString()}</b> / ${opts.rows.length.toLocaleString()}</span>
         ${
           opts.exportName
-            ? `<button class="tb-export" data-export title="Export the filtered rows as CSV">Export CSV</button>`
+            ? `<button class="tb-export" data-export title="Export the filtered rows as CSV">${esc(t("common.export"))}</button>`
             : ""
         }
       </div>
