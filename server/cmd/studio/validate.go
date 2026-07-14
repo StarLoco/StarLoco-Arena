@@ -180,6 +180,10 @@ func (a *App) ValidateData() (ValidationReport, error) {
 		}
 	}
 
+	// Map integrity: fight maps need spawn markers for both teams and at least
+	// one walkable cell, or they can't host a playable match.
+	checked += a.checkMaps(store, &issues)
+
 	// Duplicate IDs within each repository would be a real corruption.
 	checkDupes(spells, func(s gamedata.SpellTemplate) int32 { return s.ID }, "Spell", "spells", &issues)
 	checkDupes(summonings, func(s gamedata.SummoningTemplate) int32 { return s.ID }, "Summoning", "summonings", &issues)
@@ -212,6 +216,65 @@ func (a *App) ValidateData() (ValidationReport, error) {
 		}
 	}
 	return rep, nil
+}
+
+// checkMaps validates every fight map: it must define spawn markers for both
+// team sides (side 1 = A, side 0 = B) and have at least one walkable cell,
+// otherwise it can't host a playable match. Non-fight world maps (e.g. the
+// overworld) are skipped -- they have no match-start requirement. Returns the
+// number of maps scanned.
+func (a *App) checkMaps(store *gamedata.Store, out *[]ValidationIssue) int {
+	fightIDs, err := store.Maps.FightMapIDs()
+	if err != nil {
+		return 0
+	}
+	scanned := 0
+	for _, id := range fightIDs {
+		m, err := store.Maps.Get(id)
+		if err != nil {
+			*out = append(*out, ValidationIssue{
+				Severity: "error", Category: "map load",
+				Message: fmt.Sprintf("Fight map %d failed to load: %v", id, err),
+				View:    "maps", Query: fmt.Sprintf("%d", id), RecordID: int32(id),
+			})
+			continue
+		}
+		scanned++
+		q := fmt.Sprintf("%d", id)
+
+		fight := m.FightStartCells()
+		if len(fight[1]) == 0 {
+			*out = append(*out, ValidationIssue{
+				Severity: "error", Category: "missing spawn",
+				Message: fmt.Sprintf("Fight map %d has no Team A start markers", id),
+				View:    "maps", Query: q, RecordID: int32(id),
+			})
+		}
+		if len(fight[0]) == 0 {
+			*out = append(*out, ValidationIssue{
+				Severity: "error", Category: "missing spawn",
+				Message: fmt.Sprintf("Fight map %d has no Team B start markers", id),
+				View:    "maps", Query: q, RecordID: int32(id),
+			})
+		}
+
+		// At least one walkable cell -- otherwise nobody can stand/move.
+		walkable := 0
+		for _, c := range m.Cells() {
+			if alt, ok := m.StandingAltitudeAt(c.X, c.Y); ok && m.IsWalkable(c.X, c.Y, alt) {
+				walkable++
+				break
+			}
+		}
+		if walkable == 0 {
+			*out = append(*out, ValidationIssue{
+				Severity: "warning", Category: "unplayable map",
+				Message: fmt.Sprintf("Fight map %d has no walkable cells", id),
+				View:    "maps", Query: q, RecordID: int32(id),
+			})
+		}
+	}
+	return scanned
 }
 
 // idSet builds a presence set of ids from a slice via an id accessor.

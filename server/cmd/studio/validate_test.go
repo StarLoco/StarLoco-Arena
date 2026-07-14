@@ -28,6 +28,23 @@ func TestValidateData_RealData(t *testing.T) {
 		rep.Checked, rep.Errors, rep.Warnings, rep.Infos)
 }
 
+// TestValidateData_RealFightMapsHaveSpawns confirms the shipped fight maps pass
+// the spawn-marker check -- i.e. the validator's map rules don't false-flag the
+// real, playable maps. Any "missing spawn" issue here would indicate either a
+// broken map or a broken check.
+func TestValidateData_RealFightMapsHaveSpawns(t *testing.T) {
+	a := newAppWithData(t)
+	rep, err := a.ValidateData()
+	if err != nil {
+		t.Fatalf("ValidateData: %v", err)
+	}
+	for _, is := range rep.Issues {
+		if is.Category == "missing spawn" || is.Category == "map load" {
+			t.Errorf("real fight map flagged: [%s] %s", is.Category, is.Message)
+		}
+	}
+}
+
 // TestValidateData_DetectsBrokenSummonRef confirms the validator flags a summon
 // effect that references a non-existent summoning, using a synthetic store so
 // the assertion doesn't depend on the shipped data being clean or dirty.
