@@ -23,7 +23,7 @@ import {
 } from "./views";
 import { viewAssets } from "./assets";
 import { viewSprites } from "./sprites";
-import { viewMaps } from "./maps";
+import { viewMaps, focusMap } from "./maps";
 import { viewBuilder } from "./builder";
 import { viewAnimations } from "./animations";
 import { viewSpellbook } from "./spellbook";
@@ -274,6 +274,13 @@ function renderPage() {
     builder: viewBuilder,
   };
   if (dataViews[current]) {
+    // For the Maps view, deep-link by pre-selecting the target map BEFORE it
+    // mounts (it isn't a searchable table). Other views apply focus after mount.
+    if (current === "maps" && pendingFocus?.query) {
+      const id = Number(pendingFocus.query);
+      pendingFocus = null;
+      if (Number.isFinite(id)) focusMap(id);
+    }
     dataViews[current](main);
     applyPendingFocus(main);
     return;
@@ -299,6 +306,8 @@ function renderPage() {
 // cross-link ("go to summon 42") lands filtered on that record. Retries briefly
 // because the data view fetches asynchronously before mounting its table.
 function applyPendingFocus(main: HTMLElement) {
+  // The Maps view handles its deep-link before mount (see renderPage), so any
+  // remaining pendingFocus here targets a searchable table view.
   if (!pendingFocus?.query) return;
   const query = pendingFocus.query;
   pendingFocus = null;

@@ -22,6 +22,17 @@ import {
   type MapDrawable,
 } from "./backend";
 
+// pendingMapId lets a cross-link (e.g. a Diagnostics "Fight map 5" issue)
+// deep-link straight to a specific map: main.ts calls focusMap(id) when
+// navigating to the Maps view, and viewMaps selects that map after loading
+// instead of defaulting to the first one. Consumed once, then cleared.
+let pendingMapId: number | null = null;
+
+// focusMap requests that the Maps view select map `id` on its next mount.
+export function focusMap(id: number): void {
+  pendingMapId = id;
+}
+
 // Special-cell types (match gamedata.SpecialCellTypeName) + a paint colour.
 // `base` is the client render-template id (staticEffects.dat SPECIAL area id),
 // which equals the magnitude of the tile's baked negative Bonus gfx and maps
@@ -121,7 +132,12 @@ export function viewMaps(container: HTMLElement) {
   listMaps()
     .then((maps) => {
       drawList(maps);
-      if (maps.length) select(maps[0].id);
+      // Honor a deep-link target (Diagnostics jump) if it exists in this map
+      // set, else default to the first map. Consumed once.
+      const want = pendingMapId;
+      pendingMapId = null;
+      const target = want != null && maps.some((m) => m.id === want) ? want : maps[0]?.id;
+      if (target != null) select(target);
     })
     .catch((err) => {
       listEl.innerHTML = `<div class="preview-error"><b>No maps.</b><div class="mono">${esc(
