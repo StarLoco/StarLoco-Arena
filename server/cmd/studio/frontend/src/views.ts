@@ -626,9 +626,43 @@ function mountSummonThumbs(host: HTMLElement, _rows: { ID: number; Gfx: number }
       mount.innerHTML = `<div class="anim-thumb-empty">no gfx</div>`;
       return;
     }
-    disposers.push(mountAnimThumb(mount, "animations.jar", `animations/${gfx}.sba`, 128));
+    // Size the canvas to match the box (row .sm = 46, hero = 96).
+    const size = mount.classList.contains("sm") ? 46 : 96;
+    disposers.push(mountAnimThumb(mount, "animations.jar", `animations/${gfx}.sba`, size));
   });
   summonThumbDisposers.set(host, disposers);
+}
+
+// summonHero renders a summon's detail banner: the live creature animation as
+// the icon, the name, inlined HP/AP/MP stat chips, and the cast-spell link.
+function summonHero(r: {
+  ID: number;
+  HP: number;
+  AP: number;
+  MP: number;
+  Gfx: number;
+  SpellID: number;
+}): string {
+  const name = nameOf("summons", r.ID) || `Summon ${r.ID}`;
+  const stat = (ico: string, label: string, v: number) =>
+    `<span class="hero-stat-inline"><span class="hs-ico">${ico}</span><b>${v}</b><span class="hs-l">${label}</span></span>`;
+  const thumb =
+    r.Gfx > 0
+      ? `<div class="summon-thumb hero" data-summon-gfx="${r.Gfx}"></div>`
+      : `<div class="summon-thumb hero"><div class="anim-thumb-empty">no gfx</div></div>`;
+  return `
+    <div class="entity-hero summon-hero">
+      ${thumb}
+      <div class="hero-main">
+        <div class="hero-title">${esc(name)} <span class="id-dim">(${r.ID})</span></div>
+        <div class="hero-stats-inline">
+          ${stat(gameIcon("hp", 15) || "\u2665", "HP", r.HP)}
+          ${stat(gameIcon("ap", 15) || "\u25C8", "AP", r.AP)}
+          ${stat(gameIcon("mp", 15) || "\u2316", "MP", r.MP)}
+        </div>
+        <div class="hero-sub-line">Creature gfx ${r.Gfx} \u00B7 casts ${crosslinkSpell(r.SpellID)}</div>
+      </div>
+    </div>`;
 }
 
 export function viewSummonings(c: HTMLElement) {
@@ -643,6 +677,17 @@ export function viewSummonings(c: HTMLElement) {
         { key: "mp", label: "MP", kind: "range", value: (r) => r.MP },
       ],
       columns: [
+        {
+          key: "icon",
+          label: "",
+          value: (r) => r.Gfx,
+          render: (r) =>
+            r.Gfx > 0
+              ? `<div class="summon-thumb sm" data-summon-gfx="${r.Gfx}"></div>`
+              : "\u2014",
+          width: "56px",
+          align: "center",
+        },
         {
           key: "name",
           label: "Name",
@@ -664,22 +709,7 @@ export function viewSummonings(c: HTMLElement) {
         );
         mountSummonThumbs(h, rows);
       },
-      detail: (r) =>
-        entityHero({
-          kind: "",
-          id: r.ID,
-          name: nameOf("summons", r.ID) || `Summon ${r.ID}`,
-          effects: null,
-          stats: [
-            [gameIcon("hp", 16) || "\u2665", "HP", String(r.HP)],
-            [gameIcon("ap", 16) || "\u25C8", "AP", String(r.AP)],
-            [gameIcon("mp", 16) || "\u2316", "MP", String(r.MP)],
-          ],
-        }) +
-        `<div class="detail-block"><div class="detail-title">Creature (gfx ${r.Gfx})</div>` +
-        `<div class="summon-thumb" data-summon-gfx="${r.Gfx}"></div></div>` +
-        `<div class="detail-block"><div class="detail-title">Cast spell</div>${crosslinkSpell(r.SpellID)}</div>` +
-        editFormHTML(summoningForm(r)),
+      detail: (r) => summonHero(r) + editFormHTML(summoningForm(r)),
     });
     if (host.parentElement) {
       installNewButton(host.parentElement, "summoning", "New summoning", () => viewSummonings(c));
