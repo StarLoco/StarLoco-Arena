@@ -9,8 +9,10 @@ import {
   listBackups,
   restoreBackup,
   deleteBackup,
+  validateData,
   type PushStatus,
   type BackupEntry,
+  type ValidationReport,
 } from "./backend";
 
 function esc(v: unknown): string {
@@ -32,6 +34,8 @@ export function viewDeploy(container: HTMLElement) {
     <div class="loading">Checking client\u2026</div>`;
 
   const selected = new Set<string>();
+  // The latest integrity report, gating the push button (errors block).
+  let report: ValidationReport | null = null;
 
   load();
 
@@ -47,10 +51,21 @@ export function viewDeploy(container: HTMLElement) {
       container.innerHTML = errBlock(status.error);
       return;
     }
+    // Run the data-integrity validator so deploy can warn/block on broken data.
+    try {
+      report = await validateData();
+    } catch {
+      report = null; // don't block deploy if validation itself fails to run
+    }
     // Pre-select every file that differs and is safe to push.
     selected.clear();
     for (const f of status.files) if (f.localOk && f.differs) selected.add(f.name);
     render(status);
+  }
+
+  // pushBlocked reports whether unresolved errors should prevent pushing.
+  function pushBlocked(): boolean {
+    return !!report && report.errors > 0;
   }
 
   function render(status: PushStatus) {
@@ -102,13 +117,17 @@ export function viewDeploy(container: HTMLElement) {
         </table>
       </div>
 
+      ${integrityBanner()}
+
       <div class="dp-actions">
         <div class="dp-summary">${
           changed
             ? `<b>${changed}</b> file${changed === 1 ? "" : "s"} differ from the client`
             : "The client is up to date with your edits"
         }</div>
-        <button class="primary dp-push" id="dpPush" ${selected.size ? "" : "disabled"}>
+        <button class="primary dp-push" id="dpPush" ${
+          selected.size && !pushBlocked() ? "" : "disabled"
+        }>
           \u2B06 Push ${selected.size || ""} to client
         </button>
         <span class="dp-status" id="dpStatus"></span>
@@ -210,17 +229,27 @@ export function viewDeploy(container: HTMLElement) {
       container.innerHTML = `<div class="page-head"><h1>Deploy</h1></div><div class="loading">Re-checking\u2026</div>`;
       load();
     });
+    container.querySelector<HTMLButtonElement>("[data-goto-diag]")?.addEventListener("click", () => {
+      window.dispatchEvent(
+        new CustomEvent("studio:navigate", { detail: { view: "diagnostics" } })
+      );
+    });
     container.querySelectorAll<HTMLInputElement>("[data-push]").forEach((cb) => {
       cb.addEventListener("change", () => {
         if (cb.checked) selected.add(cb.dataset.push!);
         else selected.delete(cb.dataset.push!);
         const btn = container.querySelector<HTMLButtonElement>("#dpPush")!;
-        btn.disabled = selected.size === 0;
+        btn.disabled = selected.size === 0 || pushBlocked();
         btn.textContent = `\u2B06 Push ${selected.size || ""} to client`;
       });
     });
     container.querySelector<HTMLButtonElement>("#dpPush")?.addEventListener("click", async () => {
       if (!selected.size) return;
+      if (pushBlocked()) {
+        const st = container.querySelector<HTMLElement>("#dpStatus")!;
+        st.innerHTML = `<span class="err">Resolve integrity errors before deploying.</span>`;
+        return;
+      }
       const names = [...selected];
       if (
         !confirm(
@@ -247,6 +276,41 @@ export function viewDeploy(container: HTMLElement) {
       }
     });
     void status;
+  }
+
+  // integrityBanner renders the pre-flight validation summary. Errors block the
+  // push (deploying broken references would ship a broken client); warnings are
+  // advisory. Clean data gets a compact confirmation. A link opens Diagnostics.
+  function integrityBanner(): string {
+    if (!report) return "";
+    const diag = `<button class="xlink" data-goto-diag>View Diagnostics <span class="xlink-ico">\u2197</span></button>`;
+    if (report.errors > 0) {
+      return `<div class="dp-integrity err">
+        <span class="dpi-ico">\u2716</span>
+        <div class="dpi-body">
+          <b>Deploy blocked \u2014 ${report.errors} integrity error${report.errors === 1 ? "" : "s"}</b>
+          <div>Fix the broken references before pushing, or you'll ship a client that misbehaves.${
+            report.warnings ? ` (${report.warnings} warning${report.warnings === 1 ? "" : "s"} too.)` : ""
+          }</div>
+        </div>
+        ${diag}
+      </div>`;
+    }
+    if (report.warnings > 0) {
+      return `<div class="dp-integrity warn">
+        <span class="dpi-ico">\u26A0</span>
+        <div class="dpi-body">
+          <b>${report.warnings} integrity warning${report.warnings === 1 ? "" : "s"}</b>
+          <div>Deploy is allowed, but review these first \u2014 they may indicate incomplete edits.</div>
+        </div>
+        ${diag}
+      </div>`;
+    }
+    return `<div class="dp-integrity ok">
+      <span class="dpi-ico">\u2714</span>
+      <div class="dpi-body"><b>Data integrity: clean</b><div>All ${report.checked.toLocaleString()} records validated with no issues.</div></div>
+      ${diag}
+    </div>`;
   }
 
   function errBlock(msg: string): string {
