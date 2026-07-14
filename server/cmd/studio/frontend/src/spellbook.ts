@@ -5,7 +5,7 @@
 
 import { getSpells, type Spell } from "./backend";
 import { loadNames, nameOf, label, iconCell, wireIconCells } from "./names";
-import { loadLore, decodeEffectText } from "./effectlore";
+import { loadLore, decodeEffectText, gameIcon } from "./effectlore";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -58,7 +58,9 @@ function render(container: HTMLElement, spells: Spell[]) {
               <div class="sb-spell-name">${esc(name)}</div>
               <div class="sb-spell-sum">${esc(summary)}</div>
             </div>
-            <div class="sb-spell-ap">${s.ActionPointsCost}<span>AP</span></div>
+            <div class="sb-spell-ap" title="${s.ActionPointsCost} AP">
+              <b>${s.ActionPointsCost}</b>${gameIcon("ap", 15) || "<span>AP</span>"}
+            </div>
           </button>`;
         })
         .join("");

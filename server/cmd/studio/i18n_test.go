@@ -2,6 +2,20 @@ package main
 
 import "testing"
 
+// TestParseProperties_Latin1 confirms accented values stored as raw ISO-8859-1
+// bytes (as Java .properties are) decode to correct UTF-8 runes rather than
+// mojibake. 0xE8='è', 0xE9='é', 0xE2='â'.
+func TestParseProperties_Latin1(t *testing.T) {
+	raw := []byte("content.3.17=Fl\xE8che Glac\xE9e\ncontent.5.9=L'\xE9tendue de Cr\xE2\n")
+	m := parseProperties(raw)
+	if got, want := m["3.17"], "Flèche Glacée"; got != want {
+		t.Errorf("3.17 = %q, want %q", got, want)
+	}
+	if got, want := m["5.9"], "L'étendue de Crâ"; got != want {
+		t.Errorf("5.9 = %q, want %q", got, want)
+	}
+}
+
 func TestParseProperties_Escapes(t *testing.T) {
 	raw := []byte(
 		"# a comment\n" +

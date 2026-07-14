@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // This file resolves the human-readable names/descriptions the client stores
@@ -131,6 +132,13 @@ func (a *App) nameWithID(category int, id int32) string {
 //   - trailing-backslash line continuations are joined
 //   - \uXXXX, \n, \t, \r, \\, \=, \: escapes in values are decoded
 func parseProperties(raw []byte) map[string]string {
+	// Java .properties files are ISO-8859-1 (Latin-1): each byte 0x00-0xFF is
+	// the Unicode code point of the same value. Reading them as UTF-8 mangles
+	// accented characters (é 0xE9 -> replacement char). Transcode Latin-1 ->
+	// UTF-8 up front so line scanning and value decoding see correct runes.
+	// (Non-ASCII escapes still come through \uXXXX, handled in decode.)
+	raw = latin1ToUTF8(raw)
+
 	out := map[string]string{}
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
@@ -168,6 +176,29 @@ func parseProperties(raw []byte) map[string]string {
 			continue
 		}
 		out[sub] = decodePropertyValue(val)
+	}
+	return out
+}
+
+// latin1ToUTF8 transcodes an ISO-8859-1 byte buffer to UTF-8. Each input byte
+// is a Unicode code point 0x00-0xFF, so bytes < 0x80 pass through and 0x80-0xFF
+// become their 2-byte UTF-8 encoding. If the input is already valid ASCII this
+// is a no-op copy.
+func latin1ToUTF8(raw []byte) []byte {
+	// Fast path: pure ASCII needs no change.
+	ascii := true
+	for _, b := range raw {
+		if b >= 0x80 {
+			ascii = false
+			break
+		}
+	}
+	if ascii {
+		return raw
+	}
+	out := make([]byte, 0, len(raw)+len(raw)/8)
+	for _, b := range raw {
+		out = utf8.AppendRune(out, rune(b))
 	}
 	return out
 }
