@@ -1595,6 +1595,30 @@ table.detail-tb td {
 .anim-play:hover {
   filter: brightness(1.1);
 }
+.anim-step {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.anim-step:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.anim-stage:focus {
+  outline: 2px solid var(--accent-glow);
+  outline-offset: -2px;
+}
+.anim-stage:focus-visible {
+  outline: 2px solid var(--accent);
+}
 .anim-transport #animScrub {
   flex: 1;
   accent-color: var(--accent);

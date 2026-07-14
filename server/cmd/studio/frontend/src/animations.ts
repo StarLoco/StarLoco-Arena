@@ -314,11 +314,13 @@ class AnimationPlayer {
         </div>
       </div>
       ${layerChips}
-      <div class="anim-stage bg-${this.bg}">
+      <div class="anim-stage bg-${this.bg}" tabindex="0" title="Click here, then use \u2190/\u2192 to step frames, space to play/pause">
         <canvas id="animCanvas" width="640" height="420"></canvas>
       </div>
       <div class="anim-transport">
+        <button id="animStepBack" class="anim-step" title="Previous frame (\u2190)">\u23EE</button>
         <button id="animPlay" class="anim-play">${this.playing ? "\u23F8" : "\u25B6"}</button>
+        <button id="animStepFwd" class="anim-step" title="Next frame (\u2192)">\u23ED</button>
         <input type="range" id="animScrub" min="0" max="${Math.max(0, frameCount - 1)}" value="${
       this.frame
     }" />
@@ -391,6 +393,8 @@ class AnimationPlayer {
       ($("#animPlay") as HTMLButtonElement).textContent = this.playing ? "\u23F8 Pause" : "\u25B6 Play";
       this.lastTs = 0;
     });
+    $("#animStepBack").addEventListener("click", () => this.stepFrame(-1));
+    $("#animStepFwd").addEventListener("click", () => this.stepFrame(1));
     const scrub = $("#animScrub") as HTMLInputElement;
     scrub.addEventListener("input", () => {
       this.playing = false;
@@ -446,6 +450,27 @@ class AnimationPlayer {
     const clear = this.root.querySelector<HTMLButtonElement>("#animClearLayers");
     if (clear && this.clearEquip) clear.addEventListener("click", this.clearEquip);
 
+    // Keyboard frame stepping, scoped to the view root (dies with the DOM on
+    // navigation, so no cross-view listener leak). Left/right step frames;
+    // space toggles play. Ignored while typing in a field.
+    this.root.addEventListener("keydown", (e) => {
+      const t = e.target as HTMLElement;
+      if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        this.stepFrame(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        this.stepFrame(1);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        this.playing = !this.playing;
+        const pbtn = this.root.querySelector<HTMLButtonElement>("#animPlay");
+        if (pbtn) pbtn.textContent = this.playing ? "\u23F8 Pause" : "\u25B6 Play";
+        this.lastTs = 0;
+      }
+    });
+
     // A/B compare controls.
     this.root.querySelector<HTMLSelectElement>("#animCompareMode")?.addEventListener("change", (e) => {
       this.compareMode = (e.target as HTMLSelectElement).value as "off" | "overlay" | "side";
@@ -468,6 +493,8 @@ class AnimationPlayer {
     let sx = 0;
     let sy = 0;
     this.canvas.addEventListener("pointerdown", (e) => {
+      // Focus the stage so arrow-key frame stepping works after interacting.
+      this.root.querySelector<HTMLElement>(".anim-stage")?.focus();
       dragging = true;
       sx = e.clientX;
       sy = e.clientY;
@@ -845,6 +872,23 @@ class AnimationPlayer {
     const scrub = this.root.querySelector<HTMLInputElement>("#animScrub");
     if (el && this.pb) el.textContent = `${this.frame + 1} / ${this.pb.frames.length}`;
     if (scrub) scrub.value = String(this.frame);
+  }
+
+  // stepFrame pauses playback and advances the current frame by delta, wrapping
+  // around the clip. Used by the prev/next buttons and the arrow keys for
+  // precise frame-by-frame inspection (pairs well with onion-skinning).
+  private stepFrame(delta: number) {
+    const pb = this.pb;
+    if (!pb || pb.frames.length === 0) return;
+    if (this.playing) {
+      this.playing = false;
+      const pbtn = this.root.querySelector<HTMLButtonElement>("#animPlay");
+      if (pbtn) pbtn.textContent = "\u25B6 Play";
+    }
+    const n = pb.frames.length;
+    this.frame = ((this.frame + delta) % n + n) % n;
+    this.draw();
+    this.updateFrameNo();
   }
 
   private start() {
