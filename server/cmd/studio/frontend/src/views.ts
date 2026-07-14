@@ -32,6 +32,7 @@ import { simulatorHTML, wireSimulator } from "./simulator";
 import { wireCrosslinks } from "./crosslink";
 import { mountEffectEditor, type EffectParentKind } from "./effecteditor";
 import { newRecordButton, wireNewRecordButton, type CreateKind } from "./recordcreate";
+import { jsonButton, wireJsonButton } from "./jsonio";
 import { mountScriptEditor, loadScriptIndex, hasScript } from "./scripteditor";
 import { setDirty, markClean } from "./dirty";
 
@@ -104,6 +105,21 @@ function installNewButton(
   }
   actions.insertAdjacentHTML("beforeend", newRecordButton(kind, label));
   wireNewRecordButton(actions, () => reload());
+}
+
+// installJsonButton injects the bulk JSON import/export pill into the page head
+// for a record kind; import reloads the view via `reload`.
+function installJsonButton(container: HTMLElement, kind: string, reload: () => void) {
+  const head = container.querySelector<HTMLElement>(".page-head");
+  if (!head) return;
+  let actions = head.querySelector<HTMLElement>(".page-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.className = "page-actions";
+    head.appendChild(actions);
+  }
+  actions.insertAdjacentHTML("beforeend", jsonButton());
+  wireJsonButton(actions, kind, () => reload());
 }
 
 // Renders an effects list in human, game-tooltip form (shared by
@@ -262,7 +278,10 @@ export function viewSpells(c: HTMLElement) {
       const t = ev.target as HTMLElement;
       if (t.closest(".spell-edit") && t.dataset.saveSpell == null) ev.stopPropagation();
     });
-    if (host.parentElement) installNewButton(host.parentElement, "spell", "New spell", () => viewSpells(c));
+    if (host.parentElement) {
+      installNewButton(host.parentElement, "spell", "New spell", () => viewSpells(c));
+      installJsonButton(host.parentElement, "spells", () => viewSpells(c));
+    }
   });
 }
 
@@ -451,6 +470,7 @@ export function viewCards(c: HTMLElement) {
         newRecordButton("fighterCard", "New fighter card") + newRecordButton("coachCard", "New coach card")
       );
       wireNewRecordButton(c, () => viewCards(c));
+      installJsonButton(c, "cards", () => viewCards(c));
       const tabs = document.createElement("div");
       tabs.className = "subtabs";
       tabs.innerHTML = `<button class="subtab active" data-t="coach">Coach cards (${coach.length})</button><button class="subtab" data-t="fighter">Fighter cards (${fighter.length})</button>`;
@@ -622,8 +642,10 @@ export function viewSummonings(c: HTMLElement) {
         `<div class="detail-block"><div class="detail-title">Cast spell</div>${crosslinkSpell(r.SpellID)}</div>` +
         editFormHTML(summoningForm(r)),
     });
-    if (host.parentElement)
+    if (host.parentElement) {
       installNewButton(host.parentElement, "summoning", "New summoning", () => viewSummonings(c));
+      installJsonButton(host.parentElement, "summonings", () => viewSummonings(c));
+    }
   });
 }
 
@@ -757,6 +779,8 @@ export function viewStaticEffects(c: HTMLElement) {
         ${effectsDetail(r.Effects)}
         <div class="sc-mount" data-sc-script="${r.ScriptID}"></div>`,
     });
+    if (host.parentElement)
+      installJsonButton(host.parentElement, "staticEffects", () => viewStaticEffects(c));
   });
 }
 
@@ -833,5 +857,6 @@ export function viewEvents(c: HTMLElement) {
         editFormHTML(eventForm(r)) +
         `<div class="fe-mount" data-fe-kind="event" data-fe-id="${r.ID}"></div>`,
     });
+    if (host.parentElement) installJsonButton(host.parentElement, "events", () => viewEvents(c));
   });
 }

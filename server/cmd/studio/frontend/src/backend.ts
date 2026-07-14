@@ -335,6 +335,8 @@ type AppBindings = {
   GetSpellScript(scriptId: number): Promise<SpellScript>;
   SaveSpellScript(scriptId: number, source: string): Promise<RepackResult>;
   ListScriptIDs(): Promise<number[]>;
+  ExportRecordsJSON(kind: string): Promise<string>;
+  ImportRecordsJSON(kind: string, jsonDoc: string): Promise<ExportResult>;
   ListBackups(): Promise<BackupsResult>;
   RestoreBackup(backupPath: string): Promise<ExportResult>;
   DeleteBackup(backupPath: string): Promise<void>;
@@ -890,6 +892,21 @@ export async function listScriptIDs(): Promise<number[]> {
   const b = await bindings();
   if (!b) return [];
   return b.ListScriptIDs();
+}
+
+// --- JSON bulk import/export ---
+export async function exportRecordsJSON(kind: string): Promise<string> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.ExportRecordsJSON(kind);
+}
+export async function importRecordsJSON(
+  kind: string,
+  jsonDoc: string
+): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.ImportRecordsJSON(kind, jsonDoc);
 }
 
 export async function getPushStatus(): Promise<PushStatus> {
