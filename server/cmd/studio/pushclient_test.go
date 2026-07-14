@@ -63,3 +63,23 @@ func TestDiffPushFile_UnknownName(t *testing.T) {
 		t.Error("expected error for non-pushable file")
 	}
 }
+
+// TestDiffAllPushFiles_RealClient: with unedited local data matching the shipped
+// client, the consolidated review omits identical files -> empty result. Any
+// entry that IS returned must be non-identical and carry a note.
+func TestDiffAllPushFiles_RealClient(t *testing.T) {
+	a := newAppWithDataAndClient(t)
+	diffs, err := a.DiffAllPushFiles()
+	if err != nil {
+		t.Fatalf("DiffAllPushFiles: %v", err)
+	}
+	for _, d := range diffs {
+		if d.Identical {
+			t.Errorf("identical file %q should have been omitted from the review", d.Name)
+		}
+		if d.Note == "" {
+			t.Errorf("diff for %q missing note", d.Name)
+		}
+	}
+	t.Logf("consolidated review returned %d changed file(s)", len(diffs))
+}

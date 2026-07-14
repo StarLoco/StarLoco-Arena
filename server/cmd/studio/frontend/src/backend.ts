@@ -358,6 +358,7 @@ type AppBindings = {
   GetPushStatus(): Promise<PushStatus>;
   PushDataToClient(names: string[]): Promise<RepackResult>;
   DiffPushFile(name: string): Promise<PushDiff>;
+  DiffAllPushFiles(): Promise<PushDiff[]>;
   SaveJarText(jar: string, entry: string, content: string): Promise<RepackResult>;
   ReplaceJarEntry(jar: string, entry: string, base64Data: string): Promise<RepackResult>;
   GetSpellScript(scriptId: number): Promise<SpellScript>;
@@ -972,6 +973,11 @@ export async function diffPushFile(name: string): Promise<PushDiff> {
   const b = await bindings();
   if (!b) throw new Error(NO_STORE);
   return b.DiffPushFile(name);
+}
+export async function diffAllPushFiles(): Promise<PushDiff[]> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.DiffAllPushFiles();
 }
 export async function pushDataToClient(names: string[]): Promise<RepackResult> {
   const b = await bindings();

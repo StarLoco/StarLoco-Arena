@@ -2285,6 +2285,49 @@ button.mini-primary:hover {
   color: var(--bad);
 }
 
+/* consolidated "review all pending changes" */
+.dp-review {
+  margin: 14px 0 4px;
+}
+.dp-review-btn {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.dp-review-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.dp-review-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dp-review-file {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 10px 12px;
+}
+.dp-review-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.dp-review-file .dp-diff {
+  margin: 0;
+  border: none;
+  padding: 0;
+  background: none;
+}
+
 .dp-actions {
   display: flex;
   align-items: center;

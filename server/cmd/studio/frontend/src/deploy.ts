@@ -12,6 +12,7 @@ import {
   validateData,
   diffBackup,
   diffPushFile,
+  diffAllPushFiles,
   type PushStatus,
   type BackupEntry,
   type ValidationReport,
@@ -156,6 +157,17 @@ export function viewDeploy(container: HTMLElement) {
           <tbody>${rows}</tbody>
         </table>
       </div>
+
+      ${
+        changed
+          ? `<div class="dp-review">
+               <button class="dp-review-btn" id="dpReviewBtn">\u25B8 Review all ${changed} pending change${
+              changed === 1 ? "" : "s"
+            }</button>
+               <div class="dp-review-body" id="dpReviewBody" hidden></div>
+             </div>`
+          : ""
+      }
 
       ${integrityBanner()}
 
@@ -349,6 +361,37 @@ export function viewDeploy(container: HTMLElement) {
         new CustomEvent("studio:navigate", { detail: { view: "diagnostics" } })
       );
     });
+
+    // Consolidated "review all pending changes" block.
+    const reviewBtn = container.querySelector<HTMLButtonElement>("#dpReviewBtn");
+    const reviewBody = container.querySelector<HTMLElement>("#dpReviewBody");
+    if (reviewBtn && reviewBody) {
+      let loaded = false;
+      reviewBtn.addEventListener("click", async () => {
+        const open = reviewBody.hidden;
+        reviewBody.hidden = !open;
+        reviewBtn.innerHTML = reviewBtn.innerHTML.replace(open ? "\u25B8" : "\u25BE", open ? "\u25BE" : "\u25B8");
+        if (open && !loaded) {
+          reviewBody.innerHTML = `<div class="dp-diff-loading">Comparing every changed file with the client\u2026</div>`;
+          try {
+            const diffs = await diffAllPushFiles();
+            loaded = true;
+            reviewBody.innerHTML = diffs.length
+              ? diffs
+                  .map(
+                    (d) => `<div class="dp-review-file">
+                        <div class="dp-review-name mono">${esc(d.name)}</div>
+                        ${renderPushDiff(d)}
+                      </div>`
+                  )
+                  .join("")
+              : `<div class="detail-empty">No differing files.</div>`;
+          } catch (err) {
+            reviewBody.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
+          }
+        }
+      });
+    }
 
     // Per-file record-level diff (expand/collapse) between local and client.
     container.querySelectorAll<HTMLButtonElement>("[data-diff-file]").forEach((btn) => {

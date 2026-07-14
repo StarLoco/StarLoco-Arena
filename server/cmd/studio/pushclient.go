@@ -275,6 +275,35 @@ func (a *App) DiffPushFile(name string) (PushDiff, error) {
 	return out, nil
 }
 
+// DiffAllPushFiles returns a PushDiff for every pushable data file that DIFFERS
+// from the client (identical or locally-missing files are omitted), so the UI
+// can show a single consolidated "review everything you're about to push"
+// summary. Read-only; each file is gated by DiffPushFile's own round-trip.
+func (a *App) DiffAllPushFiles() ([]PushDiff, error) {
+	if !a.paths.DataDirValid {
+		return nil, fmt.Errorf("no valid data directory selected")
+	}
+	var out []PushDiff
+	for _, spec := range pushableFiles {
+		// Skip files that don't exist locally (nothing to push).
+		if _, err := os.Stat(filepath.Join(a.paths.DataDir, spec.name)); err != nil {
+			continue
+		}
+		d, err := a.DiffPushFile(spec.name)
+		if err != nil {
+			// Surface the problem as a diff entry rather than aborting the whole
+			// review (e.g. a file whose encoder isn't faithful).
+			out = append(out, PushDiff{Name: spec.name, Note: "cannot diff: " + err.Error()})
+			continue
+		}
+		if d.Identical {
+			continue // no change -> not part of the review
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
 // summarizePushDiff builds a one-line human summary for a PushDiff.
 func summarizePushDiff(d PushDiff) string {
 	if !d.InClient {
