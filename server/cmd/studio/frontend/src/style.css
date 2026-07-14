@@ -3403,25 +3403,66 @@ button.mini-primary:hover {
   padding: 14px 12px;
 }
 .sc-codewrap {
+  position: relative;
   max-height: 460px;
-  overflow: auto;
+  overflow: hidden;
   background: #0b0e14;
 }
+/* The highlight layer and the textarea MUST share identical box + font metrics
+   so the colored text sits exactly under the (transparent) editable text. */
+.sc-hl,
 .sc-code {
-  display: block;
-  width: 100%;
-  min-height: 220px;
-  border: none;
-  outline: none;
-  resize: vertical;
+  margin: 0;
   padding: 12px 14px;
-  background: transparent;
-  color: #d7dce8;
+  border: 0;
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.55;
   tab-size: 2;
   white-space: pre;
+  word-wrap: normal;
+  overflow: auto;
+}
+.sc-hl {
+  position: absolute;
+  inset: 0;
+  color: #d7dce8;
+  pointer-events: none;
+  z-index: 0;
+}
+.sc-code {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  max-height: 460px;
+  resize: vertical;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: #d7dce8;
+}
+.sc-code::selection {
+  background: rgba(79, 157, 255, 0.3);
+}
+/* Lua token colors */
+.lh-comment {
+  color: #5c6675;
+  font-style: italic;
+}
+.lh-string {
+  color: #8fd98f;
+}
+.lh-number {
+  color: #ffb454;
+}
+.lh-kw {
+  color: #c58fff;
+  font-weight: 600;
+}
+.lh-builtin {
+  color: #4f9dff;
 }
 .sc-actions {
   display: flex;

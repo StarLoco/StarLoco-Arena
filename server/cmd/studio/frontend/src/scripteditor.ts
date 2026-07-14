@@ -11,6 +11,7 @@ import {
   listScriptIDs,
   type SpellScript,
 } from "./backend";
+import { highlightLua } from "./luahl";
 
 // scriptIdSet caches which script ids actually have a Lua file, so views can
 // badge "has script" at a glance without a fetch per row. Loaded once.
@@ -87,6 +88,7 @@ function render(host: HTMLElement, sc: SpellScript) {
       <span class="sc-meta">${lineCount} lines \u00B7 ${sc.bytes} B</span>
     </div>
     <div class="sc-codewrap">
+      <pre class="sc-hl mono" aria-hidden="true"></pre>
       <textarea class="sc-code mono" spellcheck="false" wrap="off">${esc(sc.source)}</textarea>
     </div>
     <div class="sc-actions">
@@ -96,7 +98,21 @@ function render(host: HTMLElement, sc: SpellScript) {
     </div>`;
 
   const ta = editor.querySelector<HTMLTextAreaElement>(".sc-code")!;
+  const hl = editor.querySelector<HTMLElement>(".sc-hl")!;
   const original = sc.source;
+
+  // syncHighlight repaints the highlight layer + keeps it scroll-aligned with
+  // the textarea. Called on every input and scroll.
+  const syncHighlight = () => {
+    hl.innerHTML = highlightLua(ta.value);
+    hl.scrollTop = ta.scrollTop;
+    hl.scrollLeft = ta.scrollLeft;
+  };
+  syncHighlight();
+  ta.addEventListener("scroll", () => {
+    hl.scrollTop = ta.scrollTop;
+    hl.scrollLeft = ta.scrollLeft;
+  });
 
   // Keep the drawer from collapsing while interacting with the editor.
   editor.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -114,6 +130,7 @@ function render(host: HTMLElement, sc: SpellScript) {
       ta.value = ta.value.slice(0, start) + "  " + ta.value.slice(end);
       ta.selectionStart = ta.selectionEnd = start + 2;
       markDirty();
+      syncHighlight();
     }
   });
 
@@ -127,12 +144,16 @@ function render(host: HTMLElement, sc: SpellScript) {
       status.className = "sc-status";
     }
   };
-  ta.addEventListener("input", markDirty);
+  ta.addEventListener("input", () => {
+    markDirty();
+    syncHighlight();
+  });
 
   editor.querySelector<HTMLButtonElement>("[data-revert]")?.addEventListener("click", (e) => {
     e.stopPropagation();
     ta.value = original;
     markDirty();
+    syncHighlight();
   });
 
   editor.querySelector<HTMLButtonElement>("[data-save]")?.addEventListener("click", async (e) => {
