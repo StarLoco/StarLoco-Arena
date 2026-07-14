@@ -1692,6 +1692,9 @@ table.detail-tb td {
 }
 .anim-addlayer {
   margin-left: auto;
+}
+.anim-addlayer,
+.anim-compare {
   background: var(--bg-elev-2);
   color: var(--text-faint);
   border: 1px solid var(--border-soft);
@@ -1702,12 +1705,22 @@ table.detail-tb td {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.entry-item:hover .anim-addlayer {
+.entry-item:hover .anim-addlayer,
+.entry-item:hover .anim-compare {
   opacity: 1;
 }
-.anim-addlayer:hover {
+.anim-addlayer:hover,
+.anim-compare:hover {
   border-color: var(--accent, #6ea8fe);
   color: var(--text);
+}
+.anim-compare:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+.anim-hint-inline {
+  font-size: 11px;
+  color: var(--text-faint);
 }
 #animStructPanel {
   padding: 8px 16px 16px;

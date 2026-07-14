@@ -18,6 +18,7 @@ import {
   type PlayerOp,
   type LayerRef,
 } from "./backend";
+import { encodeGif, type GifFrame } from "./gifenc";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -87,6 +88,9 @@ export function viewAnimations(container: HTMLElement) {
             <button class="anim-addlayer" title="Add as equipment layer" data-jar="${esc(
               a.jar
             )}" data-path="${esc(a.path)}" data-name="${esc(a.name)}">+layer</button>
+            <button class="anim-compare" title="Compare against the current animation (B)" data-jar="${esc(
+              a.jar
+            )}" data-path="${esc(a.path)}" data-name="${esc(a.name)}">vs B</button>
           </div>`
           )
           .join("")}
@@ -102,7 +106,8 @@ export function viewAnimations(container: HTMLElement) {
     });
     listEl.querySelectorAll<HTMLElement>(".entry-item").forEach((el) => {
       el.addEventListener("click", (ev) => {
-        if ((ev.target as HTMLElement).classList.contains("anim-addlayer")) return;
+        const t = ev.target as HTMLElement;
+        if (t.classList.contains("anim-addlayer") || t.classList.contains("anim-compare")) return;
         base = { jar: el.dataset.jar!, path: el.dataset.path!, name: el.dataset.name! };
         open();
       });
@@ -112,6 +117,22 @@ export function viewAnimations(container: HTMLElement) {
         ev.stopPropagation();
         equipment.push({ jar: btn.dataset.jar!, path: btn.dataset.path!, name: btn.dataset.name! });
         open();
+      });
+    });
+    listEl.querySelectorAll<HTMLButtonElement>(".anim-compare").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (!base) {
+          // Nothing loaded yet: treat the clicked item as A instead.
+          base = { jar: btn.dataset.jar!, path: btn.dataset.path!, name: btn.dataset.name! };
+          open();
+          return;
+        }
+        void player.loadCompare({
+          jar: btn.dataset.jar!,
+          path: btn.dataset.path!,
+          name: btn.dataset.name!,
+        });
       });
     });
   }
@@ -151,6 +172,14 @@ class AnimationPlayer {
   private equipment: Layer[] = [];
   private clearEquip: (() => void) | null = null;
 
+  // A/B compare: an optional second playback overlaid or shown side-by-side,
+  // synced to A by progress fraction.
+  private pbB: AnimationPlayback | null = null;
+  private imagesB = new Map<number, HTMLImageElement>();
+  private layerB: Layer | null = null;
+  private compareMode: "off" | "overlay" | "side" = "off";
+  private compareAlpha = 0.5;
+
   constructor(root: HTMLElement) {
     this.root = root;
   }
@@ -188,6 +217,35 @@ class AnimationPlayer {
     await this.setPlayback(pb);
   }
 
+  // loadCompare loads a second animation ("B") for A/B comparison and switches
+  // to overlay mode. Called by the view when the user picks a compare target.
+  async loadCompare(layer: Layer) {
+    if (!this.pb) return;
+    this.layerB = layer;
+    try {
+      const pb = await getAnimationPlayback(layer.jar, layer.path, ANIM_DEFAULT_SYMBOL);
+      await this.preloadInto(pb.bitmaps, this.imagesB);
+      this.pbB = pb;
+      if (this.compareMode === "off") this.compareMode = "overlay";
+      this.renderShell();
+      this.fit();
+      this.start();
+    } catch {
+      this.pbB = null;
+      this.layerB = null;
+    }
+  }
+
+  private clearCompare() {
+    this.pbB = null;
+    this.layerB = null;
+    this.imagesB.clear();
+    this.compareMode = "off";
+    this.renderShell();
+    this.fit();
+    this.start();
+  }
+
   private async setPlayback(pb: AnimationPlayback) {
     this.pb = pb;
     this.frame = 0;
@@ -201,13 +259,22 @@ class AnimationPlayer {
 
   private preload(bitmaps: PlayerBitmap[]): Promise<void> {
     this.images.clear();
+    return this.preloadInto(bitmaps, this.images);
+  }
+
+  // preloadInto decodes each bitmap's data URL into the given image map.
+  private preloadInto(
+    bitmaps: PlayerBitmap[],
+    map: Map<number, HTMLImageElement>
+  ): Promise<void> {
+    map.clear();
     const jobs = bitmaps.map(
       (bm) =>
         new Promise<void>((resolve) => {
           if (!bm.dataUrl) return resolve();
           const img = new Image();
           img.onload = () => {
-            this.images.set(bm.id, img);
+            map.set(bm.id, img);
             resolve();
           };
           img.onerror = () => resolve();
@@ -287,6 +354,22 @@ class AnimationPlayer {
         <div class="anim-group">
           <button id="animExportFrame" title="Download the current frame as PNG">\u2B07 Frame</button>
           <button id="animExportSheet" title="Download all frames as a sprite sheet PNG">\u2B07 Sheet</button>
+          <button id="animExportGif" title="Download the animation as a looping GIF">\u2B07 GIF</button>
+        </div>
+        <div class="anim-group">
+          ${
+            this.pbB
+              ? `<label class="anim-ctl">compare
+                  <select id="animCompareMode">
+                    <option value="overlay" ${this.compareMode === "overlay" ? "selected" : ""}>overlay</option>
+                    <option value="side" ${this.compareMode === "side" ? "selected" : ""}>side by side</option>
+                    <option value="off" ${this.compareMode === "off" ? "selected" : ""}>off</option>
+                  </select></label>
+                <label class="anim-ctl">B \u03B1 <input type="range" id="animCompareAlpha" min="0.1" max="1" step="0.05" value="${this.compareAlpha}" ${this.compareMode === "overlay" ? "" : "disabled"} /></label>
+                <span class="anim-tag" title="Compared animation (B)">B: ${esc(this.layerB?.name ?? "")}</span>
+                <button id="animClearCompare" title="Stop comparing">\u00D7</button>`
+              : `<span class="anim-hint-inline">Use <b>vs B</b> in the list to compare two animations.</span>`
+          }
         </div>
         <div class="anim-group anim-group-right">
           <select id="animSymbol" class="anim-symsel" title="Symbol / timeline">${symOpts}</select>
@@ -357,8 +440,28 @@ class AnimationPlayer {
     this.root.querySelector<HTMLButtonElement>("#animExportSheet")?.addEventListener("click", () =>
       this.exportSheet()
     );
+    this.root.querySelector<HTMLButtonElement>("#animExportGif")?.addEventListener("click", (e) =>
+      this.exportGif(e.currentTarget as HTMLButtonElement)
+    );
     const clear = this.root.querySelector<HTMLButtonElement>("#animClearLayers");
     if (clear && this.clearEquip) clear.addEventListener("click", this.clearEquip);
+
+    // A/B compare controls.
+    this.root.querySelector<HTMLSelectElement>("#animCompareMode")?.addEventListener("change", (e) => {
+      this.compareMode = (e.target as HTMLSelectElement).value as "off" | "overlay" | "side";
+      const alpha = this.root.querySelector<HTMLInputElement>("#animCompareAlpha");
+      if (alpha) alpha.disabled = this.compareMode !== "overlay";
+      this.draw();
+    });
+    this.root
+      .querySelector<HTMLInputElement>("#animCompareAlpha")
+      ?.addEventListener("input", (e) => {
+        this.compareAlpha = parseFloat((e.target as HTMLInputElement).value) || 0.5;
+        this.draw();
+      });
+    this.root
+      .querySelector<HTMLButtonElement>("#animClearCompare")
+      ?.addEventListener("click", () => this.clearCompare());
 
     // Drag-to-pan.
     let dragging = false;
@@ -463,7 +566,9 @@ class AnimationPlayer {
     this.drawCheckerboard(ctx, cw, ch);
 
     const vs = this.baseScale * this.zoom;
-    const vx = cw / 2 - vs * this.baseCenterX + this.panX;
+    // In side-by-side compare, nudge A to the left half of the stage.
+    const sideShift = this.pbB && this.compareMode === "side" ? cw / 4 : 0;
+    const vx = cw / 2 - vs * this.baseCenterX + this.panX - sideShift;
     const vy = ch / 2 + vs * this.baseCenterY + this.panY;
 
     // Onion-skinning: ghost the neighbouring frames so motion is visible.
@@ -476,6 +581,33 @@ class AnimationPlayer {
 
     const frame = pb.frames[this.frame];
     if (frame) this.drawFrameOps(ctx, frame, vs, vx, vy, 1, null);
+
+    // A/B compare: render the second animation, synced to A by progress.
+    if (this.pbB && this.compareMode !== "off" && this.pbB.frames.length) {
+      const frac = pb.frames.length > 1 ? this.frame / (pb.frames.length - 1) : 0;
+      const bIdx = Math.min(
+        this.pbB.frames.length - 1,
+        Math.round(frac * (this.pbB.frames.length - 1))
+      );
+      const frameB = this.pbB.frames[bIdx];
+      if (frameB) {
+        if (this.compareMode === "overlay") {
+          this.drawFrameOps(ctx, frameB, vs, vx, vy, this.compareAlpha, null, this.imagesB);
+        } else {
+          // Side-by-side: draw B centered in the right half.
+          const bvx = cw / 2 - vs * this.baseCenterX + this.panX + cw / 4;
+          this.drawFrameOps(ctx, frameB, vs, bvx, vy, 1, null, this.imagesB);
+          // Divider line.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.globalAlpha = 0.35;
+          ctx.strokeStyle = "#4f9dff";
+          ctx.beginPath();
+          ctx.moveTo(cw / 2, 0);
+          ctx.lineTo(cw / 2, ch);
+          ctx.stroke();
+        }
+      }
+    }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
@@ -491,10 +623,12 @@ class AnimationPlayer {
     vx: number,
     vy: number,
     globalAlpha: number,
-    ghostColor: string | null
+    ghostColor: string | null,
+    imageMap?: Map<number, HTMLImageElement>
   ) {
+    const images = imageMap ?? this.images;
     for (const op of frame.ops) {
-      const img = this.images.get(op.bitmapId);
+      const img = images.get(op.bitmapId);
       if (!img) continue;
       const [a, b, c, d, e, f] = op.matrix;
       ctx.setTransform(vs * a, -vs * b, vs * c, -vs * d, vs * e + vx, -vs * f + vy);
@@ -571,6 +705,62 @@ class AnimationPlayer {
     }
     const name = `${this.animBaseName()}_sheet_${cols}x${rows}.png`;
     sheet.toBlob((b) => b && this.download(b, name), "image/png");
+  }
+
+  // exportGif renders every frame content-fit onto a fixed offscreen canvas and
+  // encodes them into a single looping GIF89a (dependency-free encoder). Per-
+  // frame delay honors the playback fps and each frame's own duration.
+  private async exportGif(btn?: HTMLButtonElement) {
+    const pb = this.pb;
+    if (!pb || pb.frames.length === 0) return;
+    const label = btn?.textContent ?? "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "\u2026 GIF";
+    }
+    // Yield so the button label repaints before the (synchronous) encode.
+    await new Promise((r) => setTimeout(r, 0));
+    try {
+      const [minX, minY, maxX, maxY] = pb.bounds;
+      const pad = 4;
+      const bw = Math.max(1, maxX - minX);
+      const bh = Math.max(1, maxY - minY);
+      // Cap dimensions so the GIF stays reasonable; scale to fit.
+      const maxDim = 320;
+      const scale = Math.min(1, maxDim / Math.max(bw, bh));
+      const W = Math.max(1, Math.ceil((bw + pad * 2) * scale));
+      const H = Math.max(1, Math.ceil((bh + pad * 2) * scale));
+
+      const off = document.createElement("canvas");
+      off.width = W;
+      off.height = H;
+      const octx = off.getContext("2d", { willReadFrequently: true })!;
+
+      // View maps world -> canvas with the same single Y flip as draw(), scaled.
+      const ox = (-minX + pad) * scale;
+      const oy = (maxY + pad) * scale;
+
+      const gifFrames: GifFrame[] = [];
+      for (let i = 0; i < pb.frames.length; i++) {
+        octx.clearRect(0, 0, W, H);
+        this.drawFrameOps(octx, pb.frames[i], scale, ox, oy, 1, null);
+        octx.setTransform(1, 0, 0, 1, 0, 0);
+        octx.globalAlpha = 1;
+        const img = octx.getImageData(0, 0, W, H);
+        const frameDur = Math.max(1, pb.frames[i]?.duration || 1);
+        const delayMs = (1000 / this.fps) * frameDur;
+        gifFrames.push({ rgba: img.data, delayMs });
+      }
+
+      const bytes = encodeGif(W, H, gifFrames, 0);
+      const blob = new Blob([bytes], { type: "image/gif" });
+      this.download(blob, `${this.animBaseName()}.gif`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    }
   }
 
   private animBaseName(): string {
