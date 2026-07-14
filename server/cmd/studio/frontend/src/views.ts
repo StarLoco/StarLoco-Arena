@@ -459,6 +459,9 @@ export function viewCards(c: HTMLElement) {
               fighter.map((r) => fighterCardForm(r))
             );
             mountEffectEditors(h, fighter, "card");
+            h.querySelectorAll<HTMLElement>(".sc-mount").forEach((m) =>
+              mountScriptEditor(m, Number(m.dataset.scScript))
+            );
           },
           columns: [
             { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("fighterCard", r.ID, 44), width: "56px", align: "center" },
@@ -502,7 +505,8 @@ export function viewCards(c: HTMLElement) {
               ],
             }) +
             editFormHTML(fighterCardForm(r)) +
-            `<div class="fe-mount" data-fe-kind="card" data-fe-id="${r.ID}"></div>`,
+            `<div class="fe-mount" data-fe-kind="card" data-fe-id="${r.ID}"></div>` +
+            `<div class="sc-mount" data-sc-script="${r.ScriptID}"></div>`,
         });
 
       drawCoach();
@@ -694,6 +698,9 @@ export function viewStaticEffects(c: HTMLElement) {
           h,
           rows.map((r) => staticEffectForm(r))
         );
+        h.querySelectorAll<HTMLElement>(".sc-mount").forEach((m) =>
+          mountScriptEditor(m, Number(m.dataset.scScript))
+        );
       },
       detail: (r) =>
         `<div class="detail-grid">
@@ -705,7 +712,8 @@ export function viewStaticEffects(c: HTMLElement) {
           <div><span>App. condition</span><b>${r.ApplicationCondition}</b></div>
         </div>
         ${editFormHTML(staticEffectForm(r))}
-        ${effectsDetail(r.Effects)}`,
+        ${effectsDetail(r.Effects)}
+        <div class="sc-mount" data-sc-script="${r.ScriptID}"></div>`,
     });
   });
 }
