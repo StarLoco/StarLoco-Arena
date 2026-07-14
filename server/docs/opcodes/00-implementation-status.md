@@ -85,7 +85,7 @@ For the byte-exact payload of each opcode, see the per-domain files in this same
 | `RecvFighterCreateRequest` | 6001 | Implemented | `handlers_fighter.go:31` |
 | `RecvFighterDeleteRequest` | 6003 | Implemented | `handlers_fighter.go:69` |
 | `RecvFighterInformationListRequest` | 6005 | Implemented | `handlers_fighter.go:79` |
-| `RecvFighterUpdateInventoryRequest` | 6011 | **Partial / hardly usable** — spell-blob parsed with a possibly-wrong per-entry size (flagged wire mismatch, see README §Known open items). | `handlers_fighter.go:98` |
+| `RecvFighterUpdateInventoryRequest` | 6011 | **Verified correct.** Spells serialize as `StackInventory<Spell>` (flat `int32[]`, 4 bytes/entry); equipment as `ArrayInventory` (`[short pos][int32 id]`, 6 bytes/entry) — two different formats, both handled correctly (`internal/dispatch/inventory_codec.go`'s `parseSpellIDs`/`buildSpellBlob` vs `parseInventoryIDs`/`buildInventoryBlob`), pinned by `TestParseSpellIDs*`/`TestBuildSpellBlobIsFlatInt32Array`. | `handlers_fighter.go:98` |
 | `RecvTeamPresetSaveRequest` | 6021 | Implemented | `handlers_team.go:26` |
 | `RecvTeamPresetDeleteRequest` | 6023 | Implemented | `handlers_team.go:74` |
 | `RecvTeamPresetListRequest` | 6031 | Implemented | `handlers_team.go:92` |

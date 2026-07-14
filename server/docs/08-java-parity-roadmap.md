@@ -478,12 +478,16 @@ positioning) that weren't exercised by this pass's test scenarios.
    count (re-rolling its damage each time), and `CharacBuff`/`CharacDebuff` now
    auto-revert their exact applied `Max` delta at the documented expiry boundary — see
    `docs/08-java-parity-roadmap.md` §8.12 Phase J for the full writeup and test list.
-   **Still not resolved**: `EndTriggers`/`TriggersBefore`/`TriggersAfter` (the full
-   reactive pub-sub system — "on next hit", "on death", spell-rebound-style conditional
-   effects) and state-bundle expansion (`ApplyState`/`State`) remain unwired, since they'd
-   need the real trigger-ID table extraction flagged as still-open research in item 12 —
-   this is now the single biggest remaining gap for full spell-catalog fidelity (narrower
-   than before: only reactive/conditional effects, not also duration-based ones).
+   **Now resolved for the real data's triggers** (HV1 reactive trigger-bus, `triggerbus.go`):
+   `TriggersBefore`/`TriggersAfter` effects are deferred and fire on the trigger ids the
+   shipping data actually uses (2, 52, 54, 55, 56, 64, 1001). The one before-HP-loss effect
+   in the data — **Sacrieur's Sacrifice** (spell 135) — is fully wired (position-swap +
+   damage-redirect onto the Sacrieur, via `applySacrificeRedirect`), and **caster-death
+   effect removal** (`AbstractFight.onFighterDeath`) is implemented (`removeEffectsCastBy`
+   in `fightend.go`). **Still not resolved**: the generic `EndTriggers` set and the full
+   ~180-id reactive pub-sub for trigger ids no shipping spell references, plus state-bundle
+   expansion (`ApplyState`/`State`) — these stay inert-but-graceful (stored, never fires),
+   with zero observable impact on the real spell catalog.
 3. ~~No real map data — movement/placement/pathfinding validation is occupancy-only~~
    **RESOLVED (Phase K)**: `.amw`/`elements.ade` fully reverse-engineered (via `javap`
    bytecode disassembly of the real `core.jar`, cross-verified against the decompiled
@@ -514,8 +518,9 @@ positioning) that weren't exercised by this pass's test scenarios.
    **RESOLVED (Phase L)**: `validateCast` (`combat_actions.go`) now also enforces
    cast-frequency limits (`Fighter.CastHistory`, a byte-for-byte port of
    `SpellCastHistory.java` — `spell_cast_history.go`), a line-of-sight check
-   (`hasLineOfSight`/`line_of_sight.go`, using Phase K's real map data with a documented
-   Bresenham-based approximation of the reference's exact 3D DDA algorithm), and custom
+   (`hasLineOfSight`/`line_of_sight.go`, using Phase K's real map data with a **bit-exact
+   port** of the reference's exact 3D DDA algorithm, upgraded from an earlier Bresenham
+   approximation — see the LOS bit-exactness follow-up below), and custom
    cast criteria (`evaluateCastCriteria`/`criteria.go`, a small named-criterion registry
    covering the 4 tokens actually used in this project's real `spells.dat`). Per-effect
    target-validity (`ValidButNoEffectOnTarget`) turned out to already be implemented
@@ -747,14 +752,21 @@ ground-effect areas all need real cell/height data to mean anything).
       doesn't wire real map data keeps working unchanged. Also wired into
       `handleMoveToFreePlacement` (`phases.go`), which now additionally rejects a
       free-placement move onto a non-walkable cell.
-- [ ] **Not done, deliberately deferred**: re-validating `combat/pathfind.go`'s A* against
-      a real map with actual height-blocked steps/corner-cutting near real walls (the
-      algorithm consumes `IsWalkable`/`ArrivalAltitude` exactly as designed, so it should
-      "just work" now that those return real data, but no dedicated test exercises a
-      genuinely height-blocked or corner-cut path against the real fight map's actual
-      geometry — the real map's playable area, per `ResolveCellSurfaces`, doesn't happen
-      to contain an obviously-height-blocked case near the tested coach-start cells). Worth
-      a follow-up pass with a hand-picked real map cell known to have a height obstacle.
+- [x] **Done**: re-validated `combat/pathfind.go`'s A* against a real map with actual
+      height-blocked steps. An exhaustive scan of fightMapID=2 (the default/canonical fight
+      map) confirmed it genuinely has **zero** adjacent walkable-cell pairs whose altitude
+      delta exceeds the ±4 ascend/descend limit — so no test against map 2 alone could ever
+      exercise this path, vacuous-pass or not. Scanning the full random-selection pool
+      (`MapStore.FightMapIDs()`) turned up real height-blocked steps on several other maps
+      duels actually get assigned to (4, 5, 6, 7, 8, 9, 12, 13). Added
+      `internal/combat/pathfind_realdata_heightblock_test.go`
+      (`TestFindPath_RealMapRejectsGenuineHeightBlockedStep`), pinned to a concrete map-4
+      cliff ((9,0) standing z=5 → its single-axis neighbor (9,1) standing z=-1, a 6-level
+      drop), proving `ValidateClientPath` rejects the illegal direct step and `FindPath`
+      never emits it while routing (nil — no legal detour — is also an accepted outcome).
+      Corner-cutting turned out to be a non-issue independent of map data: fight movement
+      only ever takes single-axis steps (`fightMoveDirections`), so the two-axis diagonal
+      move a corner-cut bug requires is structurally impossible in this engine.
 - [ ] **Not done, deliberately deferred**: the real free-placement *zone* restriction
       (only a proper subset of walkable cells are legal placement spots at fight start, not
       "any walkable cell") — `FightStartCoachPointElement` only marks the single per-coach
@@ -783,16 +795,31 @@ task.
       preserved as-is (source-level curiosity), just used with its real enforced
       semantics in `validateCast`.
 - [x] Line-of-sight check (`CastTestLineOfSight`, `line_of_sight.go`'s `hasLineOfSight`) —
-      uses Phase K's real map data (`gamedata.Map.BlocksLineOfSight`) when attached to a
-      fight, falling back to permissive (always-visible) otherwise. **Deliberately NOT a
-      bit-exact port** of the reference's real per-direction-flag 3D DDA algorithm
-      (`LineOfSightUtils.java`, confirmed via decompiled source to be a genuinely complex
-      sub-cell-boundary traversal) — this uses a standard Bresenham line walk checking
-      each intermediate cell for "a non-walkable surface with real height" as a
-      reasonable, clearly-documented stand-in for "contains a wall/obstacle", matching
-      this project's established policy (see `docs/04-game-data-format.md` §4.9.1) of
-      preferring a conservative, documented approximation over an unverifiable bit-exact
-      guess when no reference decoder/test vectors exist.
+      uses Phase K's real map data when attached to a fight, falling back to permissive
+      (always-visible) otherwise. **UPDATE — now a bit-exact port**, not an approximation:
+      originally this used a standard 2D Bresenham line walk checking each intermediate
+      cell for "a non-walkable surface with real height" as a documented stand-in for
+      "contains a wall/obstacle" (this project's established policy, `docs/
+      04-game-data-format.md` §4.9.1, of preferring a conservative documented
+      approximation over an unverifiable guess when no test vectors exist). That
+      changed: the elements.ade parser was ALREADY extracting the reference's real
+      per-direction `LineOfSight1/3/5/7/Top/Bottom` flags (`elements_ade.go`'s
+      `SpatialDataProperties`) — they were just being silently dropped before reaching
+      the combat layer (`ResolveCellSurfaces` never copied them into `ResolvedSurface`).
+      Threading them through, decoding the reference's `LineOfSightUtils.getCellsInputs`/
+      `WorldCell.isLineOfSightValid`/`isLineOfSightEndValid` (including working around a
+      JD-Core decompiler artifact that lost every `break` in `isLineOfSightValid`'s
+      direction switch — the real 1:1 mapping was recovered from `Direction8`'s actual
+      enum ordinals, SOUTH_EAST=1/SOUTH_WEST=3/NORTH_WEST=5/NORTH_EAST=7/TOP=8/BOTTOM=9),
+      and porting the real 3-axis DDA walk (`gamedata.LineOfSightValidAt`/
+      `LineOfSightEndValidAt`, `combat.generateLOSCellInputs`) turned this into a genuine
+      bit-exact reproduction. Confirmed to have real, exercised impact: scanning the real
+      `elements.ade` found 1 of 296 solid element states with genuinely non-uniform LOS
+      flags — a *walkable* raised platform (height 3) whose Top/Bottom flags are blocked
+      while all 4 edges are open (blocks a vertical/altitude-crossing sightline through
+      its body, blocks nothing horizontally) — a case the old approximation could never
+      have caught (it only considered non-walkable cells, and never had a Z/altitude
+      dimension at all).
 - [x] Custom cast criteria (`criteria.go`'s `evaluateCastCriteria`) — a small named-
       criterion registry (not a full expression-language compiler), sufficient because a
       one-off inspection of this project's real `spells.dat` confirmed only 4 distinct
@@ -809,8 +836,10 @@ task.
       case + not-applied-on-first-cast, `CastMaxPerTarget` independent-per-target tracking
       + skipped-when-no-target, all-zero-limits-unconstrained), `criteria_test.go` (11
       tests covering every criterion token + combos + case/whitespace tolerance),
-      `line_of_sight_test.go`/`line_of_sight_realdata_test.go` (Bresenham correctness +
-      real-map-data integration), `combat_actions_test.go` (6 integration tests
+      `line_of_sight_test.go`/`line_of_sight_realdata_test.go` (bit-exact DDA correctness,
+      direction-sensitive-blocking end-to-end proof, + real-map-data integration; plus
+      `internal/gamedata/line_of_sight_test.go` for the per-direction validity/end-
+      validity checks themselves), `combat_actions_test.go` (6 integration tests
       exercising the full `validateCast` pipeline together, confirming cards are
       correctly exempted from spell-only checks).
 
