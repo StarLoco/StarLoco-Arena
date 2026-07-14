@@ -31,6 +31,24 @@ type swarmConfig struct {
 	ExchangeRate int
 	IdleRate     int
 
+	// CellWalkTime is the client's animation time to walk ONE cell. A walk
+	// leg of N cells waits N*(CellWalkTime+security) so the next action only
+	// fires after the client has finished animating the walk.
+	CellWalkTime time.Duration
+
+	// StepDuration is the idle pause between actions (after a walk leg's
+	// animation time), so bots don't act continuously.
+	StepDuration time.Duration
+
+	// IdleChance is the probability (0..1) that a bot does NOTHING on a
+	// given behavior cycle, to reduce overall action/broadcast volume.
+	IdleChance float64
+
+	// AcceptChallenges makes bots auto-accept an incoming FIGHT_INVITATION
+	// from a real player (right-click a bot -> challenge) and fight them
+	// with the AI. On by default so a human can always find a bot to fight.
+	AcceptChallenges bool
+
 	// fight AI
 	SmartAI     bool
 	ActionPause time.Duration

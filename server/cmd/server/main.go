@@ -44,6 +44,7 @@ func run() error {
 	migrateOnly := flag.Bool("migrate-only", false, "run pending migrations then exit")
 	warmCache := flag.Bool("warm-cache", false, "eagerly load all game-data repositories at startup instead of lazily")
 	tracePackets := flag.Bool("trace-packets", false, "log every inbound/outbound wire packet (opcode + hex); very verbose, for debugging")
+	quiet := flag.Bool("quiet", false, "disable ALL logging (no console output, no log file, no packet trace) regardless of config -- handy when running a bot swarm against this server")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -52,6 +53,13 @@ func run() error {
 	}
 	if *tracePackets {
 		cfg.Logging.TracePackets = true
+	}
+	if *quiet {
+		// Force logging completely off: level disabled, no run-log file,
+		// no packet trace. Overrides whatever the config/CLI set.
+		cfg.Logging.Level = "off"
+		cfg.Logging.Dir = ""
+		cfg.Logging.TracePackets = false
 	}
 
 	logger := golog.New(golog.Options{Level: cfg.Logging.Level, Format: cfg.Logging.Format, Dir: cfg.Logging.Dir})

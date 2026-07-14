@@ -36,6 +36,13 @@ func (s *swarm) runBot(ctx context.Context, id *botIdentity, rng *rand.Rand) {
 		id.CoachID = uint(sess.CoachID)
 	}
 	id.InventoryCardUIDs = sess.InventoryCardUIDs
+	// The seeder set id.posX/posY from the coach's stored DB position (the
+	// same position the server broadcasts as the "from" cell of the first
+	// move), so walk tracking is already in sync. Fall back to the default
+	// spawn (1,1) only if it wasn't populated.
+	if id.posX == 0 && id.posY == 0 {
+		id.posX, id.posY = 1, 1
+	}
 
 	s.metrics.addOnline(1)
 	defer s.metrics.addOnline(-1)
@@ -56,17 +63,35 @@ func (s *swarm) behaviorLoop(ctx context.Context, c *botclient.Client, id *botId
 		default:
 		}
 
+		// Always check first whether a real player has challenged this bot
+		// (right-click -> fight). If so, accept and fight them now.
+		if s.cfg.AcceptChallenges {
+			if invID, ok := pollChallenge(c); ok {
+				s.handleChallenge(c, id, invID, rng)
+				continue
+			}
+		}
+
+		// With IdleChance probability, the bot does NOTHING this cycle (a
+		// short quiet wait) instead of acting. This keeps the world from
+		// being a constant storm of actions -- real players pause a lot --
+		// and throttles the broadcast volume that was overwhelming clients.
+		if s.cfg.IdleChance > 0 && rng.Float64() < s.cfg.IdleChance {
+			s.doIdle(ctx, c, id, rng)
+			continue
+		}
+
 		switch s.pickBehavior(rng) {
 		case behWalk:
 			s.doWalk(c, id, rng)
 		case behChat:
-			s.doChat(c, rng)
+			s.doChat(c, id, rng)
 		case behFight:
 			s.doFight(ctx, c, id, rng)
 		case behExchange:
 			s.doExchange(ctx, c, id, rng)
 		default:
-			s.doIdle(ctx, c, rng)
+			s.doIdle(ctx, c, id, rng)
 		}
 	}
 }
@@ -108,57 +133,156 @@ func (s *swarm) pickBehavior(rng *rand.Rand) behavior {
 
 // --- Walk ---
 
-// doWalk sends a short random walk on the overworld. The server broadcasts
-// the move to every coach, so a human watching sees the bot wander.
+// walkRegionLo/Hi bound the overworld region bots roam in. It's large enough
+// that ~hundreds of bots spread out across the map instead of piling onto
+// the spawn tile.
+const walkRegionLo, walkRegionHi = 0, 28
+
+// cellWalkSecurity is a fixed margin added per cell on top of the client's
+// per-cell animation time, so the bot always finishes waiting a little AFTER
+// the client has finished animating the step (never before, which would let
+// the next move overlap the current animation and look like a jump).
+const cellWalkSecurity = 120 * time.Millisecond
+
+// doWalk moves the bot one short leg toward its roaming waypoint. It picks a
+// new random waypoint when it arrives (or has none), so bots continuously
+// travel ACROSS the map and disperse instead of milling around the spawn
+// tile (a plain symmetric random walk stays centred on its origin, which is
+// why the bots were stacking). The leg is a single contiguous path of
+// strictly-adjacent cells; the client animates a smooth walk over it.
+//
+// Timing, per the intended model:
+//
+//	moveTime = cells * (cellWalkTime + security)   // wait out the animation
+//	then also sleep stepDuration                    // idle pause between actions
 func (s *swarm) doWalk(c *botclient.Client, id *botIdentity, rng *rand.Rand) {
-	start := time.Now()
-	// A small random path near an arbitrary origin. The overworld has no
-	// strict walkability enforcement for these coordinates (the server
-	// stores the last cell), so a few random steps produce visible motion.
-	steps := 1 + rng.Intn(3)
-	path := make([]botclient.Cell, 0, steps)
-	x, y := int32(rng.Intn(15)), int32(rng.Intn(15))
-	for i := 0; i < steps; i++ {
-		x += int32(rng.Intn(3) - 1)
-		y += int32(rng.Intn(3) - 1)
-		path = append(path, botclient.Cell{X: x, Y: y, Z: 0})
+	// Ensure a waypoint exists / refresh it on arrival.
+	if !id.hasWaypoint || (id.posX == id.wpX && id.posY == id.wpY) {
+		id.wpX = int32(walkRegionLo + rng.Intn(walkRegionHi-walkRegionLo+1))
+		id.wpY = int32(walkRegionLo + rng.Intn(walkRegionHi-walkRegionLo+1))
+		id.hasWaypoint = true
 	}
+
+	path := buildWalkLeg(id.posX, id.posY, id.wpX, id.wpY, rng)
+	if len(path) == 0 {
+		return
+	}
+
+	start := time.Now()
 	err := c.Walk(path...)
 	s.metrics.record("walk", time.Since(start), err, walkErr(err))
-	// Small pause so successive walks look natural and don't spam.
-	time.Sleep(time.Duration(300+rng.Intn(700)) * time.Millisecond)
+	if err != nil {
+		return
+	}
+	last := path[len(path)-1]
+	id.posX, id.posY = last.X, last.Y
+
+	// Wait out the client's animation of this leg: cells * (per-cell walk
+	// time + security margin). Only after that does the coach visually
+	// stand still, so any next action fires from a settled position.
+	cellWalk := s.cfg.CellWalkTime
+	if cellWalk <= 0 {
+		cellWalk = 350 * time.Millisecond
+	}
+	moveTime := time.Duration(len(path)) * (cellWalk + cellWalkSecurity)
+	s.waitWatching(c, id, rng, moveTime)
+
+	// Then an additional idle pause between actions.
+	if d := s.cfg.StepDuration; d > 0 {
+		jitter := time.Duration(rng.Int63n(int64(d/2) + 1))
+		s.waitWatching(c, id, rng, d+jitter)
+	}
+}
+
+// buildWalkLeg returns a contiguous path from (fromX,fromY) that steps
+// TOWARD (toX,toY), of a short random length. EVERY consecutive cell --
+// including the server-prepended "from" cell -> the first returned cell --
+// differs by exactly ONE cell in exactly ONE axis, so the client
+// (ActorMovementMessage -> PathMobile.setPath) animates a real step-by-step
+// walk rather than sliding/teleporting between non-adjacent cells.
+func buildWalkLeg(fromX, fromY, toX, toY int32, rng *rand.Rand) []botclient.Cell {
+	nCells := 2 + rng.Intn(5) // a 2..6-cell leg
+	path := make([]botclient.Cell, 0, nCells)
+	x, y := fromX, fromY
+	for i := 0; i < nCells; i++ {
+		if x == toX && y == toY {
+			break // arrived at the waypoint
+		}
+		// Choose an axis to advance. Bias toward the axis with the larger
+		// remaining gap so we head to the waypoint, with occasional random
+		// wandering so paths aren't dead-straight.
+		dx, dy := toX-x, toY-y
+		moveX := abs32i(dx) >= abs32i(dy)
+		if rng.Intn(5) == 0 { // 20% random axis flip for organic motion
+			moveX = !moveX
+		}
+		if moveX && dx != 0 {
+			x += sign32(dx)
+		} else if dy != 0 {
+			y += sign32(dy)
+		} else if dx != 0 {
+			x += sign32(dx)
+		} else {
+			break
+		}
+		x = clampRegion(x)
+		y = clampRegion(y)
+		path = append(path, botclient.Cell{X: x, Y: y, Z: 0})
+	}
+	return path
+}
+
+func abs32i(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func sign32(v int32) int32 {
+	if v > 0 {
+		return 1
+	}
+	if v < 0 {
+		return -1
+	}
+	return 0
+}
+
+func clampRegion(v int32) int32 {
+	if v < walkRegionLo {
+		return walkRegionLo
+	}
+	if v > walkRegionHi {
+		return walkRegionHi
+	}
+	return v
 }
 
 // --- Chat ---
 
-func (s *swarm) doChat(c *botclient.Client, rng *rand.Rand) {
+func (s *swarm) doChat(c *botclient.Client, id *botIdentity, rng *rand.Rand) {
 	start := time.Now()
 	line := s.chatLines[rng.Intn(len(s.chatLines))]
 	err := c.SayVicinity(line)
 	s.metrics.record("chat", time.Since(start), err, walkErr(err))
-	time.Sleep(time.Duration(500+rng.Intn(1500)) * time.Millisecond)
+	s.waitWatching(c, id, rng, time.Duration(500+rng.Intn(1500))*time.Millisecond)
 }
 
 // --- Idle ---
 
-func (s *swarm) doIdle(ctx context.Context, c *botclient.Client, rng *rand.Rand) {
-	// Drain and discard any accumulated broadcast frames while idling, so
-	// the read-pump channel never backs up during a quiet stretch.
+func (s *swarm) doIdle(ctx context.Context, c *botclient.Client, id *botIdentity, rng *rand.Rand) {
+	// Idle for a short spell while staying responsive to a player challenge
+	// and keeping the socket drained (so the read-pump channel never backs
+	// up during a quiet stretch). waitWatching polls for challenges and, in
+	// doing so, discards accumulated broadcast noise.
 	dur := time.Duration(500+rng.Intn(2000)) * time.Millisecond
-	deadline := time.Now().Add(dur)
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		if _, err := c.Recv(200 * time.Millisecond); err != nil {
-			if err == botclient.ErrClosed {
-				return
-			}
-			// timeout: nothing to drain right now, keep idling.
-		}
+	select {
+	case <-ctx.Done():
+		return
+	default:
 	}
+	s.waitWatching(c, id, rng, dur)
 }
 
 // --- Fight ---
@@ -193,7 +317,12 @@ func (s *swarm) doFight(ctx context.Context, c *botclient.Client, id *botIdentit
 // (used as the matchmaking bet) so the server pairs them together.
 func (s *swarm) playMatchmakedFight(c *botclient.Client, id *botIdentity, match pairMatch, rng *rand.Rand) error {
 	bet := int32(match.Key)
-	fighterID := combatWireID(id.FighterIDs[0])
+	// SET_READY_FOR_FIGHT selects fighters by their RAW DB id (the dispatch
+	// handler loads them from the DB scoped to the coach); the wire-offset
+	// id is only used for in-fight action frames. Passing the wire id here
+	// makes the server field an EMPTY team (fighter not found), which is why
+	// bots showed up with a coach but no fighter.
+	fighterID := id.FighterIDs[0]
 
 	if err := c.SearchOpponent(protocol.FightTypeMatchmakingDefy, bet); err != nil {
 		return fmt.Errorf("search: %w", err)
@@ -254,10 +383,4 @@ func (s *swarm) doExchange(ctx context.Context, c *botclient.Client, id *botIden
 	start := time.Now()
 	err := s.playExchange(c, id, match)
 	s.metrics.record("exchange", time.Since(start), err, exchangeErr(err))
-}
-
-// combatWireID converts a DB fighter id to its on-wire id.
-func combatWireID(dbID int64) int64 {
-	const fighterWireIDBase = 1_000_000_000
-	return fighterWireIDBase + dbID
 }

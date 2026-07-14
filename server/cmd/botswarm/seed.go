@@ -45,6 +45,17 @@ type botIdentity struct {
 	// AI (spell ids, summon capability). Populated for freshly seeded bots;
 	// for reused accounts it is reconstructed from the DB.
 	PrimaryLoadout loadout
+
+	// posX/posY track the bot's current overworld cell so the walk behavior
+	// steps continuously from where it is (rather than jumping to a fresh
+	// random origin each time, which looked like teleporting). Seeded from
+	// the coach's stored start position at login.
+	posX, posY int32
+	// wpX/wpY is the bot's current roaming waypoint; hasWaypoint is false
+	// until the first one is chosen. Roaming toward dispersed waypoints is
+	// what spreads bots across the map instead of clustering at spawn.
+	wpX, wpY    int32
+	hasWaypoint bool
 }
 
 // seeder owns the DB handle and services used to provision bots.
@@ -106,7 +117,7 @@ func (s *seeder) seedBot(ctx context.Context, loginPrefix, password string, inde
 	var existing domain.Account
 	err := s.db.WithContext(ctx).Where("name = ?", login).First(&existing).Error
 	if err == nil {
-		return s.reuseBot(ctx, id, existing)
+		return s.reuseBot(ctx, id, existing, rng)
 	}
 	if err != gorm.ErrRecordNotFound && err.Error() != "record not found" {
 		return nil, fmt.Errorf("botswarm: lookup account %s: %w", login, err)
@@ -131,6 +142,7 @@ func (s *seeder) seedBot(ctx context.Context, loginPrefix, password string, inde
 		return nil, fmt.Errorf("botswarm: create coach %s rejected: %v", coachName, result)
 	}
 	id.CoachID = coach.ID
+	id.posX, id.posY = coach.PosX, coach.PosY
 
 	// 2 card sets, equip 1.
 	if err := s.grantCardSets(ctx, coach.ID, rng); err != nil {
@@ -161,7 +173,7 @@ func (s *seeder) seedBot(ctx context.Context, loginPrefix, password string, inde
 
 // reuseBot reconstructs a bot identity from an already-seeded account,
 // loading its coach and fighters from the DB.
-func (s *seeder) reuseBot(ctx context.Context, id *botIdentity, account domain.Account) (*botIdentity, error) {
+func (s *seeder) reuseBot(ctx context.Context, id *botIdentity, account domain.Account, rng *rand.Rand) (*botIdentity, error) {
 	if account.CoachID == nil {
 		// Account exists but has no coach yet (partial prior seed). Let the
 		// login flow create the coach over the wire; fighters/cards will be
@@ -169,6 +181,15 @@ func (s *seeder) reuseBot(ctx context.Context, id *botIdentity, account domain.A
 		return id, nil
 	}
 	id.CoachID = *account.CoachID
+
+	// Load the coach's stored overworld position so the bot's walk tracking
+	// starts where the SERVER thinks the coach is. Otherwise the first move
+	// would broadcast from the server's real position to a path the bot
+	// computed from a wrong origin -- a visible teleport.
+	var coach domain.Coach
+	if err := s.db.WithContext(ctx).First(&coach, id.CoachID).Error; err == nil {
+		id.posX, id.posY = coach.PosX, coach.PosY
+	}
 
 	var fighters []domain.Fighter
 	if err := s.db.WithContext(ctx).Where("coach_id = ?", id.CoachID).Find(&fighters).Error; err != nil {
@@ -190,38 +211,95 @@ func (s *seeder) reuseBot(ctx context.Context, id *botIdentity, account domain.A
 			id.PrimaryLoadout = lo
 		}
 	}
+
+	// Re-dress reused coaches so they show a proper outfit even if they were
+	// seeded by an older build that equipped cards into the wrong slots
+	// (nothing rendered). Idempotent: it re-slots cards the coach already
+	// owns and only grants a fresh outfit if it owns no equippable cards.
+	if err := s.redressReusedCoach(ctx, id.CoachID, rng); err != nil {
+		return nil, err
+	}
 	return id, nil
 }
 
-// grantCardSets grants two random coach-card sets and equips the first set.
-// A "set" here is a small batch of distinct coach-card templates (the game's
-// Set field is only a cosmetic grouping tag, so we model a set as N random
-// templates). Equipped cards use equipment slots 1..14 (stored Pos), the
-// rest stay in inventory unlocked so they can be staked in bet fights and
-// offered in card exchanges.
+// grantCardSets dresses the coach in a random, RENDERABLE outfit (one card
+// per body slot, each equipped in the WIRE slot matching its type so the
+// client actually draws it) and leaves a second batch of cards unequipped in
+// inventory (unlocked -- so they're stakeable in bet fights and tradeable in
+// exchanges). This is the "2 card sets, equip 1" rule with the crucial fix
+// that equipped cards must land in their type's correct slot, else nothing
+// shows on the coach sprite.
 func (s *seeder) grantCardSets(ctx context.Context, coachID uint, rng *rand.Rand) error {
-	const setSize = 3
-	setA := s.idx.pickCoachCardSet(rng, setSize)
-	setB := s.idx.pickCoachCardSet(rng, setSize)
-
-	// Equip set A into consecutive equipment slots (stored Pos 1..14).
-	slot := int16(1)
-	for _, tmpl := range setA {
-		card, err := s.coach.AddCard(ctx, coachID, tmpl, 1, 0)
+	// Outfit A: worn on the sprite. Guarantee at least 4 visible pieces.
+	outfit := s.idx.generateOutfit(rng, 4)
+	for _, e := range outfit {
+		card, err := s.coach.AddCard(ctx, coachID, e.TemplateID, 1, 0)
 		if err != nil {
-			return fmt.Errorf("botswarm: grant equipped card %d: %w", tmpl, err)
+			return fmt.Errorf("botswarm: grant equipped card %d: %w", e.TemplateID, err)
 		}
-		if slot <= 14 {
-			if _, err := s.coach.SetCardPosition(ctx, coachID, card.ID, slot); err != nil {
-				return fmt.Errorf("botswarm: equip card %d: %w", tmpl, err)
-			}
-			slot++
+		// Stored Pos = wire slot + 1 (equipment_slots.go's convention, so
+		// Pos != 0 marks "equipped" and slot 0 isn't confused with
+		// inventory). ACTOR_SPAWN/COACH_INFORMATION translate it back.
+		storedPos := e.WireSlot + 1
+		if _, err := s.coach.SetCardPosition(ctx, coachID, card.ID, storedPos); err != nil {
+			return fmt.Errorf("botswarm: equip card %d in slot %d: %w", e.TemplateID, e.WireSlot, err)
 		}
 	}
-	// Leave set B in inventory (Pos 0), unlocked -- stakeable + tradeable.
+
+	// Batch B: a few unequipped cards left in inventory (Pos 0), unlocked --
+	// stakeable + tradeable.
+	setB := s.idx.pickCoachCardSet(rng, 3)
 	for _, tmpl := range setB {
 		if _, err := s.coach.AddCard(ctx, coachID, tmpl, 1, 0); err != nil {
 			return fmt.Errorf("botswarm: grant inventory card %d: %w", tmpl, err)
+		}
+	}
+	return nil
+}
+
+// redressReusedCoach ensures an already-seeded coach shows a proper outfit.
+// It unequips everything (so any wrongly-slotted equip from an older build
+// goes back to inventory), then equips one owned card per body slot into its
+// CORRECT wire slot. If the coach owns no body-equippable cards at all (e.g.
+// an old seed granted only non-wearable card types), it grants a fresh
+// outfit. Idempotent across runs: re-slotting owned cards is stable, and the
+// fresh-outfit grant only fires when there's nothing to re-slot.
+func (s *seeder) redressReusedCoach(ctx context.Context, coachID uint, rng *rand.Rand) error {
+	if err := s.coach.UnequipAll(ctx, coachID); err != nil {
+		return fmt.Errorf("botswarm: unequip reused coach %d: %w", coachID, err)
+	}
+
+	inv, err := s.coach.GetInventory(ctx, coachID)
+	if err != nil {
+		return fmt.Errorf("botswarm: load reused inventory %d: %w", coachID, err)
+	}
+
+	// Pick one owned card per wire slot it can fill (first-come wins).
+	usedSlot := make(map[int16]bool)
+	equippedAny := false
+	for _, card := range inv {
+		slot, ok := s.idx.slotByCoachCardTemplate[card.TemplateID]
+		if !ok || usedSlot[slot] {
+			continue
+		}
+		if _, err := s.coach.SetCardPosition(ctx, coachID, card.ID, slot+1); err != nil {
+			return fmt.Errorf("botswarm: re-slot card %d: %w", card.ID, err)
+		}
+		usedSlot[slot] = true
+		equippedAny = true
+	}
+
+	// If the coach owned nothing wearable, grant a fresh renderable outfit.
+	if !equippedAny {
+		outfit := s.idx.generateOutfit(rng, 4)
+		for _, e := range outfit {
+			card, err := s.coach.AddCard(ctx, coachID, e.TemplateID, 1, 0)
+			if err != nil {
+				return fmt.Errorf("botswarm: grant redress card %d: %w", e.TemplateID, err)
+			}
+			if _, err := s.coach.SetCardPosition(ctx, coachID, card.ID, e.WireSlot+1); err != nil {
+				return fmt.Errorf("botswarm: equip redress card %d: %w", e.TemplateID, err)
+			}
 		}
 	}
 	return nil

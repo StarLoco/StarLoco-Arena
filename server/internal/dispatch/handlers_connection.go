@@ -181,11 +181,13 @@ func enterWorld(session *netio.Session, coach *domain.Coach, deps *Deps) {
 		return
 	}
 
-	// Every online coach (including the one who just joined) receives an
-	// ACTOR_SPAWN listing every *other* online coach, matching the legacy
-	// World.addOnlineCoach -> onJoinMap fan-out.
-	for _, oc := range deps.World.Snapshot() {
-		others := deps.World.SnapshotViewsWithout(oc.ID())
+	// Every OVERWORLD coach (including the one who just joined) receives an
+	// ACTOR_SPAWN listing every *other* overworld coach, matching the legacy
+	// World.addOnlineCoach -> onJoinMap fan-out. Coaches inside a fight are
+	// skipped both as recipients (they're on the fight map) and as spawn
+	// entries (they aren't standing on the world map).
+	for _, oc := range deps.World.SnapshotWorld() {
+		others := deps.World.SnapshotWorldViewsWithout(oc.ID())
 		if len(others) == 0 {
 			continue
 		}

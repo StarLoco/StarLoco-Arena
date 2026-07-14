@@ -74,6 +74,24 @@ func (c *Client) SetReadyForFight(duelID int64, fighterID int64) error {
 	return c.Send(2, protocol.RecvSetReadyForFight, w.Bytes())
 }
 
+// AcceptFightInvitation sends FIGHT_INVITATION_ACCEPT (4305): int64
+// invitationID. Used by a bot to accept a right-click challenge from a real
+// player; the server then creates the duel and the normal SET_READY_FOR_FIGHT
+// -> CREATE_FIGHT flow follows.
+func (c *Client) AcceptFightInvitation(invitationID int64) error {
+	w := protocol.NewWriter(8)
+	w.PutInt64(invitationID)
+	return c.Send(2, protocol.RecvFightInvitationAcceptMessage, w.Bytes())
+}
+
+// RejectFightInvitation sends FIGHT_INVITATION_REJECT (4307): int64
+// invitationID.
+func (c *Client) RejectFightInvitation(invitationID int64) error {
+	w := protocol.NewWriter(8)
+	w.PutInt64(invitationID)
+	return c.Send(2, protocol.RecvFightInvitationRejectMessage, w.Bytes())
+}
+
 // --- Fight phase ready-gates (all empty payloads) ---
 
 func (c *Client) ReadyForPlacement() error {

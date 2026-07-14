@@ -85,9 +85,17 @@ func Dial(addr string, dialTimeout, readIdleTimeout, writeTimeout time.Duration)
 		_ = tcp.SetNoDelay(true)
 	}
 	c := &Client{
-		conn:         conn,
-		w:            bufio.NewWriter(conn),
-		frames:       make(chan Frame, 512),
+		conn: conn,
+		w:    bufio.NewWriter(conn),
+		// A large buffer so the read pump can keep draining the SOCKET into
+		// this channel even while a consumer is briefly not calling Recv
+		// (e.g. a fight AI pausing between actions for watchability). If the
+		// channel filled, the read pump would block on the socket, TCP
+		// backpressure would fill the server's per-session outbound queue,
+		// and the server would DROP frames to this bot -- making it miss its
+		// turn or END_FIGHT. Under the swarm's O(N^2) broadcast flood this
+		// headroom matters; 4096 tiny frames is only ~a few hundred KB.
+		frames:       make(chan Frame, 4096),
 		writeTimeout: writeTimeout,
 	}
 	go c.readPump(readIdleTimeout)
@@ -213,6 +221,32 @@ func (c *Client) Recv(timeout time.Duration) (Frame, error) {
 		return f, nil
 	case <-timer.C:
 		return Frame{}, fmt.Errorf("botclient: recv timeout after %s", timeout)
+	}
+}
+
+// NewFrameTestClient returns a Client backed by a pre-filled in-memory frame
+// buffer and no real socket, for tests in OTHER packages that exercise frame
+// consumption (TryRecv/Recv/Expect) without a live server. Send/dial are not
+// usable on the returned client. The buffer is large enough for the seeded
+// frames plus a little headroom.
+func NewFrameTestClient(frames ...Frame) *Client {
+	c := &Client{frames: make(chan Frame, len(frames)+8)}
+	for _, f := range frames {
+		c.frames <- f
+	}
+	return c
+}
+
+// TryRecv returns the next buffered frame without blocking. ok is false if
+// no frame is currently available (or the connection has closed). Used to
+// poll for asynchronous frames (e.g. an incoming fight invitation) between
+// other work without waiting.
+func (c *Client) TryRecv() (Frame, bool) {
+	select {
+	case f, ok := <-c.frames:
+		return f, ok
+	default:
+		return Frame{}, false
 	}
 }
 

@@ -57,8 +57,12 @@ func main() {
 		fightRate    = flag.Int("fight-rate", 25, "relative weight of the fight behavior")
 		exchangeRate = flag.Int("exchange-rate", 10, "relative weight of the card-exchange behavior")
 		idleRate     = flag.Int("idle-rate", 5, "relative weight of idling")
+		cellWalkTime = flag.Duration("cell-walk-time", 350*time.Millisecond, "client animation time to walk ONE cell; a walk leg waits cells*(this+security) so movement isn't a teleport")
+		stepDuration = flag.Duration("step-duration", 1200*time.Millisecond, "idle pause between actions (after a walk leg's animation completes); larger = calmer bots, fewer broadcasts")
+		idleChance   = flag.Float64("idle-chance", 0.4, "probability (0..1) a bot does NOTHING on a given cycle, to reduce action/broadcast spam")
 
-		smartAI     = flag.Bool("ai", false, "use the smart tactical fight AI (default: the cheap 'dumb' melee AI)")
+		acceptChallenges = flag.Bool("accept-challenges", true, "bots auto-accept a real player's right-click fight challenge (FIGHT_INVITATION) and fight them with the AI")
+		smartAI          = flag.Bool("ai", false, "use the smart tactical fight AI (default: the cheap 'dumb' melee AI)")
 		actionPause = flag.Duration("action-pause", 400*time.Millisecond, "pause between a bot's own fight actions so a human watching sees the fight play out (0 = as fast as possible)")
 
 		reportJSON = flag.String("report", "", "write the final report as JSON to this path")
@@ -120,7 +124,11 @@ func main() {
 		FightRate:    *fightRate,
 		ExchangeRate: *exchangeRate,
 		IdleRate:     *idleRate,
-		SmartAI:      *smartAI,
+		CellWalkTime:     *cellWalkTime,
+		StepDuration:     *stepDuration,
+		IdleChance:       *idleChance,
+		AcceptChallenges: *acceptChallenges,
+		SmartAI:          *smartAI,
 		ActionPause:  *actionPause,
 		DialTimeout:  *dialTimeout,
 		FrameTimeout: *frameTimeout,

@@ -20,7 +20,12 @@ database:
   # NOTE: glebarez/go-sqlite only recognizes "_pragma=name(value)" DSN
   # query params (not mattn/go-sqlite3-style "_journal_mode"/"_foreign_keys"
   # shorthand, which it silently ignores rather than erroring on).
-  dsn: "file:arena.dev.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+  # synchronous(NORMAL) is safe in WAL mode and avoids an fsync on every
+  # commit -- without it a burst of small writes (e.g. many bots
+  # disconnecting at once) serializes into tens of ms each. busy_timeout
+  # makes writers wait for the lock instead of erroring. (The db layer also
+  # applies these defaults if omitted; they're spelled out here for clarity.)
+  dsn: "file:arena.dev.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
   max_open_conns: 1
   max_idle_conns: 1
 
@@ -42,10 +47,13 @@ logging:
   dir: logs
 
 combat:
+  # Short phase clocks so fights (incl. bot-vs-bot from cmd/botswarm) reach
+  # the action phase quickly and are watchable in dev. turn_clock stays
+  # generous so a human player isn't rushed on their own turn.
   turn_clock: 30s
-  presentation_clock: 20s
-  placement_clock: 30s
-  observation_clock: 10s
+  presentation_clock: 3s
+  placement_clock: 5s
+  observation_clock: 3s
 
 # Account web portal (register/login, per-user data view, admin console +
 # impersonation). See ../docs/10-web-portal.md.

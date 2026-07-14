@@ -180,7 +180,7 @@ func handleCoachEquipmentUpdate(session *netio.Session, payload *protocol.Reader
 		return
 	}
 	broadcastFrame := buildCoachEquipmentUpdateMessage(coach.ID, equipped)
-	for _, oc := range deps.World.Snapshot() {
+	for _, oc := range deps.World.SnapshotWorld() {
 		oc.Session.Send(broadcastFrame)
 	}
 

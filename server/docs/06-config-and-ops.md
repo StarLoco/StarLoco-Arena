@@ -224,6 +224,15 @@ go run ./cmd/botswarm --config configs/config.botswarm.yaml `
 
 Then connect a client to `127.0.0.1:5556` and watch the bots.
 
+**Playing against a bot.** Bots auto-accept a real player's fight challenge, so to fight one:
+**walk up to any `Bot#####` coach, right-click → challenge** (the client's
+`FIGHT_INVITATION_REQUEST` flow). The bot accepts and plays its side with the fight AI
+(add `--ai` to the swarm for the tougher tactical AI). A bot only declines if it's already
+busy in another fight/trade — just challenge a different one. Disable with
+`--accept-challenges=false`. (Matchmaking-button searches won't reliably pair you with a bot,
+since bots use unique wager values to pair with each other; the right-click challenge is the
+reliable way to pick a specific opponent.)
+
 **Key flags:** `--connect host:port` (running server's game socket), `--config` (opens the
 **same** database the server uses, to seed bots — SQLite WAL + an injected `busy_timeout`
 make this safe alongside the running server), `--bots N`, `--ramp` (spread logins to avoid a
@@ -232,13 +241,28 @@ weights `--walk-rate/--chat-rate/--fight-rate/--exchange-rate/--idle-rate`, `--a
 the smart tactical fight AI; default is a cheap melee AI), `--action-pause` (slow fights to a
 watchable pace), and `--report`/`--csv` for machine-readable output.
 
+**Realistic movement & pacing.** Bots roam toward dispersed random waypoints (so hundreds of
+bots spread across the map instead of piling on the spawn tile) and walk one contiguous,
+strictly cell-adjacent leg at a time, so a watching client animates a real step-by-step walk
+rather than a teleport. Movement pacing is tunable:
+
+- `--cell-walk-time` (default `350ms`) — the client's animation time to walk **one** cell. A
+  leg of N cells waits `N × (cell-walk-time + security)` before the bot acts again, so the
+  next move never overlaps the current animation.
+- `--step-duration` (default `1200ms`) — an additional idle pause between actions.
+- `--idle-chance` (default `0.4`) — probability a bot does **nothing** on a given cycle, so
+  the world isn't a constant storm of actions (this, plus the per-cell waits, is what keeps
+  the broadcast volume from overwhelming a watching client).
+
 **Provisioning.** Bots are seeded directly into the DB (idempotent — re-runs reuse existing
-accounts): an account, a coach granted **two random card sets with one equipped** (the other
-left unlocked in inventory so it can be staked in bet fights and offered in exchanges), and
-one or more **procedurally generated, never-identical** fighters. The generator
-(`cmd/botswarm/generator.go`) reproduces the wire handler's legality rules: ≤6 breed-matching
-spells, ≤1 card per equipment slot, and a team value under the 5000 cap, biased to include a
-summon spell when the breed has one.
+accounts, and even re-dress coaches from older seeds): an account, a coach dressed in a
+**random renderable outfit** (one coach card per body slot, each equipped in the wire slot
+matching its `CoachCardType` so the client actually draws it) plus a second batch of cards
+left unlocked in inventory (stakeable in bet fights, tradeable in exchanges), and one or more
+**procedurally generated, never-identical** fighters. The generator (`cmd/botswarm/generator.go`)
+reproduces the wire handler's legality rules: ≤6 breed-matching spells, ≤1 card per equipment
+slot, and a team value under the 5000 cap, biased to include a summon spell when the breed
+has one.
 
 **Fight AI.** Two implementations live in `internal/botai`, both fed the same wire-observed
 `FightState` (own fighters + spells from `CREATE_FIGHT`, positions from `ACTOR_APPEAR`/

@@ -20,7 +20,10 @@ server:
 
 database:
   driver: sqlite
-  dsn: "file:arena.botswarm.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)"
+  # synchronous(NORMAL): safe in WAL, avoids a per-commit fsync -- important
+  # under the swarm's heavy write load (fight-end stats, card transfers,
+  # play-time updates, connect/disconnect bursts).
+  dsn: "file:arena.botswarm.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)&_pragma=synchronous(NORMAL)"
   max_open_conns: 1
   max_idle_conns: 1
 
@@ -29,12 +32,18 @@ gamedata:
   warm_cache: false
 
 logging:
-  level: warn
+  # "off" silences ALL logging (no console spam, no log file). The swarm
+  # generates a huge amount of traffic, so quiet is the sane default here.
+  # Set to "warn"/"info"/"debug" (and add `dir: logs`) if you need to debug.
+  # You can also pass `--quiet` to cmd/server to force this regardless.
+  level: "off"
   format: console
   trace_packets: false
 
 combat:
-  turn_clock: 30s
+  # Shorter turn clock so a stuck/slow fighter's turn auto-ends quickly and
+  # fights keep flowing under load (the bot AI acts well within this).
+  turn_clock: 15s
   presentation_clock: 2s
   placement_clock: 2s
   observation_clock: 2s

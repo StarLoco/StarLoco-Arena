@@ -29,6 +29,60 @@ func newTestOnlineCoach(t *testing.T, id uint, name string) *OnlineCoach {
 	}
 }
 
+func TestRegistryInFightFilteringExcludesFightingCoaches(t *testing.T) {
+	r := NewRegistry()
+	alice := newTestOnlineCoach(t, 1, "Alice")
+	bob := newTestOnlineCoach(t, 2, "Bob")
+	carol := newTestOnlineCoach(t, 3, "Carol")
+	for _, oc := range []*OnlineCoach{alice, bob, carol} {
+		if !r.Add(oc) {
+			t.Fatalf("Add(%d) failed", oc.ID())
+		}
+	}
+
+	// Everyone starts on the overworld.
+	if got := len(r.SnapshotWorld()); got != 3 {
+		t.Fatalf("SnapshotWorld() = %d, want 3", got)
+	}
+
+	// Bob enters a fight.
+	r.SetInFight(2, true)
+	if !bob.InFight() {
+		t.Fatal("Bob should be marked in-fight")
+	}
+
+	world := r.SnapshotWorld()
+	if len(world) != 2 {
+		t.Fatalf("SnapshotWorld() = %d, want 2 (Bob excluded)", len(world))
+	}
+	for _, oc := range world {
+		if oc.ID() == 2 {
+			t.Fatal("SnapshotWorld() must not include the in-fight coach")
+		}
+	}
+
+	// SnapshotWorldWithout also excludes the fighting coach and the given id.
+	if got := len(r.SnapshotWorldWithout(1)); got != 1 { // only Carol
+		t.Fatalf("SnapshotWorldWithout(1) = %d, want 1 (only Carol)", got)
+	}
+	// The views variant likewise excludes Bob.
+	views := r.SnapshotWorldViewsWithout(1)
+	for _, v := range views {
+		if v.ID == 2 {
+			t.Fatal("SnapshotWorldViewsWithout must exclude the in-fight coach")
+		}
+	}
+	if len(views) != 1 {
+		t.Fatalf("SnapshotWorldViewsWithout(1) = %d, want 1", len(views))
+	}
+
+	// Bob returns to the world.
+	r.SetInFight(2, false)
+	if got := len(r.SnapshotWorld()); got != 3 {
+		t.Fatalf("SnapshotWorld() after return = %d, want 3", got)
+	}
+}
+
 func TestRegistryAddGetRemove(t *testing.T) {
 	r := NewRegistry()
 	oc := newTestOnlineCoach(t, 1, "Alice")

@@ -4,6 +4,7 @@ import (
 	"github.com/dofusarena/go-server/internal/combat"
 	"github.com/dofusarena/go-server/internal/netio"
 	"github.com/dofusarena/go-server/internal/protocol"
+	"github.com/dofusarena/go-server/internal/world"
 )
 
 // This file wires the in-fight opcode handlers (Phase D readiness gates,
@@ -231,6 +232,10 @@ func returnCoachToWorld(deps *Deps, coachID uint) {
 	if !online {
 		return
 	}
+	// Back on the overworld: clear the in-fight flag so this coach resumes
+	// receiving world broadcasts (and is included in others' world scenes).
+	deps.World.SetInFight(coachID, false)
+
 	// Read this coach's position via a value snapshot rather than off the
 	// live shared pointer: returnCoachToWorld runs on a post-fight
 	// background goroutine, so a direct oc.Coach.PosX read here would race
@@ -242,7 +247,16 @@ func returnCoachToWorld(deps *Deps, coachID uint) {
 	oc.Session.Send(buildEnterWorldInstance(
 		float32(view.PosX), float32(view.PosY), view.PosZ, 0, false))
 
-	if others := deps.World.SnapshotViewsWithout(coachID); len(others) > 0 {
+	// Repopulate this coach's world scene with every OTHER overworld coach...
+	if others := deps.World.SnapshotWorldViewsWithout(coachID); len(others) > 0 {
 		oc.Session.Send(buildActorSpawn(others))
+	}
+	// ...and re-spawn THIS coach into every other overworld coach's scene, so
+	// they see them reappear on the map (they were despawned on fight entry).
+	if view, ok := deps.World.ViewOf(coachID); ok {
+		spawnMe := buildActorSpawn([]world.CoachView{view})
+		for _, other := range deps.World.SnapshotWorldWithout(coachID) {
+			other.Session.Send(spawnMe)
+		}
 	}
 }

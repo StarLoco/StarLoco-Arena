@@ -8,6 +8,7 @@ package world
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dofusarena/go-server/internal/domain"
 	"github.com/dofusarena/go-server/internal/netio"
@@ -22,7 +23,22 @@ import (
 type OnlineCoach struct {
 	Coach   *domain.Coach
 	Session *netio.Session
+
+	// inFight is true while this coach is inside a fight instance (teleported
+	// to the fight map, from presentation through fight-end). While set, the
+	// coach must NOT receive OVERWORLD broadcasts (other coaches' movement,
+	// vicinity chat, spawns): they're on a different map and the fight client
+	// scene has no world mobiles to apply them to -- at swarm scale that
+	// flood of inapplicable packets overwhelms/crashes the fighting client.
+	// Atomic so broadcast fan-outs can read it lock-free.
+	inFight atomic.Bool
 }
+
+// SetInFight marks whether this coach is currently inside a fight instance.
+func (o *OnlineCoach) SetInFight(v bool) { o.inFight.Store(v) }
+
+// InFight reports whether this coach is currently inside a fight instance.
+func (o *OnlineCoach) InFight() bool { return o.inFight.Load() }
 
 // ID is a convenience accessor for Coach.ID.
 func (o *OnlineCoach) ID() uint { return o.Coach.ID }
@@ -187,6 +203,51 @@ func (r *Registry) SnapshotWithout(excludeCoachID uint) []*OnlineCoach {
 	return out
 }
 
+// SetInFight marks (or clears) the in-fight state of an online coach, so
+// overworld broadcasts skip them while they're inside a fight instance.
+// No-op if the coach isn't online.
+func (r *Registry) SetInFight(coachID uint, v bool) {
+	r.mu.RLock()
+	oc, ok := r.byID[coachID]
+	r.mu.RUnlock()
+	if ok {
+		oc.SetInFight(v)
+	}
+}
+
+// SnapshotWorld returns the online coaches that are ON THE OVERWORLD (not
+// currently inside a fight instance), for fanning out world-map broadcasts
+// (movement, vicinity chat, spawns). Coaches in a fight are excluded so the
+// fight client never receives inapplicable world packets. Same
+// immutable-fields-only caveat as Snapshot.
+func (r *Registry) SnapshotWorld() []*OnlineCoach {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*OnlineCoach, 0, len(r.byID))
+	for _, c := range r.byID {
+		if c.InFight() {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// SnapshotWorldWithout is SnapshotWorld excluding one coach ID (the typical
+// "broadcast my world event to every OTHER overworld coach" case).
+func (r *Registry) SnapshotWorldWithout(excludeCoachID uint) []*OnlineCoach {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*OnlineCoach, 0, len(r.byID))
+	for id, c := range r.byID {
+		if id == excludeCoachID || c.InFight() {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 // ViewOf returns an immutable value snapshot of one online coach's mutable
 // display state, taken under the read lock. Use this instead of reading
 // fields off Get(id).Coach directly whenever the read happens on a
@@ -225,6 +286,23 @@ func (r *Registry) SnapshotViewsWithout(excludeCoachID uint) []CoachView {
 	out := make([]CoachView, 0, len(r.byID))
 	for id, oc := range r.byID {
 		if id == excludeCoachID {
+			continue
+		}
+		out = append(out, viewOfLocked(oc))
+	}
+	return out
+}
+
+// SnapshotWorldViewsWithout is SnapshotViewsWithout that ALSO excludes
+// coaches currently inside a fight instance -- for building the ACTOR_SPAWN
+// list of overworld coaches (a coach in a fight isn't standing on the world
+// map, so it must not be spawned into others' world scenes).
+func (r *Registry) SnapshotWorldViewsWithout(excludeCoachID uint) []CoachView {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]CoachView, 0, len(r.byID))
+	for id, oc := range r.byID {
+		if id == excludeCoachID || oc.InFight() {
 			continue
 		}
 		out = append(out, viewOfLocked(oc))

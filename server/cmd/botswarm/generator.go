@@ -45,6 +45,16 @@ type dataIndex struct {
 	// coachCardIDs are all valid cosmetic coach-card template ids (for the
 	// "2 card sets, equip 1" coach provisioning and card exchanges).
 	coachCardIDs []int32
+	// equipCoachCardsBySlot maps a coach equipment WIRE slot (0..13) to the
+	// coach-card template ids that can be worn there. A card only renders on
+	// the coach sprite when equipped into the slot matching its type (see
+	// coachCardTypeWireSlots), so the seeder must place each card in its
+	// correct slot -- putting a hat in the cloak slot shows nothing.
+	equipCoachCardsBySlot map[int16][]int32
+	// slotByCoachCardTemplate maps a coach-card template id to its wire slot
+	// (only for body-equippable templates). Lets the seeder re-slot cards a
+	// reused coach already owns.
+	slotByCoachCardTemplate map[int32]int16
 	// spellPrice / cardValue cache the point cost of each id so budget math
 	// avoids repeated repository Gets.
 	spellPrice map[int32]int32
@@ -57,11 +67,13 @@ type dataIndex struct {
 // generator handles gracefully.
 func buildDataIndex(store *gamedata.Store) *dataIndex {
 	idx := &dataIndex{
-		spellsByBreed:       make(map[byte][]int32),
-		summonSpellsByBreed: make(map[byte][]int32),
-		cardsBySlot:         make(map[int16][]int32),
-		spellPrice:          make(map[int32]int32),
-		cardValue:           make(map[int32]int32),
+		spellsByBreed:         make(map[byte][]int32),
+		summonSpellsByBreed:   make(map[byte][]int32),
+		cardsBySlot:           make(map[int16][]int32),
+		spellPrice:            make(map[int32]int32),
+		cardValue:               make(map[int32]int32),
+		equipCoachCardsBySlot:   make(map[int16][]int32),
+		slotByCoachCardTemplate: make(map[int32]int16),
 	}
 
 	playable := make(map[int32]bool, 12)
@@ -95,9 +107,92 @@ func buildDataIndex(store *gamedata.Store) *dataIndex {
 
 	for _, cc := range store.CoachCards.All() {
 		idx.coachCardIDs = append(idx.coachCardIDs, cc.ID)
+		// If this card's type is body-equippable, index it under its wire
+		// slot so the seeder can dress the coach in a coherent, RENDERABLE
+		// outfit (right card in the right slot).
+		if slot, ok := coachCardWireSlot(cc.Type); ok {
+			idx.equipCoachCardsBySlot[slot] = append(idx.equipCoachCardsBySlot[slot], cc.ID)
+			idx.slotByCoachCardTemplate[cc.ID] = slot
+		}
 	}
 
 	return idx
+}
+
+// coachCardTypeWireSlots maps a CoachCardTemplate.Type (the CoachCardType
+// enum id) to the equipment WIRE slot(s) the client renders it in, taken
+// verbatim from the decompiled client's CoachCardType.java inventoryPositions
+// (client/.../common/game/card/CoachCardType.java). Types not listed
+// (SMILEY, EMOTE, CURSE, PET_*) have no body slot (position -1) and are not
+// worn on the sprite. Multi-slot types (ARMBAND, SHOULDERPAD) list both
+// left/right slots.
+var coachCardTypeWireSlots = map[int32][]int16{
+	2:  {5},      // PANT       -> Culotte
+	3:  {2},      // HAIRS      -> Coiffure
+	4:  {1},      // TATOO      -> Tatouages
+	5:  {4, 12},  // ARMBAND    -> Brassard L/R
+	6:  {10},     // SHOES      -> Bottes
+	7:  {3, 13},  // SHOULDERPAD-> Epaulette L/R
+	8:  {8},      // CLOAK      -> Cape
+	9:  {6},      // TROUSERS   -> Pantalon
+	10: {11},     // SHIR       -> Chemise
+	11: {0},      // HAT        -> Chapeau
+	12: {7},      // STAFF      -> Baton (weapon)
+	13: {9},      // PET        -> Familier
+}
+
+// coachCardWireSlot returns the primary (first) wire slot a coach-card type
+// is worn in, or (0,false) if the type is not body-equippable.
+func coachCardWireSlot(cardType int32) (int16, bool) {
+	slots, ok := coachCardTypeWireSlots[cardType]
+	if !ok || len(slots) == 0 {
+		return 0, false
+	}
+	return slots[0], true
+}
+
+// equipEntry is one item of a generated outfit: a coach-card template to
+// grant and the WIRE slot to equip it in.
+type equipEntry struct {
+	TemplateID int32
+	WireSlot   int16
+}
+
+// generateOutfit builds a random, RENDERABLE outfit: for a random subset of
+// the body slots that have cards available, it picks one card. The result is
+// a coherent set of (template, slot) pairs the seeder equips so the coach
+// visibly wears gear. minSlots guarantees at least a few pieces show.
+func (idx *dataIndex) generateOutfit(rng *rand.Rand, minSlots int) []equipEntry {
+	slots := make([]int16, 0, len(idx.equipCoachCardsBySlot))
+	for slot := range idx.equipCoachCardsBySlot {
+		slots = append(slots, slot)
+	}
+	// Deterministic base order then shuffle, so a seeded rng is reproducible.
+	sortInt16(slots)
+	rng.Shuffle(len(slots), func(i, j int) { slots[i], slots[j] = slots[j], slots[i] })
+
+	var outfit []equipEntry
+	for _, slot := range slots {
+		cards := idx.equipCoachCardsBySlot[slot]
+		if len(cards) == 0 {
+			continue
+		}
+		// Always fill the first minSlots; beyond that, ~60% chance per slot
+		// so outfits vary between bots.
+		if len(outfit) >= minSlots && rng.Float64() < 0.4 {
+			continue
+		}
+		outfit = append(outfit, equipEntry{TemplateID: cards[rng.Intn(len(cards))], WireSlot: slot})
+	}
+	return outfit
+}
+
+func sortInt16(s []int16) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
 }
 
 // loadout is one generated fighter's build.

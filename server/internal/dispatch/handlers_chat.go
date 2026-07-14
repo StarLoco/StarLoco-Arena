@@ -75,7 +75,9 @@ func handleVicinityMessage(session *netio.Session, payload *protocol.Reader, dep
 	w.PutString(sender.Name).PutInt64(int64(sender.ID)).PutString(message)
 	frame := protocol.OutboundFrame{Opcode: protocol.SendVicinityMessage, Payload: w.Bytes()}
 
-	for _, oc := range deps.World.SnapshotWithout(sender.ID) {
+	// Overworld vicinity chat: don't deliver to coaches inside a fight
+	// instance (they're on the fight map, not in this vicinity).
+	for _, oc := range deps.World.SnapshotWorldWithout(sender.ID) {
 		oc.Session.Send(frame)
 	}
 }

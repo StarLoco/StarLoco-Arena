@@ -65,44 +65,78 @@ func (d *Driver) RunFight(createFightPayload []byte) (FightOutcome, error) {
 		state.Ingest(botclient.Frame{Opcode: protocol.SendCreateFight, Payload: createFightPayload})
 	}
 
-	// Advance through the three ready-gates. The server also advances on
-	// its per-phase clocks, so even if a gate frame is missed the fight
-	// proceeds; we send the votes eagerly and let frame ingestion continue.
+	// Vote ready-for-placement now: the fight is in PRESENTATION and the
+	// server accepts this vote (8011) only in that phase. The remaining two
+	// ready votes are phase-gated, so we send each ONLY when we see its
+	// phase begin (below) -- sending them early gets them silently dropped,
+	// which is exactly what left fights waiting the full phase clocks (and,
+	// under the swarm's broadcast flood, sometimes never reaching a turn).
 	_ = d.Client.ReadyForPlacement()
-	_ = d.Client.ReadyForObservation()
-	_ = d.Client.ReadyForAction()
 
 	out := FightOutcome{}
-	deadline := time.Now().Add(3 * time.Minute) // absolute safety cap
+	// Absolute safety cap. Kept modest so a genuinely wedged fight frees the
+	// bot quickly instead of tying it up for minutes.
+	deadline := time.Now().Add(90 * time.Second)
 	forfeited := false
 
-	// idleTimeout bounds how long we wait for the NEXT meaningful fight
-	// frame before assuming the fight has stalled (e.g. the opponent bot
-	// desynced or moved on). On the first stall we forfeit -- which ends
-	// the fight cleanly for BOTH bots (END_FIGHT is then broadcast) rather
-	// than both sides hanging until their sockets time out. A stall is
-	// normal at swarm scale (the paired bot may itself be stuck), so a
-	// forfeit-to-terminate is the correct, non-fatal outcome.
-	idleTimeout := d.FrameTimeout
-	if idleTimeout <= 0 || idleTimeout > 25*time.Second {
-		idleTimeout = 25 * time.Second
+	// stallWindow bounds how long we tolerate NO meaningful fight progress
+	// (a phase/turn/move/cast/death frame -- NOT the constant overworld
+	// broadcast noise from other bots) before forfeiting to force the fight
+	// to end. Tracking progress by MEANINGFUL frames (not raw Recv timeouts)
+	// is essential: at swarm scale a fighting bot's socket is flooded with
+	// other bots' ACTOR_MOVEMENT/VICINITY broadcasts, so Recv almost never
+	// times out even when the fight itself is completely stuck -- the old
+	// timeout-based stall detection never fired, and fights hung for minutes.
+	stallWindow := d.FrameTimeout
+	if stallWindow <= 0 || stallWindow > 20*time.Second {
+		stallWindow = 20 * time.Second
 	}
+	lastProgress := time.Now()
 
 	for {
-		if time.Now().After(deadline) {
-			return out, fmt.Errorf("botai: fight exceeded safety deadline (turns=%d)", out.Turns)
-		}
-		f, err := d.Client.Recv(idleTimeout)
-		if err != nil {
-			if isTimeout(err) && !forfeited {
-				// Stalled: forfeit to force the fight to end, then keep
-				// reading for the resulting END_FIGHT.
+		now := time.Now()
+		if now.After(deadline) {
+			// Last-resort: forfeit and give END_FIGHT a moment, else bail.
+			if !forfeited {
 				forfeited = true
 				_ = d.Client.GiveUp()
+				deadline = now.Add(8 * time.Second)
 				continue
+			}
+			return out, fmt.Errorf("botai: fight exceeded safety deadline (turns=%d)", out.Turns)
+		}
+		if !forfeited && now.Sub(lastProgress) > stallWindow {
+			forfeited = true
+			_ = d.Client.GiveUp()
+			lastProgress = now // give the forfeit->END_FIGHT a fresh window
+			continue
+		}
+
+		// Short Recv timeout so the stall check runs promptly even amid a
+		// heavy noise stream (each noisy frame returns fast; a genuine quiet
+		// gap returns via timeout and we re-check the stall clock).
+		f, err := d.Client.Recv(2 * time.Second)
+		if err != nil {
+			if isTimeout(err) {
+				continue // re-evaluate stall/deadline, keep waiting
 			}
 			return out, fmt.Errorf("botai: recv during fight: %w", err)
 		}
+
+		if isFightProgressFrame(f.Opcode) {
+			lastProgress = time.Now()
+		}
+		// React to phase starts with the phase-correct ready vote so both
+		// bots skip the phase clocks and reach the action phase quickly.
+		if !forfeited {
+			switch f.Opcode {
+			case protocol.SendStartPlacement:
+				_ = d.Client.ReadyForObservation()
+			case protocol.SendStartObservation:
+				_ = d.Client.ReadyForAction()
+			}
+		}
+
 		myTurn := state.Ingest(f)
 
 		if state.Ended {
@@ -129,6 +163,25 @@ func (d *Driver) RunFight(createFightPayload []byte) (FightOutcome, error) {
 				_ = d.Client.GiveUp()
 			}
 		}
+	}
+}
+
+// isFightProgressFrame reports whether an opcode represents real fight
+// progress (a phase transition, a turn, or an in-fight action/outcome) as
+// opposed to the overworld broadcast noise that floods a fighting bot's
+// socket at swarm scale. Used to detect a genuinely stalled fight.
+func isFightProgressFrame(op protocol.SendOpcode) bool {
+	switch op {
+	case protocol.SendStartPresentation, protocol.SendEndPresentation,
+		protocol.SendStartPlacement, protocol.SendEndPlacement,
+		protocol.SendStartObservation, protocol.SendEndObservation,
+		protocol.SendStartAction, protocol.SendNewTableTurnBegin,
+		protocol.SendFighterTurnBegin, protocol.SendActorAppear,
+		protocol.SendFighterMove, protocol.SendMoveToFreePlacement,
+		protocol.SendFighterDies, protocol.SendEndFight:
+		return true
+	default:
+		return false
 	}
 }
 

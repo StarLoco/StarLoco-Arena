@@ -75,6 +75,12 @@ func openRunLogFile(dir string) (*os.File, string, error) {
 }
 
 func parseLevel(level string) zerolog.Level {
+	// Friendly aliases for "log nothing" (zerolog's own token is
+	// "disabled"); makes `logging.level: off` in a YAML config work.
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "off", "none", "silent", "quiet":
+		return zerolog.Disabled
+	}
 	lvl, err := zerolog.ParseLevel(strings.ToLower(level))
 	if err != nil {
 		return zerolog.InfoLevel

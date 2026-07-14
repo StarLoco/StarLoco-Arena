@@ -419,6 +419,19 @@ func startPresentationForDuel(duel *world.Duel, deps *Deps) {
 		return // already started via a concurrent path
 	}
 
+	// Mark both coaches as inside a fight instance so overworld broadcasts
+	// (movement/chat/spawns from every other online coach) stop being
+	// delivered to them for the fight's duration -- they're on the fight map
+	// now, and that flood is what overwhelmed/crashed the fighting client at
+	// swarm scale. Also despawn them from every OTHER overworld coach's scene
+	// so a fighting coach doesn't linger frozen on the world map.
+	deps.World.SetInFight(duel.CoachAID, true)
+	deps.World.SetInFight(duel.CoachBID, true)
+	for _, oc := range deps.World.SnapshotWorld() {
+		oc.Session.Send(buildActorDespawn(duel.CoachAID))
+		oc.Session.Send(buildActorDespawn(duel.CoachBID))
+	}
+
 	// coachASpot/coachBSpot are resolved from real .amw/elements.ade map
 	// data when available (docs/08-java-parity-roadmap.md Phase K),
 	// falling back to the historical hardcoded placeholder cells if map
@@ -1095,7 +1108,11 @@ func handleActorMovementRequest(session *netio.Session, payload *protocol.Reader
 	}
 
 	frame := buildActorMovement(coach.ID, coach.PosX, coach.PosY, coach.PosZ, cells)
-	for _, oc := range deps.World.Snapshot() {
+	// Only fan out to coaches actually on the overworld -- a coach inside a
+	// fight instance is on the fight map and must not receive world-movement
+	// packets (its fight scene has no world mobile to move; at swarm scale
+	// that flood crashes the fighting client).
+	for _, oc := range deps.World.SnapshotWorld() {
 		oc.Session.Send(frame)
 	}
 
