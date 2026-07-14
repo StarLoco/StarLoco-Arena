@@ -38,6 +38,77 @@ function cssEsc(v: string): string {
   return (window.CSS && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
 }
 
+// buildChangelog produces a shareable Markdown changelog of every pending
+// change: per-file record-count deltas plus a data-integrity summary. This lets
+// a modder document/share exactly what their build changes vs the vanilla
+// client. Pure string building -- no side effects.
+function buildChangelog(
+  clientJar: string,
+  diffs: PushDiff[],
+  rep: ValidationReport | null
+): string {
+  const lines: string[] = [];
+  lines.push("# DofusArena data changelog");
+  lines.push("");
+  lines.push(`_Generated ${new Date().toISOString()}_`);
+  if (clientJar) lines.push(`_Target client: \`${clientJar}\`_`);
+  lines.push("");
+
+  if (diffs.length === 0) {
+    lines.push("No pending data changes — local data matches the client.");
+  } else {
+    lines.push(`## Changed files (${diffs.length})`);
+    lines.push("");
+    for (const d of diffs) {
+      lines.push(`### \`${d.name}\``);
+      lines.push("");
+      lines.push(d.note || "(changed)");
+      if (d.parsed && d.deltas.length) {
+        const changedRows = d.deltas.filter((r) => r.current !== r.backup);
+        if (changedRows.length) {
+          lines.push("");
+          lines.push("| Kind | Client | New | Δ |");
+          lines.push("| --- | ---: | ---: | ---: |");
+          for (const r of changedRows) {
+            const delta = r.backup - r.current;
+            lines.push(`| ${r.kind} | ${r.current} | ${r.backup} | ${delta > 0 ? "+" : ""}${delta} |`);
+          }
+        }
+      }
+      const sizeDelta = d.localBytes - (d.clientBytes < 0 ? 0 : d.clientBytes);
+      lines.push("");
+      lines.push(`_Size: ${d.clientBytes < 0 ? "new" : d.clientBytes + " B"} → ${d.localBytes} B (${
+        sizeDelta > 0 ? "+" : ""
+      }${sizeDelta})_`);
+      lines.push("");
+    }
+  }
+
+  lines.push("## Data integrity");
+  lines.push("");
+  if (!rep) {
+    lines.push("_Validation unavailable._");
+  } else if (rep.errors === 0 && rep.warnings === 0) {
+    lines.push(`All clear — ${rep.checked.toLocaleString()} records validated, no issues.`);
+  } else {
+    lines.push(
+      `${rep.errors} error(s), ${rep.warnings} warning(s) across ${rep.checked.toLocaleString()} records.`
+    );
+    const shown = rep.issues.slice(0, 50);
+    if (shown.length) {
+      lines.push("");
+      for (const is of shown) {
+        lines.push(`- **[${is.severity}]** ${is.category}: ${is.message}`);
+      }
+      if (rep.issues.length > shown.length) {
+        lines.push(`- _…and ${rep.issues.length - shown.length} more._`);
+      }
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 // renderPushDiff renders a PushDiff (client -> local) as a note + delta table.
 // RecordDelta.current = the client's value, .backup = the local (new) value.
 function renderPushDiff(d: PushDiff): string {
@@ -164,6 +235,7 @@ export function viewDeploy(container: HTMLElement) {
                <button class="dp-review-btn" id="dpReviewBtn">\u25B8 Review all ${changed} pending change${
               changed === 1 ? "" : "s"
             }</button>
+               <button class="dp-review-btn" id="dpChangelogBtn" title="Download a Markdown changelog of every pending change">\u2B07 Changelog</button>
                <div class="dp-review-body" id="dpReviewBody" hidden></div>
              </div>`
           : ""
@@ -392,6 +464,32 @@ export function viewDeploy(container: HTMLElement) {
         }
       });
     }
+
+    // Download a Markdown changelog of every pending change (data + integrity).
+    container.querySelector<HTMLButtonElement>("#dpChangelogBtn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget as HTMLButtonElement;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "\u2026 building";
+      try {
+        const [diffs, rep] = await Promise.all([diffAllPushFiles(), validateData().catch(() => null)]);
+        const md = buildChangelog(status.clientJar, diffs, rep);
+        const blob = new Blob([md], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+        a.href = url;
+        a.download = `dofusarena-changelog-${stamp}.md`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) {
+        const st = container.querySelector<HTMLElement>("#dpStatus");
+        if (st) st.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
 
     // Per-file record-level diff (expand/collapse) between local and client.
     container.querySelectorAll<HTMLButtonElement>("[data-diff-file]").forEach((btn) => {
