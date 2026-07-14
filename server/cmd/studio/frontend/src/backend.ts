@@ -332,6 +332,9 @@ type AppBindings = {
   PushDataToClient(names: string[]): Promise<RepackResult>;
   SaveJarText(jar: string, entry: string, content: string): Promise<RepackResult>;
   ReplaceJarEntry(jar: string, entry: string, base64Data: string): Promise<RepackResult>;
+  GetSpellScript(scriptId: number): Promise<SpellScript>;
+  SaveSpellScript(scriptId: number, source: string): Promise<RepackResult>;
+  ListScriptIDs(): Promise<number[]>;
   ListBackups(): Promise<BackupsResult>;
   RestoreBackup(backupPath: string): Promise<ExportResult>;
   DeleteBackup(backupPath: string): Promise<void>;
@@ -613,6 +616,15 @@ export interface NewRecordResult extends ExportResult {
   newId: number;
 }
 
+// SpellScript mirrors scriptedit.go: a spell's resolved Lua source in data.jar.
+export interface SpellScript {
+  scriptId: number;
+  entry: string;
+  exists: boolean;
+  source: string;
+  bytes: number;
+}
+
 // -------- Phase 4 map types --------
 
 export interface MapSummary {
@@ -858,6 +870,26 @@ export async function suggestCardIDs(): Promise<Record<string, number>> {
   const b = await bindings();
   if (!b) throw new Error(NO_STORE);
   return b.SuggestCardIDs();
+}
+
+// --- spell-script IDE ---
+export async function getSpellScript(scriptId: number): Promise<SpellScript> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.GetSpellScript(scriptId);
+}
+export async function saveSpellScript(
+  scriptId: number,
+  source: string
+): Promise<RepackResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveSpellScript(scriptId, source);
+}
+export async function listScriptIDs(): Promise<number[]> {
+  const b = await bindings();
+  if (!b) return [];
+  return b.ListScriptIDs();
 }
 
 export async function getPushStatus(): Promise<PushStatus> {

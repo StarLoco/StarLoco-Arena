@@ -32,6 +32,7 @@ import { simulatorHTML, wireSimulator } from "./simulator";
 import { wireCrosslinks } from "./crosslink";
 import { mountEffectEditor, type EffectParentKind } from "./effecteditor";
 import { newRecordButton, wireNewRecordButton, type CreateKind } from "./recordcreate";
+import { mountScriptEditor, loadScriptIndex, hasScript } from "./scripteditor";
 
 // mountEffectEditors finds every fe-mount placeholder inside root and mounts a
 // full effect editor for its record (by id), for cards/events drawers. Spells
@@ -182,6 +183,16 @@ export function viewSpells(c: HTMLElement) {
         value: (r) => (r.Effects?.length ?? 0),
         render: (r) => effectsSummary(r.Effects),
       },
+      {
+        key: "script",
+        label: "Script",
+        value: (r) => (r.ScriptID > 0 && hasScript(r.ScriptID) ? 1 : 0),
+        render: (r) =>
+          r.ScriptID > 0 && hasScript(r.ScriptID)
+            ? `<span class="tb-badge script">Lua ${r.ScriptID}</span>`
+            : "\u2014",
+        align: "center",
+      },
     ];
     const facets: Facet<(typeof rows)[number]>[] = [
       {
@@ -194,18 +205,19 @@ export function viewSpells(c: HTMLElement) {
       { key: "los", label: "LOS", kind: "toggle", value: (r) => r.CastTestLineOfSight },
       { key: "line", label: "Line only", kind: "toggle", value: (r) => r.CastOnlyLine },
       { key: "free", label: "Free cell", kind: "toggle", value: (r) => r.NeedFreeCell },
+      { key: "hasScript", label: "Has Lua script", kind: "toggle", value: (r) => r.ScriptID > 0 && hasScript(r.ScriptID) },
     ];
-    mountTable(host, {
+    const tableCfg = {
       columns: cols,
       rows,
       facets,
       exportName: "spells",
-      searchText: (r) =>
+      searchText: (r: Spell) =>
         `${r.ID} ${nameOf("spells", r.ID)} ${r.Criterion} ${nameOf("breeds", r.BreedID)} ${r.ScriptID} ${(r.Effects ?? [])
           .map((e) => decodeEffectText(e))
           .join(" ")}`,
-      detail: (r) => spellEditor(r),
-      onDraw: (c) => {
+      detail: (r: Spell) => spellEditor(r),
+      onDraw: (c: HTMLElement) => {
         wireIconCells(c);
         wireSimulator(c);
         wireCrosslinks(c);
@@ -216,8 +228,16 @@ export function viewSpells(c: HTMLElement) {
           const spell = rows.find((r) => r.ID === sid);
           if (spell) mountEffectEditor(mount, sid, spell.Effects);
         });
+        // Mount the Lua spell-script editor into any expanded spell drawer.
+        c.querySelectorAll<HTMLElement>(".sc-mount").forEach((mount) => {
+          mountScriptEditor(mount, Number(mount.dataset.scScript));
+        });
       },
-    });
+    };
+    mountTable(host, tableCfg);
+    // Load the script index in the background, then re-render so the "script"
+    // column/badges reflect which spells actually have a Lua file.
+    loadScriptIndex().then(() => mountTable(host, tableCfg));
     // Editable spell form wiring (delegated, since the table re-renders).
     host.addEventListener("click", (ev) => {
       const t = ev.target as HTMLElement;
@@ -338,7 +358,8 @@ function spellEditor(s: Spell): string {
       </div>
     </div>
     ${simulatorHTML(s.Effects)}
-    <div class="fe-mount" data-fe-spell="${s.ID}"></div>`;
+    <div class="fe-mount" data-fe-spell="${s.ID}"></div>
+    <div class="sc-mount" data-sc-script="${s.ScriptID}"></div>`;
 }
 
 function onSaveSpell(host: HTMLElement, id: number) {
