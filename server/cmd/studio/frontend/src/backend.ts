@@ -183,6 +183,17 @@ export interface PushStatus {
   files: PushFileStatus[];
   error: string;
 }
+// PushDiff mirrors pushclient.go: per-file record deltas (client -> local).
+export interface PushDiff {
+  name: string;
+  inClient: boolean;
+  identical: boolean;
+  clientBytes: number;
+  localBytes: number;
+  parsed: boolean;
+  deltas: RecordDelta[]; // .current = client, .backup = local (would-be-pushed)
+  note: string;
+}
 
 export interface BackupEntry {
   path: string;
@@ -346,6 +357,7 @@ type AppBindings = {
   SuggestCardIDs(): Promise<Record<string, number>>;
   GetPushStatus(): Promise<PushStatus>;
   PushDataToClient(names: string[]): Promise<RepackResult>;
+  DiffPushFile(name: string): Promise<PushDiff>;
   SaveJarText(jar: string, entry: string, content: string): Promise<RepackResult>;
   ReplaceJarEntry(jar: string, entry: string, base64Data: string): Promise<RepackResult>;
   GetSpellScript(scriptId: number): Promise<SpellScript>;
@@ -955,6 +967,11 @@ export async function getPushStatus(): Promise<PushStatus> {
   const b = await bindings();
   if (!b) return { clientJar: "", files: [], error: "no runtime" };
   return b.GetPushStatus();
+}
+export async function diffPushFile(name: string): Promise<PushDiff> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.DiffPushFile(name);
 }
 export async function pushDataToClient(names: string[]): Promise<RepackResult> {
   const b = await bindings();

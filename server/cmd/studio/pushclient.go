@@ -205,3 +205,111 @@ func shortHash(b []byte) string {
 	sum := sha1.Sum(b)
 	return hex.EncodeToString(sum[:])[:7]
 }
+
+// PushDiff summarizes what pushing one data file would change in the client:
+// per-kind record-count deltas (client entry -> local edited copy) plus a size
+// delta and a note. Read-only. Client=the value currently in the client jar,
+// Local=the value that would be pushed.
+type PushDiff struct {
+	Name        string        `json:"name"`
+	InClient    bool          `json:"inClient"`    // the client jar has this entry today
+	Identical   bool          `json:"identical"`   // local re-encoded == client entry (push is a no-op)
+	ClientBytes int64         `json:"clientBytes"` // -1 when not present in client
+	LocalBytes  int64         `json:"localBytes"`
+	Parsed      bool          `json:"parsed"`
+	Deltas      []RecordDelta `json:"deltas"` // RecordDelta.Current=client, .Backup=local
+	Note        string        `json:"note"`
+}
+
+// DiffPushFile compares the local edited data/<name> (what would be pushed)
+// against the client's current data.jar entry, and returns a per-kind
+// record-count delta so the deploy panel can show WHAT changes, not just that
+// the hashes differ. Never writes.
+func (a *App) DiffPushFile(name string) (PushDiff, error) {
+	if !a.paths.DataDirValid {
+		return PushDiff{}, fmt.Errorf("no valid data directory selected")
+	}
+	var spec *dataFileSpec
+	for i := range pushableFiles {
+		if pushableFiles[i].name == name {
+			spec = &pushableFiles[i]
+			break
+		}
+	}
+	if spec == nil {
+		return PushDiff{}, fmt.Errorf("%q is not a pushable data file", name)
+	}
+
+	local, err := os.ReadFile(filepath.Join(a.paths.DataDir, spec.name))
+	if err != nil {
+		return PushDiff{}, fmt.Errorf("read local %s: %w", spec.name, err)
+	}
+	// Use the re-encoded local bytes (the exact bytes push would write).
+	reenc, err := spec.reencode(local)
+	if err != nil {
+		return PushDiff{}, fmt.Errorf("parse/encode local %s: %w", spec.name, err)
+	}
+
+	out := PushDiff{Name: spec.name, LocalBytes: int64(len(reenc)), ClientBytes: -1}
+
+	var clientRaw []byte
+	if r, e := a.openNamedJar("data.jar"); e == nil {
+		if f := findEntry(r, spec.jarEntry); f != nil {
+			if raw, re := readZipEntry(f, 32<<20); re == nil {
+				clientRaw = raw
+				out.InClient = true
+				out.ClientBytes = int64(len(raw))
+			}
+		}
+	}
+	if out.InClient {
+		out.Identical = bytes.Equal(reenc, clientRaw)
+	}
+
+	// Per-kind counts: current = client entry, backup(=new) = local re-encoded.
+	if deltas, ok := recordCountDeltas(spec.name, clientRaw, reenc); ok {
+		out.Parsed = true
+		out.Deltas = deltas
+	}
+	out.Note = summarizePushDiff(out)
+	return out, nil
+}
+
+// summarizePushDiff builds a one-line human summary for a PushDiff.
+func summarizePushDiff(d PushDiff) string {
+	if !d.InClient {
+		return "Not in the client yet \u2014 pushing adds this file."
+	}
+	if d.Identical {
+		return "Identical to the client \u2014 pushing changes nothing."
+	}
+	var parts []string
+	if d.Parsed {
+		for _, r := range d.Deltas {
+			if r.Current != r.Backup {
+				parts = append(parts, fmt.Sprintf("%s %d\u2192%d (%+d)", r.Kind, r.Current, r.Backup, r.Backup-r.Current))
+			}
+		}
+	}
+	sizeDelta := d.LocalBytes - d.ClientBytes
+	sizeTxt := "same size"
+	if sizeDelta != 0 {
+		sizeTxt = fmt.Sprintf("%+d bytes", sizeDelta)
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("Content differs (%s) but record counts are unchanged.", sizeTxt)
+	}
+	return fmt.Sprintf("Pushing would set: %s \u00B7 %s.", joinComma(parts), sizeTxt)
+}
+
+// joinComma joins parts with ", " (avoids importing strings just for this).
+func joinComma(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += ", "
+		}
+		out += p
+	}
+	return out
+}

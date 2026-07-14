@@ -11,10 +11,12 @@ import {
   deleteBackup,
   validateData,
   diffBackup,
+  diffPushFile,
   type PushStatus,
   type BackupEntry,
   type ValidationReport,
   type BackupDiff,
+  type PushDiff,
 } from "./backend";
 
 function esc(v: unknown): string {
@@ -28,6 +30,36 @@ function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+// cssEsc escapes a value for use in an attribute selector (file names have dots).
+function cssEsc(v: string): string {
+  return (window.CSS && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
+}
+
+// renderPushDiff renders a PushDiff (client -> local) as a note + delta table.
+// RecordDelta.current = the client's value, .backup = the local (new) value.
+function renderPushDiff(d: PushDiff): string {
+  const cls = d.identical ? "same" : !d.inClient ? "new" : "diff";
+  const rows =
+    d.parsed && d.deltas.length
+      ? d.deltas
+          .map((r) => {
+            const delta = r.backup - r.current;
+            const dcls = delta === 0 ? "" : delta > 0 ? "up" : "down";
+            return `<tr><td>${esc(r.kind)}</td><td class="mono">${r.current}</td>
+              <td class="dp-diff-arrow">\u2192</td><td class="mono">${r.backup}</td>
+              <td class="dp-delta ${dcls}">${delta === 0 ? "" : (delta > 0 ? "+" : "") + delta}</td></tr>`;
+          })
+          .join("")
+      : "";
+  return `
+    <div class="dp-diff-note ${cls}">${esc(d.note)}</div>
+    ${
+      rows
+        ? `<table class="dp-diff-table"><thead><tr><th>Kind</th><th>client</th><th></th><th>new</th><th>\u0394</th></tr></thead><tbody>${rows}</tbody></table>`
+        : ""
+    }`;
 }
 
 export function viewDeploy(container: HTMLElement) {
@@ -82,6 +114,9 @@ export function viewDeploy(container: HTMLElement) {
           ? `<span class="dp-state diff">modified</span>`
           : `<span class="dp-state same">up to date</span>`;
         const canPush = f.localOk && f.differs;
+        // Only offer a record-level diff when the file exists in the client and
+        // differs (a "new" file has nothing to diff against).
+        const canDiff = f.localOk && f.differs && f.inClient;
         return `
         <tr class="dp-row ${canPush ? "" : "disabled"}">
           <td class="dp-check">
@@ -89,12 +124,15 @@ export function viewDeploy(container: HTMLElement) {
           selected.has(f.name) ? "checked" : ""
         } ${canPush ? "" : "disabled"} />
           </td>
-          <td class="dp-name mono">${esc(f.name)}</td>
+          <td class="dp-name mono">${esc(f.name)}${
+          canDiff ? ` <button class="dp-diff-btn" data-diff-file="${esc(f.name)}" title="Show what changes">diff</button>` : ""
+        }</td>
           <td>${state}</td>
           <td class="dp-hash mono">${f.localOk ? esc(f.localHash) : "\u2014"}</td>
           <td class="dp-arrow">${f.differs && f.localOk ? "\u2192" : ""}</td>
           <td class="dp-hash mono">${f.inClient ? esc(f.clientHash) : "\u2014"}</td>
-        </tr>`;
+        </tr>
+        <tr class="dp-diff-row" data-diff-row="${esc(f.name)}" hidden><td colspan="6"><div class="dp-diff" data-diff="${esc(f.name)}"></div></td></tr>`;
       })
       .join("");
 
@@ -310,6 +348,28 @@ export function viewDeploy(container: HTMLElement) {
       window.dispatchEvent(
         new CustomEvent("studio:navigate", { detail: { view: "diagnostics" } })
       );
+    });
+
+    // Per-file record-level diff (expand/collapse) between local and client.
+    container.querySelectorAll<HTMLButtonElement>("[data-diff-file]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const name = btn.dataset.diffFile!;
+        const row = container.querySelector<HTMLElement>(`[data-diff-row="${cssEsc(name)}"]`);
+        const box = container.querySelector<HTMLElement>(`[data-diff="${cssEsc(name)}"]`);
+        if (!row || !box) return;
+        if (!row.hidden) {
+          row.hidden = true; // toggle off
+          return;
+        }
+        row.hidden = false;
+        box.innerHTML = `<div class="dp-diff-loading">Comparing with client\u2026</div>`;
+        try {
+          const d = await diffPushFile(name);
+          box.innerHTML = renderPushDiff(d);
+        } catch (err) {
+          box.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
+        }
+      });
     });
     container.querySelectorAll<HTMLInputElement>("[data-push]").forEach((cb) => {
       cb.addEventListener("change", () => {
