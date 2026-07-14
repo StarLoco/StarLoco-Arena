@@ -12,6 +12,7 @@ import {
   type TransRow,
   type TransEdit,
 } from "./backend";
+import { setDirty } from "./dirty";
 import { iconCell, wireIconCells } from "./names";
 
 function esc(v: unknown): string {
@@ -107,6 +108,8 @@ export function viewTranslations(container: HTMLElement) {
   }
 
   function draw() {
+    // Keep the global unsaved-changes guard in sync on every (re)render.
+    setDirty(`trans:${state.lang}`, state.edits.size > 0);
     const kinds = [...new Set(state.rows.map((r) => r.kind))];
     const chips = [`<button class="tr-chip ${state.kind === "" ? "on" : ""}" data-kind="">all</button>`]
       .concat(
@@ -191,6 +194,8 @@ export function viewTranslations(container: HTMLElement) {
     const bar = container.querySelector<HTMLElement>(".tr-savebar");
     if (bar) bar.outerHTML = saveBar();
     wireSaveBar();
+    // Reflect the pending translation edits in the global unsaved-changes guard.
+    setDirty(`trans:${state.lang}`, state.edits.size > 0);
   }
 
   function wire() {

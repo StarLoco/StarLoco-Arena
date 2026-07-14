@@ -13,6 +13,7 @@ import {
   type ExportResult,
 } from "./backend";
 import { decodeEffectHTML, actionOptions, gameIcon } from "./effectlore";
+import { setDirty, markClean } from "./dirty";
 
 // EffectParentKind selects which .dat file the effects are written back to.
 export type EffectParentKind = "spell" | "card" | "event";
@@ -102,6 +103,14 @@ export function mountEffectEditor(
 ) {
   const meta = parentMeta(kind);
   let draft: EffectEditDTO[] = (effects ?? []).map(effectToDTO);
+  const dkey = `effects:${kind}:${parentId}`;
+  let baseline = JSON.stringify(draft);
+
+  // recomputeDirty flags this editor dirty whenever the draft diverges from the
+  // effects it was mounted with.
+  function recomputeDirty() {
+    setDirty(dkey, JSON.stringify(draft) !== baseline);
+  }
 
   function draw() {
     const opts = actionOptions();
@@ -165,6 +174,7 @@ export function mountEffectEditor(
         </div>
       </div>`;
     wire();
+    recomputeDirty();
   }
 
   function wire() {
@@ -227,6 +237,8 @@ export function mountEffectEditor(
       try {
         const res = await meta.save(parentId, draft);
         status.innerHTML = `<span class="ok">Saved ${res.bytes} B \u00B7 backup created</span>`;
+        markClean(dkey); // saved; the current draft is the new baseline
+        baseline = JSON.stringify(draft);
       } catch (err) {
         status.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
       } finally {
@@ -267,6 +279,7 @@ export function mountEffectEditor(
       const row = host.querySelector<HTMLElement>(`.fe-row[data-i="${i}"] .fe-preview`);
       if (row) row.innerHTML = decodeEffectHTML(dtoToEffectDef(d));
     }
+    recomputeDirty();
   }
 
   draw();

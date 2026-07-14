@@ -1893,6 +1893,22 @@ button.mini:hover {
 .status .mono {
   font-family: var(--mono);
 }
+.dirty-indicator {
+  margin-right: 14px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--warn);
+  background: rgba(255, 180, 84, 0.14);
+  border: 1px solid rgba(255, 180, 84, 0.3);
+  animation: dirty-pulse 2s ease-in-out infinite;
+}
+@keyframes dirty-pulse {
+  50% {
+    opacity: 0.65;
+  }
+}
 
 /* ---------- Sprite inspector extras ---------- */
 .insp-checker {

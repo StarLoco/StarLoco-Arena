@@ -12,6 +12,7 @@ import {
   type SpellScript,
 } from "./backend";
 import { highlightLua } from "./luahl";
+import { setDirty, markClean } from "./dirty";
 
 // scriptIdSet caches which script ids actually have a Lua file, so views can
 // badge "has script" at a glance without a fetch per row. Loaded once.
@@ -99,7 +100,8 @@ function render(host: HTMLElement, sc: SpellScript) {
 
   const ta = editor.querySelector<HTMLTextAreaElement>(".sc-code")!;
   const hl = editor.querySelector<HTMLElement>(".sc-hl")!;
-  const original = sc.source;
+  let baseline = sc.source; // the last-saved value; edits are dirty vs this
+  const dkey = `script:${sc.scriptId}`;
 
   // syncHighlight repaints the highlight layer + keeps it scroll-aligned with
   // the textarea. Called on every input and scroll.
@@ -136,7 +138,9 @@ function render(host: HTMLElement, sc: SpellScript) {
 
   const status = editor.querySelector<HTMLElement>("[data-status]")!;
   const markDirty = () => {
-    if (ta.value !== original) {
+    const dirty = ta.value !== baseline;
+    setDirty(dkey, dirty);
+    if (dirty) {
       status.textContent = "Unsaved changes";
       status.className = "sc-status dirty";
     } else {
@@ -151,7 +155,7 @@ function render(host: HTMLElement, sc: SpellScript) {
 
   editor.querySelector<HTMLButtonElement>("[data-revert]")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    ta.value = original;
+    ta.value = baseline;
     markDirty();
     syncHighlight();
   });
@@ -168,8 +172,9 @@ function render(host: HTMLElement, sc: SpellScript) {
         res.backupPath?.split(/[\\/]/).pop() ?? "created"
       }`;
       status.className = "sc-status ok";
-      // The saved value becomes the new baseline (mark clean on next input).
-      (sc as { source: string }).source = ta.value;
+      // The saved value becomes the new baseline; the editor is now clean.
+      baseline = ta.value;
+      markClean(dkey);
     } catch (err) {
       status.textContent = (err as Error).message;
       status.className = "sc-status err";

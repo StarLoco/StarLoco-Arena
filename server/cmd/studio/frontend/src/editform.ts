@@ -6,6 +6,7 @@
 // boilerplate.
 
 import type { ExportResult } from "./backend";
+import { setDirty, markClean } from "./dirty";
 
 export type FieldType = "number" | "text" | "bool";
 
@@ -26,6 +27,9 @@ export interface EditFormSpec {
   // save receives the edited values keyed by field.key and returns the export
   // result (target + backup path).
   save: (values: Record<string, number | string | boolean>) => Promise<ExportResult>;
+  // dirtyKey uniquely identifies this form in the global unsaved-changes
+  // registry; defaults to the title if omitted.
+  dirtyKey?: string;
 }
 
 function esc(v: unknown): string {
@@ -81,11 +85,34 @@ export function wireEditForm(root: HTMLElement, specs: EditFormSpec[]): void {
       const t = e.target as HTMLElement;
       if (!t.matches("[data-ef-save]")) e.stopPropagation();
     });
+    const id = Number(form.dataset.efId);
+    const spec = byId.get(id);
+    const dkey = spec ? `form:${spec.dirtyKey ?? spec.title}` : "";
+
+    // Track unsaved changes: compare each field to its original spec value and
+    // register/clear this form's dirty key in the global registry.
+    if (spec) {
+      const original: Record<string, string> = {};
+      for (const f of spec.fields) original[f.key] = String(f.value);
+      const recompute = () => {
+        let dirty = false;
+        form.querySelectorAll<HTMLInputElement>("[data-ef]").forEach((inp) => {
+          const f = spec.fields.find((x) => x.key === inp.dataset.ef);
+          if (!f) return;
+          const cur = f.type === "bool" ? String(inp.checked) : inp.value;
+          if (cur !== original[f.key]) dirty = true;
+        });
+        setDirty(dkey, dirty);
+      };
+      form.querySelectorAll<HTMLInputElement>("[data-ef]").forEach((inp) => {
+        inp.addEventListener("input", recompute);
+        inp.addEventListener("change", recompute);
+      });
+    }
+
     const saveBtn = form.querySelector<HTMLButtonElement>("[data-ef-save]");
     saveBtn?.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const id = Number(form.dataset.efId);
-      const spec = byId.get(id);
       if (!spec) return;
       const status = form.querySelector<HTMLElement>("[data-ef-status]")!;
       const values: Record<string, number | string | boolean> = {};
@@ -103,6 +130,7 @@ export function wireEditForm(root: HTMLElement, specs: EditFormSpec[]): void {
         const res = await spec.save(values);
         status.textContent = `Saved \u00B7 backup ${res.backupPath?.split(/[\\/]/).pop() ?? "created"}`;
         status.className = "edit-status ok";
+        markClean(dkey); // saved -> no longer dirty
       } catch (err) {
         status.textContent = `Failed: ${(err as Error).message}`;
         status.className = "edit-status err";

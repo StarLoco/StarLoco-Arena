@@ -33,6 +33,7 @@ import { wireCrosslinks } from "./crosslink";
 import { mountEffectEditor, type EffectParentKind } from "./effecteditor";
 import { newRecordButton, wireNewRecordButton, type CreateKind } from "./recordcreate";
 import { mountScriptEditor, loadScriptIndex, hasScript } from "./scripteditor";
+import { setDirty, markClean } from "./dirty";
 
 // mountEffectEditors finds every fe-mount placeholder inside root and mounts a
 // full effect editor for its record (by id), for cards/events drawers. Spells
@@ -232,6 +233,12 @@ export function viewSpells(c: HTMLElement) {
         c.querySelectorAll<HTMLElement>(".sc-mount").forEach((mount) => {
           mountScriptEditor(mount, Number(mount.dataset.scScript));
         });
+        // Track unsaved changes on any expanded spell form.
+        c.querySelectorAll<HTMLElement>(".spell-edit").forEach((form) => {
+          const sid = Number(form.dataset.spell);
+          const spell = rows.find((r) => r.ID === sid);
+          if (spell) trackSpellDirty(form, spell);
+        });
       },
     };
     mountTable(host, tableCfg);
@@ -393,10 +400,45 @@ function onSaveSpell(host: HTMLElement, id: number) {
     .then((res) => {
       if (statusEl)
         statusEl.innerHTML = `<span class="ok">Saved ${res.bytes} B \u00B7 backup created</span>`;
+      markClean(`spell:${id}`);
     })
     .catch((err) => {
       if (statusEl) statusEl.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
     });
+}
+
+// trackSpellDirty registers "spell:<id>" as dirty whenever the form diverges
+// from the saved spell record, and clears it when they match again.
+function trackSpellDirty(form: HTMLElement, s: Spell) {
+  if (form.dataset.dirtyWired) return;
+  form.dataset.dirtyWired = "1";
+  const original: Record<string, string> = {
+    actionPointsCost: String(s.ActionPointsCost),
+    rangeMin: String(s.RangeMin),
+    rangeMax: String(s.RangeMax),
+    castFrequencyMaxPerTurn: String(s.CastFrequencyMaxPerTurn),
+    castFrequencyMaxPerPlayer: String(s.CastFrequencyMaxPerPlayer),
+    castFrequencyMinInterval: String(s.CastFrequencyMinInterval),
+    price: String(s.Price),
+    castTestLineOfSight: String(s.CastTestLineOfSight),
+    castOnlyLine: String(s.CastOnlyLine),
+    needFreeCell: String(s.NeedFreeCell),
+    criterion: s.Criterion,
+  };
+  const recompute = () => {
+    let dirty = false;
+    form.querySelectorAll<HTMLInputElement>("[data-f]").forEach((inp) => {
+      const key = inp.dataset.f!;
+      if (!(key in original)) return;
+      const cur = inp.type === "checkbox" ? String(inp.checked) : inp.value;
+      if (cur !== original[key]) dirty = true;
+    });
+    setDirty(`spell:${s.ID}`, dirty);
+  };
+  form.querySelectorAll<HTMLInputElement>("[data-f]").forEach((inp) => {
+    inp.addEventListener("input", recompute);
+    inp.addEventListener("change", recompute);
+  });
 }
 
 export function viewCards(c: HTMLElement) {

@@ -29,6 +29,7 @@ import { viewTranslations } from "./translations";
 import { viewDeploy } from "./deploy";
 import { viewScripts } from "./scriptsview";
 import { listScriptIDs } from "./backend";
+import { confirmDiscardIfDirty, onDirtyChange, dirtyCount, isAnyDirty } from "./dirty";
 
 // -------- App shell / navigation --------
 
@@ -147,12 +148,27 @@ function renderStatus() {
     <span><span class="dot ${dataOk ? "ok" : "err"}"></span>data ${dataOk ? "loaded" : "not found"}</span>
     <span><span class="dot ${clientOk ? "ok" : "err"}"></span>client ${clientOk ? "detected" : "not found"}</span>
     <span class="spacer"></span>
+    <span class="dirty-indicator" id="dirtyInd" hidden></span>
     <span class="mono" id="envline"></span>
   `);
   getEnv().then((env) => {
     const el = document.querySelector("#envline");
     if (el) el.textContent = `${env.os} \u00B7 studio ${env.version}`;
   });
+  renderDirtyIndicator(dirtyCount());
+}
+
+// renderDirtyIndicator updates the top-bar "N unsaved changes" pill.
+function renderDirtyIndicator(n: number) {
+  const el = document.querySelector<HTMLElement>("#dirtyInd");
+  if (!el) return;
+  if (n <= 0) {
+    el.hidden = true;
+    el.textContent = "";
+  } else {
+    el.hidden = false;
+    el.textContent = `\u25CF ${n} unsaved change${n === 1 ? "" : "s"}`;
+  }
 }
 
 // pendingFocus carries a deep-link target (search query) into the next page
@@ -160,6 +176,9 @@ function renderStatus() {
 let pendingFocus: { query?: string } | null = null;
 
 function navigate(id: string, focus?: { query?: string }) {
+  if (id === current) return; // no-op: don't prompt for "navigating" to the same view
+  // Guard: warn before leaving a view that has unsaved edits.
+  if (!confirmDiscardIfDirty()) return;
   current = id;
   pendingFocus = focus ?? null;
   app.querySelectorAll<HTMLElement>("[data-nav]").forEach((el) => {
@@ -174,6 +193,17 @@ function navigate(id: string, focus?: { query?: string }) {
 window.addEventListener("studio:navigate", (ev) => {
   const d = (ev as CustomEvent).detail as { view: string; query?: string };
   if (d?.view) navigate(d.view, { query: d.query });
+});
+
+// Keep the top-bar indicator live as editors report dirty/clean state.
+onDirtyChange((n) => renderDirtyIndicator(n));
+
+// Warn before closing the window with unsaved edits (native browser prompt).
+window.addEventListener("beforeunload", (e) => {
+  if (isAnyDirty()) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
 });
 
 // Keyboard nav: Alt+1..9 jumps to the Nth sidebar entry; "/" focuses the active
