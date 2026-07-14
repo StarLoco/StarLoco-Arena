@@ -7,9 +7,11 @@ import {
   getDataCounts,
   getLanguage,
   setLanguage,
+  validateData,
   type Paths,
   type DataCounts,
   type LanguageState,
+  type ValidationReport,
 } from "./backend";
 import { loadNames } from "./names";
 import {
@@ -71,6 +73,8 @@ let paths: Paths = {
 };
 let counts: DataCounts | null = null;
 let scriptCount: number | null = null;
+// Cached integrity report for the Overview health card. null = not yet loaded.
+let healthReport: ValidationReport | null = null;
 let langState: LanguageState = { current: "en", options: [] };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -186,6 +190,9 @@ function navigate(id: string, focus?: { query?: string }) {
   if (id === current) return; // no-op: don't prompt for "navigating" to the same view
   // Guard: warn before leaving a view that has unsaved edits.
   if (!confirmDiscardIfDirty()) return;
+  // Landing on the overview re-validates so the health card reflects any edits
+  // made while away (invalidate the cache; wireOverview refetches).
+  if (id === "overview") healthReport = null;
   current = id;
   pendingFocus = focus ?? null;
   app.querySelectorAll<HTMLElement>("[data-nav]").forEach((el) => {
@@ -338,6 +345,8 @@ function overviewPage(): string {
       ${overviewStat(scriptCount ?? undefined, "Lua scripts")}
     </div>
 
+    ${healthCard()}
+
     <div class="ov-section-title">Jump in</div>
     <div class="ov-jumps">
       ${jump("spellbook", "\u2727", "Spellbook", "Every spell by class, with live damage sim")}
@@ -385,6 +394,44 @@ function overviewStat(n: number | undefined, label: string): string {
   return `<div class="stat"><div class="n">${val}</div><div class="l">${esc(label)}</div></div>`;
 }
 
+// healthCard renders the data-integrity summary on the overview: a red/amber/
+// green banner reflecting the last validation, with a jump to Diagnostics. It
+// shows a neutral "checking" state until the async validation resolves.
+function healthCard(): string {
+  const open = `<button class="ov-health-go" data-nav-jump="diagnostics">Open Diagnostics \u2192</button>`;
+  if (!healthReport) {
+    return `<div class="ov-health checking">
+      <span class="ovh-ico">\u25CC</span>
+      <div class="ovh-body"><b>Checking data integrity\u2026</b></div>
+    </div>`;
+  }
+  const r = healthReport;
+  if (r.errors > 0) {
+    return `<div class="ov-health err">
+      <span class="ovh-ico">\u2716</span>
+      <div class="ovh-body"><b>${r.errors} integrity error${r.errors === 1 ? "" : "s"}</b>
+        <div>Broken references across ${r.checked.toLocaleString()} records${
+      r.warnings ? ` (+${r.warnings} warning${r.warnings === 1 ? "" : "s"})` : ""
+    } \u2014 deploy is blocked until fixed.</div></div>
+      ${open}
+    </div>`;
+  }
+  if (r.warnings > 0) {
+    return `<div class="ov-health warn">
+      <span class="ovh-ico">\u26A0</span>
+      <div class="ovh-body"><b>${r.warnings} integrity warning${r.warnings === 1 ? "" : "s"}</b>
+        <div>No blocking errors across ${r.checked.toLocaleString()} records, but worth a look.</div></div>
+      ${open}
+    </div>`;
+  }
+  return `<div class="ov-health ok">
+    <span class="ovh-ico">\u2714</span>
+    <div class="ovh-body"><b>Data integrity: all clear</b>
+      <div>${r.checked.toLocaleString()} records validated with no issues.</div></div>
+    ${open}
+  </div>`;
+}
+
 function pathRow(label: string, value: string, valid: boolean, kind: string): string {
   return h(`
     <div class="path-row">
@@ -402,6 +449,20 @@ function wireOverview() {
   document.querySelectorAll<HTMLElement>("[data-nav-jump]").forEach((btn) => {
     btn.addEventListener("click", () => navigate(btn.dataset.navJump!));
   });
+
+  // Lazily run the integrity validator so the health card reflects real state.
+  // Only fetch when we don't already have a report (cached across visits until a
+  // save/import/deploy invalidates it) to keep returning to the overview snappy.
+  if (paths.dataDirValid && !healthReport) {
+    validateData()
+      .then((rep) => {
+        healthReport = rep;
+        if (current === "overview") renderPage();
+      })
+      .catch(() => {
+        /* leave the checking state; validation is best-effort here */
+      });
+  }
 
   const langSel = document.querySelector<HTMLSelectElement>("#langSelect");
   langSel?.addEventListener("change", async () => {

@@ -2730,6 +2730,74 @@ button.mini-primary:hover {
   color: var(--text-faint);
   margin-top: 4px;
 }
+/* overview data-integrity health card */
+.ov-health {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  margin: 0 0 22px;
+  border: 1px solid var(--border-soft);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+}
+.ov-health .ovh-ico {
+  font-size: 22px;
+}
+.ov-health .ovh-body {
+  flex: 1;
+}
+.ov-health .ovh-body b {
+  font-size: 14px;
+}
+.ov-health .ovh-body div {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.ov-health.checking {
+  border-left-color: var(--border);
+}
+.ov-health.checking .ovh-ico {
+  color: var(--text-faint);
+}
+.ov-health.err {
+  border-left-color: var(--bad);
+  background: rgba(255, 107, 107, 0.07);
+}
+.ov-health.err .ovh-ico {
+  color: var(--bad);
+}
+.ov-health.warn {
+  border-left-color: var(--warn);
+  background: rgba(255, 180, 84, 0.07);
+}
+.ov-health.warn .ovh-ico {
+  color: var(--warn);
+}
+.ov-health.ok {
+  border-left-color: var(--good);
+  background: rgba(62, 207, 142, 0.06);
+}
+.ov-health.ok .ovh-ico {
+  color: var(--good);
+}
+.ov-health-go {
+  padding: 7px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.ov-health-go:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 .ov-section-title {
   font-size: 12px;
   text-transform: uppercase;
