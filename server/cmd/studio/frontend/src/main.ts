@@ -28,6 +28,7 @@ import { viewSpellbook } from "./spellbook";
 import { viewTranslations } from "./translations";
 import { viewDeploy } from "./deploy";
 import { viewScripts } from "./scriptsview";
+import { listScriptIDs } from "./backend";
 
 // -------- App shell / navigation --------
 
@@ -65,6 +66,7 @@ let paths: Paths = {
   clientDirValid: false,
 };
 let counts: DataCounts | null = null;
+let scriptCount: number | null = null;
 let langState: LanguageState = { current: "en", options: [] };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -295,12 +297,14 @@ function overviewPage(): string {
       ${overviewStat(counts?.summonings, "Summonings")}
       ${overviewStat(counts?.staticEffects, "Static effects")}
       ${overviewStat(counts?.events, "Events")}
+      ${overviewStat(scriptCount ?? undefined, "Lua scripts")}
     </div>
 
     <div class="ov-section-title">Jump in</div>
     <div class="ov-jumps">
       ${jump("spellbook", "\u2727", "Spellbook", "Every spell by class, with live damage sim")}
       ${jump("cards", "\u2617", "Cards", "Weapons, pets, cloaks, hats & dofus")}
+      ${jump("scripts", "\u2328", "Lua Scripts", "Edit spell scripts in-place, with highlighting")}
       ${jump("sprites", "\u25A3", "Sprites", "The full gfx.jar tile atlas")}
       ${jump("animations", "\u2637", "Animations", "Play, onion-skin & export .sba")}
       ${jump("maps", "\u25C6", "Maps", "Isometric arena viewer")}
@@ -394,6 +398,15 @@ async function refreshCounts() {
   } catch {
     counts = null;
   }
+  // Script count comes from the client jar (independent of the data dir).
+  listScriptIDs()
+    .then((ids) => {
+      scriptCount = ids.length;
+      if (current === "overview") renderPage();
+    })
+    .catch(() => {
+      scriptCount = null;
+    });
   // Re-render nav badges if the shell is up.
   if (document.querySelector(".nav")) renderShell();
 }
@@ -405,6 +418,15 @@ async function boot() {
   renderShell();
   loadNames(); // warm the name cache in the background
   if (paths.dataDirValid) refreshCounts();
+  // Script count only needs the client jar; fetch it even if data dir is unset.
+  if (paths.clientDirValid && !paths.dataDirValid) {
+    listScriptIDs()
+      .then((ids) => {
+        scriptCount = ids.length;
+        if (current === "overview") renderPage();
+      })
+      .catch(() => {});
+  }
 }
 
 boot();
