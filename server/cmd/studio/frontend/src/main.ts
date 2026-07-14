@@ -96,12 +96,15 @@ function renderShell() {
     sections.get(e.section)!.push(e);
   }
 
+  // Brand + search stay pinned; the nav sections scroll independently so all
+  // entries stay reachable on short screens.
   let navHtml = `
     <div class="brand">
       <div class="logo">DA</div>
       <div class="title"><b>DofusArena Studio</b><span>Data &amp; Asset Explorer</span></div>
     </div>
-    <div class="gs-host" id="gsHost"></div>`;
+    <div class="gs-host" id="gsHost"></div>
+    <div class="nav-scroll">`;
   for (const [section, entries] of sections) {
     navHtml += `<div class="nav-section">${esc(section)}</div>`;
     for (const e of entries) {
@@ -114,7 +117,7 @@ function renderShell() {
         </div>`;
     }
   }
-  navHtml += `<div class="nav-spacer"></div>`;
+  navHtml += `</div>`;
 
   app.innerHTML = h(`
     <div class="nav">${navHtml}</div>
