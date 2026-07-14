@@ -27,6 +27,7 @@ import { viewAnimations } from "./animations";
 import { viewSpellbook } from "./spellbook";
 import { viewTranslations } from "./translations";
 import { viewDeploy } from "./deploy";
+import { viewScripts } from "./scriptsview";
 
 // -------- App shell / navigation --------
 
@@ -47,6 +48,7 @@ const NAV: NavEntry[] = [
   { id: "summonings", label: "Summonings", icon: "\u269C", section: "Game Data", phase: 1 },
   { id: "staticEffects", label: "Static Effects", icon: "\u2622", section: "Game Data", phase: 1 },
   { id: "events", label: "Events", icon: "\u26A1", section: "Game Data", phase: 1 },
+  { id: "scripts", label: "Lua Scripts", icon: "\u2328", section: "Game Data", phase: 1 },
   { id: "translations", label: "Translations", icon: "\u2709", section: "Game Data", phase: 1 },
   { id: "assets", label: "Asset Browser", icon: "\u25A6", section: "Assets", phase: 2 },
   { id: "sprites", label: "Sprites (TGA)", icon: "\u25A3", section: "Assets", phase: 3 },
@@ -217,6 +219,7 @@ function renderPage() {
     summonings: viewSummonings,
     staticEffects: viewStaticEffects,
     events: viewEvents,
+    scripts: viewScripts,
     assets: viewAssets,
     sprites: viewSprites,
     animations: viewAnimations,
