@@ -71,9 +71,26 @@ func handleGMCommand(session *netio.Session, sender *domain.Coach, message strin
 	switch cmd {
 	case "STATS":
 		// Re-send PLAYER_STATISTICS_REPORT, mirroring
-		// VicinityMessage.java's PlayerStatisticsReport.parse call. Uses
-		// the sender's real persisted statistics.
-		session.Send(buildPlayerStatisticsReport(sender))
+		// VicinityMessage.java's PlayerStatisticsReport.parse call. Read
+		// the sender's stats via a registry view (value snapshot under the
+		// lock) rather than off the live shared coach pointer: this runs on
+		// the sender's own goroutine, but a concurrent fight-end writes the
+		// same stat fields on the fight goroutine, so a direct read races.
+		if v, ok := deps.World.ViewOf(sender.ID); ok {
+			snap := domain.Coach{
+				ID:                v.ID,
+				TotalPlayTimeSecs: v.TotalPlayTimeSecs,
+				TimeInFightSecs:   v.TimeInFightSecs,
+				StatFights:        v.StatFights,
+				StatWins:          v.StatWins,
+				StatLosses:        v.StatLosses,
+				Strength:          v.Strength,
+				ConsecutiveWins:   v.ConsecutiveWins,
+			}
+			session.Send(buildPlayerStatisticsReport(&snap))
+		} else {
+			session.Send(buildPlayerStatisticsReport(sender))
+		}
 
 	case "CELLID":
 		// Java printed this to the server console only; replying to the
@@ -227,7 +244,10 @@ func handleGMTeleport(ctx context.Context, session *netio.Session, sender *domai
 	// Keep the in-memory coach (shared with world.Registry) in sync so a
 	// subsequent /CELLID or ACTOR_SPAWN reflects the new position
 	// immediately, mirroring how handleActorMovementRequest updates it.
-	sender.PosX, sender.PosY, sender.PosZ = int32(x), int32(y), int16(z)
+	// Routed through the registry lock (not a direct field write) so it
+	// can't race a concurrent broadcast reading this coach's position via a
+	// view; the registry coach is the same object as `sender`.
+	deps.World.UpdatePosition(sender.ID, int32(x), int32(y), int16(z))
 
 	session.Send(buildEnterWorldInstance(float32(x), float32(y), int16(z), int16(mapID), orientation != 0))
 }

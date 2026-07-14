@@ -79,6 +79,10 @@ func handleCoachInventoryUpdate(session *netio.Session, payload *protocol.Reader
 		return
 	}
 
+	// A remove can change the cached inventory (lock/unlock don't change
+	// equipment, but refreshing keeps the in-memory copy authoritative).
+	refreshOnlineInventory(deps, coach.ID)
+
 	if frame, ok := delta.build(); ok {
 		session.Send(frame)
 	}
@@ -180,7 +184,29 @@ func handleCoachEquipmentUpdate(session *netio.Session, payload *protocol.Reader
 		oc.Session.Send(broadcastFrame)
 	}
 
+	// Refresh the cached in-memory inventory so a later ACTOR_SPAWN (sent to
+	// a newly-joining player) shows this coach's CURRENT equipment, not the
+	// stale login-time snapshot.
+	refreshOnlineInventory(deps, coach.ID)
+
 	if frame, ok := delta.build(); ok {
 		session.Send(frame)
 	}
+}
+
+// refreshOnlineInventory reloads a coach's full card inventory from the DB
+// and replaces the in-memory registry copy (under the registry lock), so
+// broadcast serializers that read cached equipment (ACTOR_SPAWN's equipped
+// list) reflect the change instead of the stale login-time snapshot. No-op
+// if the coach is offline. Best-effort: a load error is logged, not fatal.
+func refreshOnlineInventory(deps *Deps, coachID uint) {
+	if !deps.World.IsOnline(coachID) {
+		return
+	}
+	inv, err := deps.Coach.GetInventory(context.Background(), coachID)
+	if err != nil {
+		deps.Logger.Error().Err(err).Uint("coach_id", coachID).Msg("dispatch: failed to refresh cached inventory")
+		return
+	}
+	deps.World.UpdateInventory(coachID, inv)
 }

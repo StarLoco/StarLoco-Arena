@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/dofusarena/go-server/internal/combat"
-	"github.com/dofusarena/go-server/internal/domain"
 	"github.com/dofusarena/go-server/internal/protocol"
-	"github.com/dofusarena/go-server/internal/world"
 )
 
 // buildFightEndHook returns the combat.FightEndHook wired to persist coach
@@ -43,13 +41,18 @@ func buildFightEndHook(deps *Deps) combat.FightEndHook {
 			}
 
 			// Refresh the session-cached coach and push a live stats
-			// update if the coach is still online. oc.Coach is the same
-			// pointer stashed as the session's cached coach (see
+			// update if the coach is still online. The live coach is the
+			// same pointer stashed as the session's cached coach (see
 			// enterWorld/setSessionCoach), so updating its stat fields
 			// keeps a later COACH_INFORMATION / stats packet consistent
-			// without a re-login.
+			// without a re-login. The write goes through the registry lock
+			// (UpdateStats) because this runs on the fight actor goroutine
+			// and would otherwise race a concurrent broadcast reading those
+			// same fields via a view (e.g. another fight returning a coach
+			// to the world). buildPlayerStatisticsReport reads the FRESH DB
+			// `coach` copy, not the shared pointer, so it stays race-free.
+			deps.World.UpdateStats(p.CoachID, coach)
 			if oc, online := deps.World.Get(p.CoachID); online {
-				refreshOnlineCoachStats(oc, coach)
 				oc.Session.Send(buildPlayerStatisticsReport(coach))
 			}
 
@@ -139,21 +142,13 @@ func settleWageredCards(ctx context.Context, deps *Deps, participants []combat.F
 			Uint("loser", p.CoachID).Uint("winner", winnerID).
 			Int32("card_template", transferred.TemplateID).Bool("cursed", transferred.Cursed).
 			Msg("dispatch: staked card transferred to winner")
+
+		// The transfer changed both coaches' persisted inventories; refresh
+		// the in-memory registry copies so a later ACTOR_SPAWN reflects the
+		// new ownership rather than the stale login-time snapshot.
+		refreshOnlineInventory(deps, p.CoachID)
+		refreshOnlineInventory(deps, winnerID)
 	}
 }
 
-// refreshOnlineCoachStats copies the freshly-persisted statistic fields
-// onto the live coach held by the online registry (which is the same
-// pointer cached on the session, see enterWorld). Only the stat/ladder
-// fields are touched so any other in-memory state on the coach (inventory
-// edits, position) is left intact.
-func refreshOnlineCoachStats(oc *world.OnlineCoach, updated *domain.Coach) {
-	c := oc.Coach
-	c.Strength = updated.Strength
-	c.StatFights = updated.StatFights
-	c.StatWins = updated.StatWins
-	c.StatLosses = updated.StatLosses
-	c.ConsecutiveWins = updated.ConsecutiveWins
-	c.TimeInFightSecs = updated.TimeInFightSecs
-	c.TotalPlayTimeSecs = updated.TotalPlayTimeSecs
-}
+

@@ -185,7 +185,7 @@ func enterWorld(session *netio.Session, coach *domain.Coach, deps *Deps) {
 	// ACTOR_SPAWN listing every *other* online coach, matching the legacy
 	// World.addOnlineCoach -> onJoinMap fan-out.
 	for _, oc := range deps.World.Snapshot() {
-		others := deps.World.SnapshotWithout(oc.ID())
+		others := deps.World.SnapshotViewsWithout(oc.ID())
 		if len(others) == 0 {
 			continue
 		}

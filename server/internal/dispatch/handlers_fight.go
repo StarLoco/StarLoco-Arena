@@ -1099,7 +1099,13 @@ func handleActorMovementRequest(session *netio.Session, payload *protocol.Reader
 		oc.Session.Send(frame)
 	}
 
-	coach.PosX, coach.PosY, coach.PosZ = lastX, lastY, lastZ
+	// Write the new position through the registry lock (not directly on the
+	// shared coach pointer): this handler runs on the coach's own goroutine,
+	// but a concurrent broadcast on another goroutine reads this coach's
+	// position via a view, so an unlocked write here would race it. The
+	// registry coach is the same object as this session's `coach`, so this
+	// updates both.
+	deps.World.UpdatePosition(coach.ID, lastX, lastY, lastZ)
 	if err := deps.Coach.UpdatePosition(context.Background(), coach.ID, lastX, lastY, lastZ); err != nil {
 		deps.Logger.Error().Err(err).Msg("dispatch: failed to persist coach position")
 	}

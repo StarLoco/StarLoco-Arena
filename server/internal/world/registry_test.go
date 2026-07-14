@@ -114,6 +114,159 @@ func TestRegistrySnapshotWithout(t *testing.T) {
 	}
 }
 
+func TestRegistryViewOfCopiesFieldsAndFiltersEquipped(t *testing.T) {
+	r := NewRegistry()
+	oc := &OnlineCoach{
+		Coach: &domain.Coach{
+			ID: 1, Name: "Alice",
+			Skin: 3, Hair: 4, Sex: 1,
+			PosX: 10, PosY: 20, PosZ: -4,
+			Strength: 1500, StatFights: 7, StatWins: 5, StatLosses: 2,
+			ConsecutiveWins: 3, TimeInFightSecs: 900, TotalPlayTimeSecs: 7200,
+			Inventory: []domain.CoachCard{
+				{ID: 100, TemplateID: 40, Pos: 1}, // equipped
+				{ID: 101, TemplateID: 41, Pos: 0}, // in bag -> excluded
+				{ID: 102, TemplateID: 42, Pos: 3}, // equipped
+			},
+		},
+		Session: newTestSession(t),
+	}
+	r.Add(oc)
+
+	v, ok := r.ViewOf(1)
+	if !ok {
+		t.Fatal("ViewOf(1) should find the coach")
+	}
+	if v.ID != 1 || v.Name != "Alice" || v.Skin != 3 || v.Hair != 4 || v.Sex != 1 {
+		t.Errorf("view identity/look wrong: %+v", v)
+	}
+	if v.PosX != 10 || v.PosY != 20 || v.PosZ != -4 {
+		t.Errorf("view position wrong: %+v", v)
+	}
+	if v.Strength != 1500 || v.StatFights != 7 || v.StatWins != 5 || v.StatLosses != 2 ||
+		v.ConsecutiveWins != 3 || v.TimeInFightSecs != 900 || v.TotalPlayTimeSecs != 7200 {
+		t.Errorf("view stats wrong: %+v", v)
+	}
+	if len(v.Equipped) != 2 {
+		t.Fatalf("view Equipped len = %d, want 2 (only Pos!=0 cards)", len(v.Equipped))
+	}
+
+	// The Equipped slice must be a COPY: mutating it must not touch the
+	// live coach's inventory.
+	v.Equipped[0].TemplateID = 999
+	if oc.Coach.Inventory[0].TemplateID == 999 {
+		t.Error("view Equipped must be a copy, not alias the live inventory slice")
+	}
+
+	if _, ok := r.ViewOf(999); ok {
+		t.Error("ViewOf of an unknown coach should return ok=false")
+	}
+}
+
+func TestRegistrySnapshotViewsWithout(t *testing.T) {
+	r := NewRegistry()
+	r.Add(newTestOnlineCoach(t, 1, "Alice"))
+	r.Add(newTestOnlineCoach(t, 2, "Bob"))
+	r.Add(newTestOnlineCoach(t, 3, "Carol"))
+
+	views := r.SnapshotViewsWithout(2)
+	if len(views) != 2 {
+		t.Fatalf("SnapshotViewsWithout(2) len = %d, want 2", len(views))
+	}
+	for _, v := range views {
+		if v.ID == 2 {
+			t.Error("SnapshotViewsWithout(2) should not include coach 2")
+		}
+	}
+}
+
+func TestRegistryUpdatePosition(t *testing.T) {
+	r := NewRegistry()
+	oc := newTestOnlineCoach(t, 1, "Alice")
+	r.Add(oc)
+
+	r.UpdatePosition(1, 42, 43, 7)
+	if oc.Coach.PosX != 42 || oc.Coach.PosY != 43 || oc.Coach.PosZ != 7 {
+		t.Errorf("UpdatePosition did not update the live coach: %+v", oc.Coach)
+	}
+	v, _ := r.ViewOf(1)
+	if v.PosX != 42 || v.PosY != 43 || v.PosZ != 7 {
+		t.Errorf("view after UpdatePosition = %+v, want (42,43,7)", v)
+	}
+	// Offline coach is a no-op, not a panic.
+	r.UpdatePosition(999, 1, 1, 1)
+}
+
+func TestRegistryUpdateStats(t *testing.T) {
+	r := NewRegistry()
+	oc := newTestOnlineCoach(t, 1, "Alice")
+	r.Add(oc)
+
+	r.UpdateStats(1, &domain.Coach{
+		Strength: 2000, StatFights: 10, StatWins: 6, StatLosses: 4,
+		ConsecutiveWins: 0, TimeInFightSecs: 1234, TotalPlayTimeSecs: 5678,
+	})
+	v, _ := r.ViewOf(1)
+	if v.Strength != 2000 || v.StatFights != 10 || v.StatWins != 6 || v.StatLosses != 4 ||
+		v.ConsecutiveWins != 0 || v.TimeInFightSecs != 1234 || v.TotalPlayTimeSecs != 5678 {
+		t.Errorf("stats after UpdateStats = %+v", v)
+	}
+	r.UpdateStats(999, &domain.Coach{Strength: 1}) // offline: no-op, no panic
+}
+
+func TestRegistryUpdateInventory(t *testing.T) {
+	r := NewRegistry()
+	oc := newTestOnlineCoach(t, 1, "Alice")
+	r.Add(oc)
+
+	r.UpdateInventory(1, []domain.CoachCard{
+		{ID: 1, TemplateID: 50, Pos: 2}, // equipped
+		{ID: 2, TemplateID: 51, Pos: 0}, // bag
+	})
+	v, _ := r.ViewOf(1)
+	if len(v.Equipped) != 1 || v.Equipped[0].TemplateID != 50 {
+		t.Errorf("view Equipped after UpdateInventory = %+v, want one card template 50", v.Equipped)
+	}
+	r.UpdateInventory(999, nil) // offline: no-op, no panic
+}
+
+// TestRegistryConcurrentViewAndUpdate is the unit-level regression test for
+// the cross-goroutine coach-field data race: it hammers the write path
+// (UpdatePosition/UpdateStats/UpdateInventory) and the read path
+// (ViewOf/SnapshotViews) on the same coach from many goroutines at once.
+// Under `go test -race` this fails loudly if any coach field is accessed
+// without going through the registry lock. Before the fix, broadcast
+// serializers read the shared *domain.Coach fields directly (no lock),
+// racing concurrent fight-end/movement writes; the value-copy views +
+// lock-guarded mutators close that.
+func TestRegistryConcurrentViewAndUpdate(t *testing.T) {
+	r := NewRegistry()
+	r.Add(newTestOnlineCoach(t, 1, "Alice"))
+	const n = 200
+	done := make(chan struct{})
+
+	for i := 0; i < n; i++ {
+		go func(k int) {
+			defer func() { done <- struct{}{} }()
+			switch k % 5 {
+			case 0:
+				r.UpdatePosition(1, int32(k), int32(k), int16(k))
+			case 1:
+				r.UpdateStats(1, &domain.Coach{Strength: int32(1000 + k)})
+			case 2:
+				r.UpdateInventory(1, []domain.CoachCard{{ID: uint(k), TemplateID: int32(k), Pos: 1}})
+			case 3:
+				_, _ = r.ViewOf(1)
+			case 4:
+				_ = r.SnapshotViews()
+			}
+		}(i)
+	}
+	for i := 0; i < n; i++ {
+		<-done
+	}
+}
+
 func TestRegistryConcurrentAddRemove(t *testing.T) {
 	r := NewRegistry()
 	const n = 100

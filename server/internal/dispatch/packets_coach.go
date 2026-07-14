@@ -116,27 +116,24 @@ func buildEnterWorldInstance(x, y float32, z int16, mapID int16, dynamic bool) p
 	return protocol.OutboundFrame{Opcode: protocol.SendEnterWorldInstance, Payload: w.Bytes()}
 }
 
-// buildActorSpawn serializes ACTOR_SPAWN for the given list of coaches,
-// see docs/02-protocol.md §2.4.5.
-func buildActorSpawn(coaches []*world.OnlineCoach) protocol.OutboundFrame {
+// buildActorSpawn serializes ACTOR_SPAWN for the given coaches, see
+// docs/02-protocol.md §2.4.5. It takes value-copy world.CoachView
+// snapshots (NOT live *OnlineCoach pointers) precisely because those
+// coaches belong to OTHER players: reading their live position/strength/
+// equipment fields here -- on a broadcast or post-fight goroutine -- would
+// race a concurrent fight-end or movement writing them. The registry hands
+// out immutable views taken under its lock; this serializes off the copy.
+func buildActorSpawn(coaches []world.CoachView) protocol.OutboundFrame {
 	w := protocol.NewWriter(32 * len(coaches))
 	w.PutInt32(int32(len(coaches)))
-	for _, oc := range coaches {
-		c := oc.Coach
-		var equipped []domain.CoachCard
-		for _, card := range c.Inventory {
-			if card.Pos != 0 {
-				equipped = append(equipped, card)
-			}
-		}
-
+	for _, c := range coaches {
 		w.PutByte(1) // actor type: 1 = coach
 		w.PutInt64(int64(c.ID)).PutString(c.Name)
 		w.PutInt32(c.PosX).PutInt32(c.PosY).PutInt16(c.PosZ)
 		w.PutByte(1) // unknown flag, legacy constant
 		w.PutByte(c.Skin).PutByte(c.Hair).PutByte(c.Sex)
-		w.PutUint16(uint16(len(equipped) * 15))
-		for _, card := range equipped {
+		w.PutUint16(uint16(len(c.Equipped) * 15))
+		for _, card := range c.Equipped {
 			w.PutInt16(wireSlotForStoredPos(card.Pos)).PutInt32(card.TemplateID).PutInt64(int64(card.ID)).PutByte(card.Flag)
 		}
 		// ACTOR_SPAWN coach entries use options=11 (0x8 LADDERS_STRENGTH

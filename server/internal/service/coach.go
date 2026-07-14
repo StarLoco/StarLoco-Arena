@@ -657,6 +657,18 @@ func (s *CoachService) GetEquippedCards(ctx context.Context, coachID uint) ([]do
 	return cards, nil
 }
 
+// GetInventory loads a coach's FULL card inventory (equipped and
+// unequipped), used to refresh the in-memory registry copy after a card
+// mutation so broadcast serializers (ACTOR_SPAWN's equipped list) reflect
+// current equipment rather than the stale login-time snapshot.
+func (s *CoachService) GetInventory(ctx context.Context, coachID uint) ([]domain.CoachCard, error) {
+	var cards []domain.CoachCard
+	if err := s.db.WithContext(ctx).Where("coach_id = ?", coachID).Find(&cards).Error; err != nil {
+		return nil, fmt.Errorf("service: load inventory for coach %d: %w", coachID, err)
+	}
+	return cards, nil
+}
+
 // UnequipAll sets every equipped card (Pos != 0) back to inventory (Pos = 0)
 // for a coach, in a single UPDATE. Used at the start of an equipment update
 // so the incoming slot layout is applied from a clean slate, mirroring

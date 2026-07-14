@@ -231,10 +231,18 @@ func returnCoachToWorld(deps *Deps, coachID uint) {
 	if !online {
 		return
 	}
+	// Read this coach's position via a value snapshot rather than off the
+	// live shared pointer: returnCoachToWorld runs on a post-fight
+	// background goroutine, so a direct oc.Coach.PosX read here would race
+	// a concurrent movement/TP write on the coach's own goroutine.
+	view, ok := deps.World.ViewOf(coachID)
+	if !ok {
+		return
+	}
 	oc.Session.Send(buildEnterWorldInstance(
-		float32(oc.Coach.PosX), float32(oc.Coach.PosY), oc.Coach.PosZ, 0, false))
+		float32(view.PosX), float32(view.PosY), view.PosZ, 0, false))
 
-	if others := deps.World.SnapshotWithout(coachID); len(others) > 0 {
+	if others := deps.World.SnapshotViewsWithout(coachID); len(others) > 0 {
 		oc.Session.Send(buildActorSpawn(others))
 	}
 }
