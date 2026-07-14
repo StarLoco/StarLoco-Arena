@@ -34,6 +34,7 @@ import { mountEffectEditor, type EffectParentKind } from "./effecteditor";
 import { newRecordButton, wireNewRecordButton, type CreateKind } from "./recordcreate";
 import { jsonButton, wireJsonButton } from "./jsonio";
 import { mountScriptEditor, loadScriptIndex, hasScript } from "./scripteditor";
+import { mountAnimThumb } from "./animthumb";
 import { setDirty, markClean } from "./dirty";
 
 // mountEffectEditors finds every fe-mount placeholder inside root and mounts a
@@ -595,6 +596,30 @@ function fighterCardType(t: number): string {
   return names[t] ? `<span class="tb-badge">${names[t]}</span>` : String(t);
 }
 
+// Active summon-thumbnail disposers, keyed by their host container, so a table
+// re-draw (which replaces the DOM) can stop the old RAF loops before mounting
+// fresh ones -- no leaked animation loops.
+const summonThumbDisposers = new WeakMap<HTMLElement, (() => void)[]>();
+
+// mountSummonThumbs finds each expanded summon's .summon-thumb placeholder and
+// plays that creature's animation (animations/<gfx>.sba) in it.
+function mountSummonThumbs(host: HTMLElement, _rows: { ID: number; Gfx: number }[]) {
+  // Stop any thumbs from the previous render of this host.
+  const prev = summonThumbDisposers.get(host);
+  if (prev) prev.forEach((d) => d());
+  const disposers: (() => void)[] = [];
+  host.querySelectorAll<HTMLElement>(".summon-thumb:not([data-thumb-done])").forEach((mount) => {
+    mount.dataset.thumbDone = "1";
+    const gfx = Number(mount.dataset.summonGfx);
+    if (!gfx || gfx <= 0) {
+      mount.innerHTML = `<div class="anim-thumb-empty">no gfx</div>`;
+      return;
+    }
+    disposers.push(mountAnimThumb(mount, "animations.jar", `animations/${gfx}.sba`, 128));
+  });
+  summonThumbDisposers.set(host, disposers);
+}
+
 export function viewSummonings(c: HTMLElement) {
   withLoad(c, "Summonings", "summoning.dat", getSummonings, (host, rows) => {
     mountTable(host, {
@@ -626,6 +651,7 @@ export function viewSummonings(c: HTMLElement) {
           h,
           rows.map((r) => summoningForm(r))
         );
+        mountSummonThumbs(h, rows);
       },
       detail: (r) =>
         entityHero({
@@ -639,6 +665,8 @@ export function viewSummonings(c: HTMLElement) {
             [gameIcon("mp", 16) || "\u2316", "MP", String(r.MP)],
           ],
         }) +
+        `<div class="detail-block"><div class="detail-title">Creature (gfx ${r.Gfx})</div>` +
+        `<div class="summon-thumb" data-summon-gfx="${r.Gfx}"></div></div>` +
         `<div class="detail-block"><div class="detail-title">Cast spell</div>${crosslinkSpell(r.SpellID)}</div>` +
         editFormHTML(summoningForm(r)),
     });

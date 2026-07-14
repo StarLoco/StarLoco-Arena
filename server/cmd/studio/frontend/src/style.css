@@ -59,6 +59,25 @@ body {
   display: none !important;
 }
 
+/* summon creature animation thumbnail */
+.summon-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 128px;
+  border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(#1a1e28 0% 25%, #12151d 0% 50%) 50% / 16px 16px;
+  border: 1px solid var(--border-soft);
+}
+.anim-thumb-canvas {
+  image-rendering: auto;
+}
+.anim-thumb-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
 #app {
   height: 100vh;
   display: grid;

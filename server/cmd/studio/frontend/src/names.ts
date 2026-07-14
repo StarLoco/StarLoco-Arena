@@ -20,10 +20,23 @@ export function namesReady(): NamesBundle | null {
 
 type NameKind = "spells" | "breeds" | "fighterCards" | "coachCards" | "events" | "effects" | "summons";
 
-// nameOf returns the localized name for an id, or "" if unknown.
+// nameOf returns the localized name for an id, or "" if unknown. Client i18n
+// strings carry printf-style placeholders the game fills at runtime (e.g. summon
+// names are "%1s Gobball", where %1s is the owner's article/prefix). Those are
+// meaningless out of a live fight, so strip them for display.
 export function nameOf(kind: NameKind, id: number): string {
   if (!bundle) return "";
-  return bundle[kind][String(id)] ?? "";
+  return cleanName(bundle[kind][String(id)] ?? "");
+}
+
+// cleanName removes leading/embedded printf placeholders (%1s, %1$s, %s, %d …)
+// and collapses the resulting whitespace, so "%1s Gobball" -> "Gobball".
+export function cleanName(s: string): string {
+  return s
+    .replace(/%\d+\$?[sd]/g, "") // %1s, %1$s, %2d, …
+    .replace(/%[sd]/g, "") // bare %s / %d
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 // label renders "Name (id)" when a name exists, else just the id.
