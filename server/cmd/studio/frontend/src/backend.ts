@@ -197,6 +197,22 @@ export interface BackupsResult {
   entries: BackupEntry[];
   error: string;
 }
+// RecordDelta / BackupDiff mirror backupdiff.go.
+export interface RecordDelta {
+  kind: string;
+  current: number;
+  backup: number;
+}
+export interface BackupDiff {
+  origName: string;
+  stamp: string;
+  identical: boolean;
+  currentBytes: number;
+  backupBytes: number;
+  parsed: boolean;
+  deltas: RecordDelta[];
+  note: string;
+}
 
 export interface Spell {
   ID: number;
@@ -341,6 +357,7 @@ type AppBindings = {
   ListBackups(): Promise<BackupsResult>;
   RestoreBackup(backupPath: string): Promise<ExportResult>;
   DeleteBackup(backupPath: string): Promise<void>;
+  DiffBackup(backupPath: string): Promise<BackupDiff>;
   GetSpells(): Promise<Spell[]>;
   GetCoachCards(): Promise<CoachCard[]>;
   GetFighterCards(): Promise<FighterCard[]>;
@@ -976,6 +993,11 @@ export async function restoreBackup(backupPath: string): Promise<ExportResult> {
   const b = await bindings();
   if (!b) throw new Error(NO_STORE);
   return b.RestoreBackup(backupPath);
+}
+export async function diffBackup(backupPath: string): Promise<BackupDiff> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.DiffBackup(backupPath);
 }
 export async function deleteBackup(backupPath: string): Promise<void> {
   const b = await bindings();

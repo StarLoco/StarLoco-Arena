@@ -10,9 +10,11 @@ import {
   restoreBackup,
   deleteBackup,
   validateData,
+  diffBackup,
   type PushStatus,
   type BackupEntry,
   type ValidationReport,
+  type BackupDiff,
 } from "./backend";
 
 function esc(v: unknown): string {
@@ -174,10 +176,12 @@ export function viewDeploy(container: HTMLElement) {
           <td class="bk-stamp">${esc(b.stamp)}</td>
           <td class="bk-size mono">${fmtBytes(b.bytes)}</td>
           <td class="bk-actions">
+            <button data-preview="${i}" title="Preview what restoring changes">Preview</button>
             <button data-restore="${i}" ${b.restorable ? "" : "disabled"}>Restore</button>
             <button class="bk-del" data-del="${i}" title="Delete this backup">\u00D7</button>
           </td>
-        </tr>`
+        </tr>
+        <tr class="bk-diff-row" data-diff-row="${i}" hidden><td colspan="5"><div class="bk-diff" data-diff="${i}"></div></td></tr>`
       )
       .join("");
     host.innerHTML = `
@@ -190,10 +194,83 @@ export function viewDeploy(container: HTMLElement) {
       <div class="dp-status" id="bkStatus"></div>`;
 
     const st = host.querySelector<HTMLElement>("#bkStatus")!;
+
+    // Cache of fetched diffs so Restore can reuse the preview without refetch.
+    const diffCache = new Map<number, BackupDiff>();
+
+    const renderDiff = (d: BackupDiff): string => {
+      const cls = d.identical ? "same" : d.currentBytes < 0 ? "new" : "diff";
+      const rows = d.parsed
+        ? d.deltas
+            .map((r) => {
+              const delta = r.backup - r.current;
+              const dcls = delta === 0 ? "" : delta > 0 ? "up" : "down";
+              return `<tr><td>${esc(r.kind)}</td><td class="mono">${r.current}</td>
+                <td class="bk-arrow">\u2192</td><td class="mono">${r.backup}</td>
+                <td class="bk-delta ${dcls}">${delta === 0 ? "" : (delta > 0 ? "+" : "") + delta}</td></tr>`;
+            })
+            .join("")
+        : "";
+      return `
+        <div class="bk-diff-note ${cls}">${esc(d.note)}</div>
+        ${rows ? `<table class="bk-diff-table"><thead><tr><th>Kind</th><th>current</th><th></th><th>backup</th><th>\u0394</th></tr></thead><tbody>${rows}</tbody></table>` : ""}`;
+    };
+
+    const showPreview = async (i: number): Promise<BackupDiff | null> => {
+      const b = entries[i];
+      const row = host.querySelector<HTMLElement>(`[data-diff-row="${i}"]`);
+      const box = host.querySelector<HTMLElement>(`[data-diff="${i}"]`);
+      if (!row || !box) return null;
+      row.hidden = false;
+      box.innerHTML = `<div class="bk-diff-loading">Comparing\u2026</div>`;
+      try {
+        const d = await diffBackup(b.path);
+        diffCache.set(i, d);
+        box.innerHTML = renderDiff(d);
+        return d;
+      } catch (err) {
+        box.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
+        return null;
+      }
+    };
+
+    host.querySelectorAll<HTMLButtonElement>("[data-preview]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.preview);
+        const row = host.querySelector<HTMLElement>(`[data-diff-row="${i}"]`);
+        if (row && !row.hidden) {
+          row.hidden = true; // toggle off
+          return;
+        }
+        void showPreview(i);
+      });
+    });
+
     host.querySelectorAll<HTMLButtonElement>("[data-restore]").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const b = entries[Number(btn.dataset.restore)];
-        if (!confirm(`Restore ${b.origName} from ${b.stamp}?\n\nThe current file is backed up first, so this is undoable.`)) return;
+        const i = Number(btn.dataset.restore);
+        const b = entries[i];
+        // Compute (or reuse) the diff so the confirm shows what will change.
+        let d = diffCache.get(i) ?? null;
+        if (!d) {
+          try {
+            d = await diffBackup(b.path);
+            diffCache.set(i, d);
+          } catch {
+            d = null;
+          }
+        }
+        const summary = d
+          ? d.identical
+            ? "\n\nThis backup is identical to the current file \u2014 nothing changes."
+            : `\n\n${d.note}`
+          : "";
+        if (
+          !confirm(
+            `Restore ${b.origName} from ${b.stamp}?${summary}\n\nThe current file is backed up first, so this is undoable.`
+          )
+        )
+          return;
         btn.disabled = true;
         st.textContent = "Restoring\u2026";
         st.className = "dp-status";
