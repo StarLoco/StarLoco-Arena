@@ -13,6 +13,7 @@ import {
   saveCoachCards,
   saveFighterCards,
   saveStaticEffects,
+  saveEvents,
   type EffectDef,
   type Spell,
   type SpellEdit,
@@ -29,7 +30,45 @@ import {
 } from "./effectlore";
 import { simulatorHTML, wireSimulator } from "./simulator";
 import { wireCrosslinks } from "./crosslink";
-import { mountEffectEditor } from "./effecteditor";
+import { mountEffectEditor, type EffectParentKind } from "./effecteditor";
+import { newRecordButton, wireNewRecordButton, type CreateKind } from "./recordcreate";
+
+// mountEffectEditors finds every fe-mount placeholder inside root and mounts a
+// full effect editor for its record (by id), for cards/events drawers. Spells
+// use their own mount (they carry a data-fe-spell attribute instead).
+function mountEffectEditors(
+  root: HTMLElement,
+  rows: Array<{ ID: number; Effects: EffectDef[] | null }>,
+  kind: EffectParentKind
+) {
+  root
+    .querySelectorAll<HTMLElement>(`.fe-mount[data-fe-kind="${kind}"]:not([data-fe-done])`)
+    .forEach((mount) => {
+      mount.dataset.feDone = "1";
+      const id = Number(mount.dataset.feId);
+      const rec = rows.find((r) => r.ID === id);
+      if (rec) mountEffectEditor(mount, id, rec.Effects, kind);
+    });
+}
+
+// eventForm declares the editable scalar fields for an event (auto-description
+// toggle; effects are edited separately and preserved on save).
+function eventForm(r: { ID: number; UseAutoDescription: boolean }): EditFormSpec {
+  return {
+    id: r.ID,
+    title: `Edit event #${r.ID}`,
+    fields: [
+      {
+        key: "useAutoDescription",
+        label: "Use auto description",
+        type: "bool",
+        value: r.UseAutoDescription,
+      },
+    ],
+    save: (v) =>
+      saveEvents([{ id: r.ID, useAutoDescription: v.useAutoDescription as boolean }]),
+  };
+}
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -38,8 +77,31 @@ function esc(v: unknown): string {
   );
 }
 
-function pageHead(title: string, sub: string): string {
-  return `<div class="page-head"><h1>${esc(title)}</h1><span class="sub">${esc(sub)}</span></div>`;
+function pageHead(title: string, sub: string, actions = ""): string {
+  return `<div class="page-head"><h1>${esc(title)}</h1><span class="sub">${esc(
+    sub
+  )}</span>${actions ? `<div class="page-actions">${actions}</div>` : ""}</div>`;
+}
+
+// installNewButton injects a "+ New" pill into the page head of container and
+// wires it to open the create modal for kind; on success it re-runs reload so
+// the fresh record shows up immediately.
+function installNewButton(
+  container: HTMLElement,
+  kind: CreateKind,
+  label: string,
+  reload: () => void
+) {
+  const head = container.querySelector<HTMLElement>(".page-head");
+  if (!head) return;
+  let actions = head.querySelector<HTMLElement>(".page-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.className = "page-actions";
+    head.appendChild(actions);
+  }
+  actions.insertAdjacentHTML("beforeend", newRecordButton(kind, label));
+  wireNewRecordButton(actions, () => reload());
 }
 
 // Renders an effects list in human, game-tooltip form (shared by
@@ -173,6 +235,7 @@ export function viewSpells(c: HTMLElement) {
       const t = ev.target as HTMLElement;
       if (t.closest(".spell-edit") && t.dataset.saveSpell == null) ev.stopPropagation();
     });
+    if (host.parentElement) installNewButton(host.parentElement, "spell", "New spell", () => viewSpells(c));
   });
 }
 
@@ -319,7 +382,12 @@ export function viewCards(c: HTMLElement) {
   c.innerHTML = pageHead("Cards", "cards.dat \u00B7 coach + fighter cards") + `<div class="loading">Loading\u2026</div>`;
   Promise.all([getCoachCards(), getFighterCards(), loadNames()])
     .then(([coach, fighter]) => {
-      c.innerHTML = pageHead("Cards", `${coach.length} coach \u00B7 ${fighter.length} fighter \u00B7 cards.dat`);
+      c.innerHTML = pageHead(
+        "Cards",
+        `${coach.length} coach \u00B7 ${fighter.length} fighter \u00B7 cards.dat`,
+        newRecordButton("fighterCard", "New fighter card") + newRecordButton("coachCard", "New coach card")
+      );
+      wireNewRecordButton(c, () => viewCards(c));
       const tabs = document.createElement("div");
       tabs.className = "subtabs";
       tabs.innerHTML = `<button class="subtab active" data-t="coach">Coach cards (${coach.length})</button><button class="subtab" data-t="fighter">Fighter cards (${fighter.length})</button>`;
@@ -369,6 +437,7 @@ export function viewCards(c: HTMLElement) {
               h,
               fighter.map((r) => fighterCardForm(r))
             );
+            mountEffectEditors(h, fighter, "card");
           },
           columns: [
             { key: "icon", label: "", value: (r) => r.ID, render: (r) => iconCell("fighterCard", r.ID, 44), width: "56px", align: "center" },
@@ -412,7 +481,7 @@ export function viewCards(c: HTMLElement) {
               ],
             }) +
             editFormHTML(fighterCardForm(r)) +
-            effectsDetail(r.Effects),
+            `<div class="fe-mount" data-fe-kind="card" data-fe-id="${r.ID}"></div>`,
         });
 
       drawCoach();
@@ -486,6 +555,8 @@ export function viewSummonings(c: HTMLElement) {
         `<div class="detail-block"><div class="detail-title">Cast spell</div>${crosslinkSpell(r.SpellID)}</div>` +
         editFormHTML(summoningForm(r)),
     });
+    if (host.parentElement)
+      installNewButton(host.parentElement, "summoning", "New summoning", () => viewSummonings(c));
   });
 }
 
@@ -654,6 +725,11 @@ export function viewEvents(c: HTMLElement) {
       onDraw: (h) => {
         wireIconCells(h);
         wireCrosslinks(h);
+        wireEditForm(
+          h,
+          rows.map((r) => eventForm(r))
+        );
+        mountEffectEditors(h, rows, "event");
       },
       searchText: (r) =>
         `${r.ID} ${nameOf("events", r.ID)} ${(r.Effects ?? []).map((e) => decodeEffectText(e)).join(" ")}`,
@@ -682,7 +758,9 @@ export function viewEvents(c: HTMLElement) {
           badge: r.UseAutoDescription ? "auto" : undefined,
           effects: r.Effects,
           stats: [["\u2726", "Effects", String(r.Effects?.length ?? 0)]],
-        }) + effectsDetail(r.Effects),
+        }) +
+        editFormHTML(eventForm(r)) +
+        `<div class="fe-mount" data-fe-kind="event" data-fe-id="${r.ID}"></div>`,
     });
   });
 }

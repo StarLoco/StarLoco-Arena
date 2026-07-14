@@ -6,10 +6,31 @@
 
 import {
   saveSpellEffects,
+  saveFighterCardEffects,
+  saveEventEffects,
   type EffectDef,
   type EffectEditDTO,
+  type ExportResult,
 } from "./backend";
 import { decodeEffectHTML, actionOptions, gameIcon } from "./effectlore";
+
+// EffectParentKind selects which .dat file the effects are written back to.
+export type EffectParentKind = "spell" | "card" | "event";
+
+// parentMeta returns the save fn + human file label for a parent kind.
+function parentMeta(kind: EffectParentKind): {
+  save: (id: number, effects: EffectEditDTO[]) => Promise<ExportResult>;
+  file: string;
+} {
+  switch (kind) {
+    case "card":
+      return { save: saveFighterCardEffects, file: "cards.dat" };
+    case "event":
+      return { save: saveEventEffects, file: "events.dat" };
+    default:
+      return { save: saveSpellEffects, file: "spells.dat" };
+  }
+}
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -70,13 +91,16 @@ function dtoToEffectDef(d: EffectEditDTO): EffectDef {
   };
 }
 
-// mountEffectEditor renders the editor into host for one spell. Fully
-// self-contained: manages its own draft state and Save.
+// mountEffectEditor renders the editor into host for one parent record (spell,
+// fighter card or event). Fully self-contained: manages its own draft state and
+// Save, writing back to the correct .dat file for the parent kind.
 export function mountEffectEditor(
   host: HTMLElement,
-  spellId: number,
-  effects: EffectDef[] | null
+  parentId: number,
+  effects: EffectDef[] | null,
+  kind: EffectParentKind = "spell"
 ) {
+  const meta = parentMeta(kind);
   let draft: EffectEditDTO[] = (effects ?? []).map(effectToDTO);
 
   function draw() {
@@ -136,7 +160,7 @@ export function mountEffectEditor(
         </div>
         <div class="fe-rows">${rows || `<div class="detail-empty">No effects. Add one to get started.</div>`}</div>
         <div class="fe-actions">
-          <button class="primary" data-save>${gameIcon("ap", 14) || ""} Save effects to spells.dat</button>
+          <button class="primary" data-save>${gameIcon("ap", 14) || ""} Save effects to ${meta.file}</button>
           <span class="fe-status" data-status></span>
         </div>
       </div>`;
@@ -201,7 +225,7 @@ export function mountEffectEditor(
       status.textContent = "Saving\u2026";
       status.className = "fe-status";
       try {
-        const res = await saveSpellEffects(spellId, draft);
+        const res = await meta.save(parentId, draft);
         status.innerHTML = `<span class="ok">Saved ${res.bytes} B \u00B7 backup created</span>`;
       } catch (err) {
         status.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;

@@ -79,6 +79,94 @@ func (a *App) SaveSpellEffects(spellID int32, effects []EffectEditDTO) (ExportRe
 	return a.writeDatAndReload(target, encode.EncodeSpellsFile(f))
 }
 
+// SaveFighterCardEffects replaces the effects attached to one fighter card
+// (by parent id) with the given set and re-encodes cards.dat. Every other
+// card's fields and effects are preserved from the freshly-reparsed file.
+func (a *App) SaveFighterCardEffects(cardID int32, effects []EffectEditDTO) (ExportResult, error) {
+	target, orig, cf, err := a.parseCards()
+	if err != nil {
+		return ExportResult{}, err
+	}
+	_ = orig
+	found := false
+	for _, c := range cf.FighterCards {
+		if c.ID == cardID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ExportResult{}, fmt.Errorf("unknown fighter card id %d", cardID)
+	}
+	parentType := effectParentType(cf.Effects, cardID, "FIGHTER_CARD")
+	cf.Effects = spliceEffects(cf.Effects, cardID, parentType, effects)
+	return a.writeDatAndReload(target, encode.EncodeCardsFile(cf))
+}
+
+// SaveEventEffects replaces the effects attached to one event (by parent id)
+// with the given set and re-encodes events.dat. Every other event's fields and
+// effects are preserved from the freshly-reparsed file.
+func (a *App) SaveEventEffects(eventID int32, effects []EffectEditDTO) (ExportResult, error) {
+	target, orig, err := a.dataFile("events.dat")
+	if err != nil {
+		return ExportResult{}, err
+	}
+	f, err := parser.ParseEventsFile(orig)
+	if err != nil {
+		return ExportResult{}, fmt.Errorf("parse current events.dat: %w", err)
+	}
+	if err := verifyRoundTrip(orig, encode.EncodeEventsFile(f)); err != nil {
+		return ExportResult{}, fmt.Errorf("refusing to export: %w", err)
+	}
+	found := false
+	for _, e := range f.Events {
+		if e.ID == eventID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ExportResult{}, fmt.Errorf("unknown event id %d", eventID)
+	}
+	parentType := effectParentType(f.Effects, eventID, "EVENT")
+	f.Effects = spliceEffects(f.Effects, eventID, parentType, effects)
+	return a.writeDatAndReload(target, encode.EncodeEventsFile(f))
+}
+
+// EventEdit is the editable scalar subset of an event.
+type EventEdit struct {
+	ID                 int32 `json:"id"`
+	UseAutoDescription bool  `json:"useAutoDescription"`
+}
+
+// SaveEvents re-encodes events.dat with the given scalar edits applied by ID.
+// Effects and all other events are preserved from the freshly-reparsed file.
+func (a *App) SaveEvents(edits []EventEdit) (ExportResult, error) {
+	target, orig, err := a.dataFile("events.dat")
+	if err != nil {
+		return ExportResult{}, err
+	}
+	f, err := parser.ParseEventsFile(orig)
+	if err != nil {
+		return ExportResult{}, fmt.Errorf("parse current events.dat: %w", err)
+	}
+	if err := verifyRoundTrip(orig, encode.EncodeEventsFile(f)); err != nil {
+		return ExportResult{}, fmt.Errorf("refusing to export: %w", err)
+	}
+	idx := map[int32]int{}
+	for i := range f.Events {
+		idx[f.Events[i].ID] = i
+	}
+	for _, e := range edits {
+		i, ok := idx[e.ID]
+		if !ok {
+			return ExportResult{}, fmt.Errorf("edit for unknown event id %d", e.ID)
+		}
+		f.Events[i].UseAutoDescription = e.UseAutoDescription
+	}
+	return a.writeDatAndReload(target, encode.EncodeEventsFile(f))
+}
+
 // spellByID returns the spell with id, if present.
 func spellByID(f parser.SpellsFile, id int32) (parser.SpellRaw, bool) {
 	for _, s := range f.Spells {

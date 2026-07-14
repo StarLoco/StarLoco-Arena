@@ -106,6 +106,51 @@ export interface StaticEffectEdit {
   maxExecutionCount: number;
   targetsToShow: number;
 }
+export interface EventEdit {
+  id: number;
+  useAutoDescription: boolean;
+}
+
+// -------- new-record creation payloads (mirror datacreate.go) --------
+export interface SpellCreate {
+  id: number;
+  actionPointsCost: number;
+  castFrequencyMaxPerPlayer: number;
+  castFrequencyMaxPerTurn: number;
+  castFrequencyMinInterval: number;
+  castTestLineOfSight: boolean;
+  castOnlyLine: boolean;
+  rangeMin: number;
+  rangeMax: number;
+  price: number;
+  aiTargetId: number;
+  needFreeCell: boolean;
+  scriptId: number;
+  breedId: number;
+  criterion: string;
+  useAutoDescription: boolean;
+}
+export interface SummoningCreate {
+  id: number;
+  hp: number;
+  ap: number;
+  mp: number;
+  gfx: number;
+  spellId: number;
+}
+export interface CoachCardCreate {
+  id: number;
+  type: number;
+  value: number;
+  set: number;
+}
+export interface FighterCardCreate {
+  id: number;
+  type: number;
+  value: number;
+  scriptId: number;
+  subType: number;
+}
 
 // EffectEditDTO mirrors the Go effect editor DTO (one editable effect row).
 export interface EffectEditDTO {
@@ -273,6 +318,16 @@ type AppBindings = {
   SaveFighterCards(edits: FighterCardEdit[]): Promise<ExportResult>;
   SaveStaticEffects(edits: StaticEffectEdit[]): Promise<ExportResult>;
   SaveSpellEffects(spellId: number, effects: EffectEditDTO[]): Promise<ExportResult>;
+  SaveFighterCardEffects(cardId: number, effects: EffectEditDTO[]): Promise<ExportResult>;
+  SaveEventEffects(eventId: number, effects: EffectEditDTO[]): Promise<ExportResult>;
+  SaveEvents(edits: EventEdit[]): Promise<ExportResult>;
+  CreateSpell(c: SpellCreate): Promise<NewRecordResult>;
+  CreateSummoning(c: SummoningCreate): Promise<NewRecordResult>;
+  CreateCoachCard(c: CoachCardCreate): Promise<NewRecordResult>;
+  CreateFighterCard(c: FighterCardCreate): Promise<NewRecordResult>;
+  SuggestSpellID(): Promise<number>;
+  SuggestSummoningID(): Promise<number>;
+  SuggestCardIDs(): Promise<Record<string, number>>;
   GetPushStatus(): Promise<PushStatus>;
   PushDataToClient(names: string[]): Promise<RepackResult>;
   SaveJarText(jar: string, entry: string, content: string): Promise<RepackResult>;
@@ -553,6 +608,11 @@ export interface ExportResult {
   bytes: number;
 }
 
+// NewRecordResult mirrors datacreate.go: an ExportResult plus the created id.
+export interface NewRecordResult extends ExportResult {
+  newId: number;
+}
+
 // -------- Phase 4 map types --------
 
 export interface MapSummary {
@@ -734,6 +794,70 @@ export async function saveSpellEffects(
   const b = await bindings();
   if (!b) throw new Error(NO_STORE);
   return b.SaveSpellEffects(spellId, effects);
+}
+
+// saveFighterCardEffects replaces the effect list attached to a fighter card.
+export async function saveFighterCardEffects(
+  cardId: number,
+  effects: EffectEditDTO[]
+): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveFighterCardEffects(cardId, effects);
+}
+
+// saveEventEffects replaces the effect list attached to an event.
+export async function saveEventEffects(
+  eventId: number,
+  effects: EffectEditDTO[]
+): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveEventEffects(eventId, effects);
+}
+
+// saveEvents writes scalar event edits (auto-description toggle).
+export async function saveEvents(edits: EventEdit[]): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveEvents(edits);
+}
+
+// --- new-record creation ---
+export async function createSpell(c: SpellCreate): Promise<NewRecordResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.CreateSpell(c);
+}
+export async function createSummoning(c: SummoningCreate): Promise<NewRecordResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.CreateSummoning(c);
+}
+export async function createCoachCard(c: CoachCardCreate): Promise<NewRecordResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.CreateCoachCard(c);
+}
+export async function createFighterCard(c: FighterCardCreate): Promise<NewRecordResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.CreateFighterCard(c);
+}
+export async function suggestSpellID(): Promise<number> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SuggestSpellID();
+}
+export async function suggestSummoningID(): Promise<number> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SuggestSummoningID();
+}
+export async function suggestCardIDs(): Promise<Record<string, number>> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SuggestCardIDs();
 }
 
 export async function getPushStatus(): Promise<PushStatus> {

@@ -3221,3 +3221,142 @@ button.mini-primary:hover {
   background: var(--bg-hover);
   color: var(--text-faint);
 }
+
+/* ---- new-record creation: page-head actions + modal ---- */
+.page-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-self: center;
+}
+.rc-new {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: rgba(79, 157, 255, 0.08);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.rc-new:hover {
+  background: var(--accent);
+  color: #0b0e14;
+}
+.rc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(6, 8, 12, 0.62);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: rc-fade 0.14s ease;
+}
+@keyframes rc-fade {
+  from {
+    opacity: 0;
+  }
+}
+.rc-modal {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent-glow);
+}
+.rc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 15px;
+}
+.rc-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.rc-close:hover {
+  color: var(--text);
+}
+.rc-body {
+  padding: 16px 18px;
+}
+.rc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.rc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.rc-field .rc-in {
+  padding: 7px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+}
+.rc-field .rc-in.mono {
+  font-family: var(--mono);
+}
+.rc-field small {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+.rc-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.rc-chk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.rc-note {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+.rc-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border-soft);
+}
+.rc-actions .rc-status {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.rc-actions .rc-status.ok {
+  color: var(--good);
+}
+.rc-actions .rc-status.err {
+  color: var(--bad);
+}
