@@ -59,6 +59,51 @@ body {
   display: none !important;
 }
 
+/* spell cast-footprint iso diagram */
+.spell-area {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.spell-area-svg {
+  background: #0b0e14;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+.spell-area-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.spell-area-legend > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.sa-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.sa-swatch.caster {
+  background: var(--accent);
+}
+.sa-swatch.range {
+  background: rgba(79, 157, 255, 0.4);
+}
+.sa-swatch.aoe {
+  background: rgba(255, 107, 107, 0.55);
+}
+.sa-flags {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 /* summon creature animation thumbnail */
 .summon-thumb {
   display: inline-flex;

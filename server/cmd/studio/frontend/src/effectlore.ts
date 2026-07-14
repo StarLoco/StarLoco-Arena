@@ -146,7 +146,7 @@ function targetsText(targets: number[] | null): string {
 
 // areaCells returns the set of (dx,dy) offsets an area shape covers, centered on
 // the target, so we can draw a tiny isometric-agnostic top-down preview.
-function areaCells(shape: number, size: number[] | null): Array<[number, number]> {
+export function areaCells(shape: number, size: number[] | null): Array<[number, number]> {
   const s = size && size.length ? size[0] : 0;
   const cells: Array<[number, number]> = [];
   const name = areaShapes[shape] ?? "point";

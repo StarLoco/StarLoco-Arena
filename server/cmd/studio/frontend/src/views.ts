@@ -35,6 +35,7 @@ import { newRecordButton, wireNewRecordButton, type CreateKind } from "./recordc
 import { jsonButton, wireJsonButton } from "./jsonio";
 import { mountScriptEditor, loadScriptIndex, hasScript } from "./scripteditor";
 import { mountAnimThumb } from "./animthumb";
+import { spellAreaBlock } from "./spellarea";
 import { setDirty, markClean } from "./dirty";
 
 // mountEffectEditors finds every fe-mount placeholder inside root and mounts a
@@ -358,8 +359,18 @@ function spellEditor(s: Spell): string {
     `<label><span>${esc(label)}</span><input class="edit-in" type="number" min="${min}" max="${max}" data-f="${id}" value="${val}" /></label>`;
   const chk = (id: string, label: string, val: boolean) =>
     `<label class="edit-chk"><input type="checkbox" data-f="${id}" ${val ? "checked" : ""}/> ${esc(label)}</label>`;
+  // Pull the AoE from the first effect that defines a non-point area, so the
+  // footprint shows range + area of effect together when the spell has one.
+  const areaEff = (s.Effects ?? []).find((e) => (e.AreaSize?.[0] ?? 0) > 0);
   return `
     ${spellHero(s)}
+    ${spellAreaBlock({
+      rangeMin: s.RangeMin,
+      rangeMax: s.RangeMax,
+      onlyLine: s.CastOnlyLine,
+      aoeShape: areaEff ? areaEff.AreaShape : undefined,
+      aoeSize: areaEff ? areaEff.AreaSize : null,
+    })}
     <div class="spell-edit" data-spell="${s.ID}">
       <div class="edit-title">Edit spell #${s.ID}</div>
       <div class="edit-grid">
