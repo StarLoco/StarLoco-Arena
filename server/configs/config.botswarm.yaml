@@ -1,0 +1,46 @@
+# Fast-clock configuration for exercising cmd/botswarm end-to-end against a
+# live server. Uses a dedicated SQLite file (arena.botswarm.db) so a swarm
+# run never touches the normal dev database, and short combat phase clocks so
+# fights reach the action phase (and complete) quickly under load.
+#
+#   Terminal 1: go run ./cmd/server   --config configs/config.botswarm.yaml
+#   Terminal 2: go run ./cmd/botswarm --config configs/config.botswarm.yaml \
+#                 --connect 127.0.0.1:5556 --bots 200 --duration 2m \
+#                 --report botswarm-report.json --csv botswarm-report.csv
+
+server:
+  name: "DofusArena (botswarm)"
+  listen_addr: ":5556"
+  admin_addr: "127.0.0.1:9092"
+  beta: true
+  version:
+    major: 2
+    revision: 4
+    build: "7025"
+
+database:
+  driver: sqlite
+  dsn: "file:arena.botswarm.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)"
+  max_open_conns: 1
+  max_idle_conns: 1
+
+gamedata:
+  dir: "data"
+  warm_cache: false
+
+logging:
+  level: warn
+  format: console
+  trace_packets: false
+
+combat:
+  turn_clock: 30s
+  presentation_clock: 2s
+  placement_clock: 2s
+  observation_clock: 2s
+
+web:
+  enabled: false
+  listen_addr: ":8081"
+  session_secret: ""
+  secure_cookies: false

@@ -241,6 +241,7 @@ From `docs/opcodes/00-implementation-status.md`:
 |---|---|
 | `go test -race` clean across whole suite (incl. `test/e2e`) | ✅ |
 | Concurrent-fights load test (`cmd/loadtest`, pprof-enabled) | ✅ 300 fights @ concurrency 50 |
+| **Live-server behavior swarm (`cmd/botswarm`) — E2E-at-scale** | ✅ Connects N bots (500–2000+) to a *running* server over TCP and drives login + overworld walking + vicinity chat + real turn-based fights (dumb melee AI by default, opt-in `--ai` smart tactical AI) + card exchanges, with a weighted-random behavior mix. Bots are auto-seeded (accounts, coaches with 2 random card sets/1 equipped, procedurally-generated never-identical fighters) into the running server's DB. Per-behavior success/fail/latency report (console + JSON/CSV). Shared wire client factored into `internal/botclient`; fight AIs + observation model in `internal/botai` (reusable for a future server-side PvE "AI coach"). |
 | Per-opcode wire-format tests | ✅ |
 | Security: bounds-checked packet readers | ✅ |
 | **Per-effect-kind unit tests** (one per `EffectKind`) | ✅ Complete — every `EffectKind` now has dedicated coverage (last gap `EffectAdaptLook` filled) |

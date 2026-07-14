@@ -181,3 +181,74 @@ with `go run ./cmd/seedaccount --admin --login <name> --password <pw>`.
   or `distroless` runtime image) for containerized deployment, given the binary has no
   runtime dependencies beyond libc (or none at all if `CGO_ENABLED=0`, which is achievable
   since the SQLite driver choice is pure-Go).
+
+## 6.8 Load testing & the bot swarm
+
+Two complementary tools drive synthetic traffic. They share one wire client
+(`internal/botclient`) so the login handshake and per-opcode payload helpers live in a
+single place.
+
+### `cmd/loadtest` — in-process throughput benchmark
+
+Boots its **own** server in-process (in-memory SQLite, admin/pprof enabled) and drives
+`-fights` concurrent fights (login → matchmaking → setup → forfeit → `END_FIGHT` → ack),
+reporting per-fight latency percentiles and throughput. Because the admin HTTP server is
+real, capture a live profile from a second terminal while it runs:
+
+```powershell
+go run ./cmd/loadtest -fights 200 -concurrency 50 -data-dir data
+go tool pprof http://127.0.0.1:9091/debug/pprof/profile?seconds=10
+```
+
+This is a pure benchmark: it does **not** talk to a running server, so you cannot watch it
+from a real client. Use it to measure the fight pipeline's own overhead and profile hot
+paths.
+
+### `cmd/botswarm` — live-server behavior swarm (E2E-at-scale)
+
+Connects a large swarm of simulated coaches to an **already-running** server over TCP and
+drives the full breadth of player behavior — walking, chatting, real turn-based fights, and
+card exchanges — so that (a) a real retail client attached to the same server sees a
+populated, living world, and (b) the run doubles as an end-to-end test: every behavior's
+success/failure/latency is recorded and reported.
+
+```powershell
+# terminal 1 — start the server (fast-clock test config)
+go run ./cmd/server   --config configs/config.botswarm.yaml
+
+# terminal 2 — run the swarm against it
+go run ./cmd/botswarm --config configs/config.botswarm.yaml `
+    --connect 127.0.0.1:5556 --bots 500 --duration 5m `
+    --report r.json --csv r.csv           # add --ai for the smart tactical fighter
+```
+
+Then connect a client to `127.0.0.1:5556` and watch the bots.
+
+**Key flags:** `--connect host:port` (running server's game socket), `--config` (opens the
+**same** database the server uses, to seed bots — SQLite WAL + an injected `busy_timeout`
+make this safe alongside the running server), `--bots N`, `--ramp` (spread logins to avoid a
+thundering herd), `--duration` (0 = until Ctrl+C), `--fighters` (per bot), the behavior
+weights `--walk-rate/--chat-rate/--fight-rate/--exchange-rate/--idle-rate`, `--ai` (opt into
+the smart tactical fight AI; default is a cheap melee AI), `--action-pause` (slow fights to a
+watchable pace), and `--report`/`--csv` for machine-readable output.
+
+**Provisioning.** Bots are seeded directly into the DB (idempotent — re-runs reuse existing
+accounts): an account, a coach granted **two random card sets with one equipped** (the other
+left unlocked in inventory so it can be staked in bet fights and offered in exchanges), and
+one or more **procedurally generated, never-identical** fighters. The generator
+(`cmd/botswarm/generator.go`) reproduces the wire handler's legality rules: ≤6 breed-matching
+spells, ≤1 card per equipment slot, and a team value under the 5000 cap, biased to include a
+summon spell when the breed has one.
+
+**Fight AI.** Two implementations live in `internal/botai`, both fed the same wire-observed
+`FightState` (own fighters + spells from `CREATE_FIGHT`, positions from `ACTOR_APPEAR`/
+`FIGHTER_MOVE`, deaths, and whose turn it is): `Dumb` (close to melee and attack until a KO —
+the cheap default that stresses the combat pipeline) and `Smart` (focus the nearest enemy,
+cast the best in-range damaging spell, step in when out of range, deploy summons, finish with
+close combat). Since there is **no round cap** server-side, a fight only ends on a KO; the
+driver has a forfeit-on-stall safety (idle timeout + turn cap) so every fight terminates. The
+`botai` package is transport-agnostic by design so the same brain can later drive a
+server-side PvE "AI coach" against real players.
+
+`configs/config.botswarm.yaml` is a ready-made test config: a dedicated `arena.botswarm.db`,
+short combat phase clocks so fights reach the action phase quickly, and port `5556`.

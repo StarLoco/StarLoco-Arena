@@ -18,6 +18,11 @@
 //	go tool pprof http://127.0.0.1:9091/debug/pprof/profile?seconds=10
 //	go tool pprof http://127.0.0.1:9091/debug/pprof/heap
 //
+// The raw wire client, login handshake, and per-opcode payload helpers this
+// tool needs are provided by internal/botclient (shared with cmd/botswarm),
+// so this file only contains the in-process server boot, the fight
+// orchestration, and the latency/throughput report.
+//
 // Usage:
 //
 //	go run ./cmd/loadtest -fights 50 -concurrency 10
@@ -25,13 +30,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"encoding/binary"
 	"flag"
 	"fmt"
-	"io"
-	"net"
 	"os"
 	"sort"
 	"sync"
@@ -39,12 +40,22 @@ import (
 	"time"
 
 	"github.com/dofusarena/go-server/internal/app"
+	"github.com/dofusarena/go-server/internal/botclient"
 	"github.com/dofusarena/go-server/internal/config"
 	"github.com/dofusarena/go-server/internal/protocol"
 	"github.com/dofusarena/go-server/internal/service"
 
 	"github.com/rs/zerolog"
 )
+
+// stakeCardTemplateID is a real coach-card template id (from the loaded
+// gamedata) granted to every seeded coach so that bet fights (Bet != 0) can
+// select a stake and reach CREATE_FIGHT. Chosen once at startup. This fixes
+// a latent bug in the original loadtest: it paired coaches with a unique
+// non-zero bet per fight for matchmaking determinism, but never gave those
+// coaches a stakeable card, so every fight was canceled with
+// "cantHoldTheBet" before CREATE_FIGHT.
+var stakeCardTemplateID int32
 
 func main() {
 	fights := flag.Int("fights", 50, "total number of independent fights to run")
@@ -101,6 +112,13 @@ func main() {
 	// Give the accept loop a moment to actually start (Listen already
 	// bound the socket synchronously, so this is generous, not required).
 	time.Sleep(50 * time.Millisecond)
+
+	// Pick a real coach-card template to stake in bet fights.
+	if cards := a.Deps.Data.CoachCards.All(); len(cards) > 0 {
+		stakeCardTemplateID = cards[0].TemplateID()
+	} else {
+		fmt.Fprintln(os.Stderr, "loadtest: WARNING: no coach-card templates loaded; bet fights will be canceled (cantHoldTheBet)")
+	}
 
 	addr := a.Addr()
 	fmt.Printf("loadtest: server ready at %s", addr)
@@ -214,215 +232,8 @@ func runLoadTest(a *app.App, addr string, n, concurrency int) *report {
 	return rep
 }
 
-// --- minimal raw wire-protocol client (mirrors test/e2e's unexported
-// helpers, duplicated here since that package's helpers aren't exported
-// and this binary must not depend on _test.go files) ---
-
-type rawClient struct {
-	conn net.Conn
-	r    *bufio.Reader
-}
-
-func dialRawClient(addr string) (*rawClient, error) {
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
-	return &rawClient{conn: conn, r: bufio.NewReader(conn)}, nil
-}
-
-func (c *rawClient) Close() error { return c.conn.Close() }
-
-func rawSend(c *rawClient, archTarget byte, opcode protocol.RecvOpcode, payload []byte) error {
-	totalSize := uint16(protocol.InboundHeaderSize + len(payload))
-	header := make([]byte, protocol.InboundHeaderSize)
-	binary.BigEndian.PutUint16(header[0:2], totalSize)
-	header[2] = archTarget
-	binary.BigEndian.PutUint16(header[3:5], uint16(opcode))
-	if _, err := c.conn.Write(header); err != nil {
-		return fmt.Errorf("send header: %w", err)
-	}
-	if len(payload) > 0 {
-		if _, err := c.conn.Write(payload); err != nil {
-			return fmt.Errorf("send payload: %w", err)
-		}
-	}
-	return nil
-}
-
-func rawRecvFrame(c *rawClient) (protocol.SendOpcode, []byte, error) {
-	header := make([]byte, protocol.OutboundHeaderSize)
-	if _, err := io.ReadFull(c.r, header); err != nil {
-		return 0, nil, err
-	}
-	totalSize := binary.BigEndian.Uint16(header[0:2])
-	opcode := protocol.SendOpcode(binary.BigEndian.Uint16(header[2:4]))
-	payloadLen := int(totalSize) - protocol.OutboundHeaderSize
-	payload := make([]byte, payloadLen)
-	if payloadLen > 0 {
-		if _, err := io.ReadFull(c.r, payload); err != nil {
-			return 0, nil, err
-		}
-	}
-	return opcode, payload, nil
-}
-
-// maxBroadcastSkip bounds how many interleaved ACTOR_SPAWN/ACTOR_DESPAWN
-// broadcast frames rawExpect/rawDrainUntil will tolerate skipping before
-// giving up. Deliberately much larger than test/e2e/load_test.go's
-// equivalent (32): at real load-test scale (dozens-to-hundreds of
-// concurrent logins), every login/logout fans out a broadcast to EVERY
-// other online connection, so a single connection can accumulate a large
-// burst of unrelated presence noise while waiting for its own next
-// meaningful frame -- this is expected server behavior at scale, not a
-// bug, so the tolerance here should scale with how this tool is actually
-// used (large -fights/-concurrency values), not the small fixed N used by
-// the correctness-only e2e test.
-const maxBroadcastSkip = 4096
-
-func rawExpect(c *rawClient, want protocol.SendOpcode) ([]byte, error) {
-	for i := 0; i < maxBroadcastSkip; i++ {
-		opcode, payload, err := rawRecvFrame(c)
-		if err != nil {
-			return nil, fmt.Errorf("recvFrame (expected %d): %w", want, err)
-		}
-		if opcode == want {
-			return payload, nil
-		}
-		if opcode != protocol.SendActorSpawn && opcode != protocol.SendActorDespawn {
-			return nil, fmt.Errorf("got opcode %d, want %d", opcode, want)
-		}
-	}
-	return nil, fmt.Errorf("rawExpect(%d): too many broadcast frames skipped", want)
-}
-
-func rawDrainUntil(c *rawClient, want protocol.SendOpcode, max int) error {
-	seen := 0
-	for seen < max {
-		opcode, _, err := rawRecvFrame(c)
-		if err != nil {
-			return fmt.Errorf("drainUntil(%d): %w", want, err)
-		}
-		if opcode == want {
-			return nil
-		}
-		if opcode != protocol.SendActorSpawn && opcode != protocol.SendActorDespawn {
-			seen++
-		}
-	}
-	return fmt.Errorf("drainUntil(%d): opcode not seen within %d frames", want, max)
-}
-
-func pstring(s string) []byte {
-	return append([]byte{byte(len(s))}, s...)
-}
-
-func putInt64(v int64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(v))
-	return b
-}
-
-func putInt32(v int32) []byte {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(v))
-	return b
-}
-
-func putInt16(v int16) []byte {
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, uint16(v))
-	return b
-}
-
-type payloadReader struct {
-	buf []byte
-	pos int
-}
-
-func newPayloadReader(buf []byte) *payloadReader { return &payloadReader{buf: buf} }
-
-func (r *payloadReader) byte_() byte {
-	v := r.buf[r.pos]
-	r.pos++
-	return v
-}
-
-func (r *payloadReader) int64() int64 {
-	v := int64(binary.BigEndian.Uint64(r.buf[r.pos:]))
-	r.pos += 8
-	return v
-}
-
-func rawLogin(c *rawClient, login, password, coachName string) error {
-	payload := append(pstring(login), pstring(password)...)
-	if err := rawSend(c, 1, protocol.RecvAuthentication, payload); err != nil {
-		return err
-	}
-	result, err := rawExpect(c, protocol.SendAuthenticationResult)
-	if err != nil {
-		return err
-	}
-	if result[0] != 0 {
-		return fmt.Errorf("authenticate(%s) result code = %d, want 0", login, result[0])
-	}
-	if _, err := rawExpect(c, protocol.SendQueueNotification); err != nil {
-		return err
-	}
-	opcode, _, err := rawRecvFrame(c)
-	if err != nil {
-		return fmt.Errorf("recvFrame after auth: %w", err)
-	}
-	if opcode == protocol.SendCoachCreationRequest {
-		creation := append(pstring(coachName), []byte{0, 0, 0}...)
-		if err := rawSend(c, 2, protocol.RecvCoachCreation, creation); err != nil {
-			return err
-		}
-		result, err := rawExpect(c, protocol.SendCoachCreationResult)
-		if err != nil {
-			return err
-		}
-		if result[0] != 0 {
-			return fmt.Errorf("coach creation result code = %d, want 0", result[0])
-		}
-		if _, err := rawExpect(c, protocol.SendCoachInformation); err != nil {
-			return err
-		}
-	} else if opcode != protocol.SendCoachInformation {
-		return fmt.Errorf("unexpected opcode after auth: %d", opcode)
-	}
-	if err := rawDrainUntil(c, protocol.SendEnterWorldInstance, 10); err != nil {
-		return err
-	}
-	return nil
-}
-
-func rawCreateFighter(c *rawClient, name string) (int64, error) {
-	payload := append([]byte{0, 0}, 1)
-	payload = append(payload, putInt16(100)...)
-	payload = append(payload, 1)
-	payload = append(payload, pstring(name)...)
-	payload = append(payload, 0, 0)
-	payload = append(payload, putInt16(0)...)
-	payload = append(payload, putInt16(0)...)
-
-	if err := rawSend(c, 3, protocol.RecvFighterCreateRequest, payload); err != nil {
-		return 0, err
-	}
-	result, err := rawExpect(c, protocol.SendFighterCreateResult)
-	if err != nil {
-		return 0, err
-	}
-	r := newPayloadReader(result)
-	errCode := r.byte_()
-	fighterID := r.int64()
-	if errCode != 0 {
-		return 0, fmt.Errorf("fighter create error code = %d", errCode)
-	}
-	return fighterID, nil
-}
-
+// seedAccountRaw inserts a bare account row directly (no coach/cards), the
+// minimum for a login that then creates its coach over the wire.
 func seedAccountRaw(a *app.App, login, password string) error {
 	hash, err := service.HashPassword(password)
 	if err != nil {
@@ -431,12 +242,40 @@ func seedAccountRaw(a *app.App, login, password string) error {
 	return a.DB.Exec("INSERT INTO accounts (name, password_hash, connected, is_admin) VALUES (?, ?, false, false)", login, hash).Error
 }
 
+// createFighter drives RecvFighterCreateRequest (6001) for an empty-loadout
+// fighter (breed 1, no spells/cards) -- legal and fightable per the e2e
+// suite -- and returns the new fighter's DB id from FIGHTER_CREATE_RESULT.
+func createFighter(c *botclient.Client, name string) (int64, error) {
+	w := protocol.NewWriter(0)
+	w.PutInt16(0)     // legacy leading short (ignored)
+	w.PutByte(1)      // client-version byte (unused)
+	w.PutInt16(100)   // client budget (ignored, recomputed server-side)
+	w.PutByte(1)      // breed
+	w.PutString(name) // name
+	w.PutByte(0)      // sex
+	w.PutByte(0)      // skin
+	w.PutUint16(0)    // spell blob length (empty)
+	w.PutUint16(0)    // object blob length (empty)
+	if err := c.Send(3, protocol.RecvFighterCreateRequest, w.Bytes()); err != nil {
+		return 0, err
+	}
+	result, err := c.Expect(protocol.SendFighterCreateResult, 0)
+	if err != nil {
+		return 0, err
+	}
+	r := protocol.NewReader(result)
+	errCode := r.Byte()
+	fighterID := r.Int64()
+	if errCode != 0 {
+		return 0, fmt.Errorf("fighter create error code = %d", errCode)
+	}
+	return fighterID, nil
+}
+
 // runOneLoadTestFight drives one complete fight (login -> matchmaking ->
 // fight setup -> presentation -> forfeit -> END_FIGHT -> ack) for a
-// uniquely-numbered pair of accounts. Mirrors
-// test/e2e/load_test.go's runOneFightToForfeit exactly, duplicated here
-// since this is a separate binary (not a _test.go file) and can't import
-// the test package's unexported helpers.
+// uniquely-numbered pair of accounts, using internal/botclient for all wire
+// interaction. Mirrors test/e2e/load_test.go's runOneFightToForfeit.
 func runOneLoadTestFight(a *app.App, addr string, idx int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -453,139 +292,123 @@ func runOneLoadTestFight(a *app.App, addr string, idx int) (err error) {
 		return fmt.Errorf("seed bob: %w", err)
 	}
 
-	cAlice, err := dialRawClient(addr)
+	cAlice, err := botclient.Dial(addr, 10*time.Second, 30*time.Second, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("dial alice: %w", err)
 	}
 	defer cAlice.Close()
-	cBob, err := dialRawClient(addr)
+	cBob, err := botclient.Dial(addr, 10*time.Second, 30*time.Second, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("dial bob: %w", err)
 	}
 	defer cBob.Close()
 
-	if err := rawLogin(cAlice, loginA, "pw", "LoadAlice"+fmt.Sprint(idx)); err != nil {
+	sessA, err := cAlice.Login(loginA, "pw", "LoadAlice"+fmt.Sprint(idx), botclient.CoachLook{})
+	if err != nil {
 		return fmt.Errorf("alice login: %w", err)
 	}
-	if err := rawLogin(cBob, loginB, "pw", "LoadBob"+fmt.Sprint(idx)); err != nil {
+	sessB, err := cBob.Login(loginB, "pw", "LoadBob"+fmt.Sprint(idx), botclient.CoachLook{})
+	if err != nil {
 		return fmt.Errorf("bob login: %w", err)
 	}
 
-	aliceFighterID, err := rawCreateFighter(cAlice, "AF"+fmt.Sprint(idx))
+	// Grant each freshly-created coach one unlocked, unequipped card so a
+	// bet fight can select a stake (see stakeCardTemplateID).
+	if stakeCardTemplateID != 0 {
+		ctx := context.Background()
+		if _, err := a.Deps.Coach.AddCard(ctx, uint(sessA.CoachID), stakeCardTemplateID, 1, 0); err != nil {
+			return fmt.Errorf("grant alice stake card: %w", err)
+		}
+		if _, err := a.Deps.Coach.AddCard(ctx, uint(sessB.CoachID), stakeCardTemplateID, 1, 0); err != nil {
+			return fmt.Errorf("grant bob stake card: %w", err)
+		}
+	}
+
+	aliceFighterID, err := createFighter(cAlice, "AF"+fmt.Sprint(idx))
 	if err != nil {
 		return fmt.Errorf("alice create fighter: %w", err)
 	}
-	bobFighterID, err := rawCreateFighter(cBob, "BF"+fmt.Sprint(idx))
+	bobFighterID, err := createFighter(cBob, "BF"+fmt.Sprint(idx))
 	if err != nil {
 		return fmt.Errorf("bob create fighter: %w", err)
 	}
 
-	// Use a unique "bet" value per fight index (world.Matchmaker.FindMatch
-	// only pairs coaches with an identical (Type, Bet) tuple, see
-	// internal/world/matchmaking.go) so this fight's Alice/Bob are
-	// deterministically paired with EACH OTHER rather than
-	// cross-matching with a different concurrently-running simulated
-	// fight's Alice/Bob at higher -concurrency values (a real, expected
-	// consequence of every fight in this tool using the same bet=0 by
-	// default -- discovered while stress-testing this very tool at
-	// -concurrency 30+, not a server bug: the matchmaker is working
-	// exactly as designed, this script's own scenario just needs each
-	// simulated pair to be unambiguously matchable).
-	searchPayload := append([]byte{1}, putInt32(int32(idx))...)
-	if err := rawSend(cAlice, 2, protocol.RecvOpponentSearchRequest, searchPayload); err != nil {
+	// Use a unique "bet" value per fight index so this fight's Alice/Bob
+	// are deterministically paired with EACH OTHER rather than
+	// cross-matching with a different concurrently-running fight's pair
+	// (the matchmaker pairs identical (Type, Bet) tuples; see
+	// internal/world/matchmaking.go).
+	bet := int32(idx)
+	if err := cAlice.SearchOpponent(protocol.FightTypeMatchmakingDefy, bet); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cAlice, protocol.SendOpponentSearchInProgress); err != nil {
+	if _, err := cAlice.Expect(protocol.SendOpponentSearchInProgress, 0); err != nil {
 		return err
 	}
-	if err := rawSend(cBob, 2, protocol.RecvOpponentSearchRequest, searchPayload); err != nil {
+	if err := cBob.SearchOpponent(protocol.FightTypeMatchmakingDefy, bet); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cBob, protocol.SendOpponentSearchInProgress); err != nil {
+	if _, err := cBob.Expect(protocol.SendOpponentSearchInProgress, 0); err != nil {
 		return err
 	}
 
-	foundAlice, err := rawExpect(cAlice, protocol.SendOpponentFound)
+	foundAlice, err := cAlice.Expect(protocol.SendOpponentFound, 0)
 	if err != nil {
 		return err
 	}
-	if _, err := rawExpect(cBob, protocol.SendOpponentFound); err != nil {
+	if _, err := cBob.Expect(protocol.SendOpponentFound, 0); err != nil {
 		return err
 	}
-	duelID := newPayloadReader(foundAlice).int64()
+	duelID := protocol.NewReader(foundAlice).Int64()
 
-	readyA := append(putInt64(duelID), 1)
-	readyA = append(readyA, putInt64(aliceFighterID)...)
-	if err := rawSend(cAlice, 2, protocol.RecvSetReadyForFight, readyA); err != nil {
+	if err := cAlice.SetReadyForFight(duelID, aliceFighterID); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cAlice, protocol.SendReadyForFight); err != nil {
+	if _, err := cAlice.Expect(protocol.SendReadyForFight, 0); err != nil {
 		return err
 	}
-
-	readyB := append(putInt64(duelID), 1)
-	readyB = append(readyB, putInt64(bobFighterID)...)
-	if err := rawSend(cBob, 2, protocol.RecvSetReadyForFight, readyB); err != nil {
+	if err := cBob.SetReadyForFight(duelID, bobFighterID); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cBob, protocol.SendReadyForFight); err != nil {
+	if _, err := cBob.Expect(protocol.SendReadyForFight, 0); err != nil {
 		return err
 	}
 
-	if _, err := rawExpect(cAlice, protocol.SendCreateFight); err != nil {
+	if _, err := cAlice.Expect(protocol.SendCreateFight, 0); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cBob, protocol.SendCreateFight); err != nil {
-		return err
-	}
-
-	if err := rawSend(cAlice, 3, protocol.RecvTeamMateSetReadyForPlacement, nil); err != nil {
-		return err
-	}
-	if err := rawSend(cBob, 3, protocol.RecvTeamMateSetReadyForPlacement, nil); err != nil {
+	if _, err := cBob.Expect(protocol.SendCreateFight, 0); err != nil {
 		return err
 	}
 
-	if err := rawDrainUntil(cAlice, protocol.SendTeamMateSetReadyForPlacementMessage, 4); err != nil {
+	if err := cAlice.ReadyForPlacement(); err != nil {
 		return err
 	}
-	if err := rawDrainUntil(cAlice, protocol.SendTeamMateSetReadyForPlacementMessage, 4); err != nil {
-		return err
-	}
-	if err := rawDrainUntil(cBob, protocol.SendTeamMateSetReadyForPlacementMessage, 4); err != nil {
-		return err
-	}
-	if err := rawDrainUntil(cBob, protocol.SendTeamMateSetReadyForPlacementMessage, 4); err != nil {
+	if err := cBob.ReadyForPlacement(); err != nil {
 		return err
 	}
 
-	if _, err := rawExpect(cAlice, protocol.SendEnterWorldInstance); err != nil {
+	if _, err := cAlice.DrainUntil(protocol.SendStartPresentation, 32, 0); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cAlice, protocol.SendStartPresentation); err != nil {
-		return err
-	}
-	if _, err := rawExpect(cBob, protocol.SendEnterWorldInstance); err != nil {
-		return err
-	}
-	if _, err := rawExpect(cBob, protocol.SendStartPresentation); err != nil {
+	if _, err := cBob.DrainUntil(protocol.SendStartPresentation, 32, 0); err != nil {
 		return err
 	}
 
-	if err := rawSend(cAlice, 3, protocol.RecvGiveUpFightRequest, nil); err != nil {
+	if err := cAlice.GiveUp(); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cAlice, protocol.SendEndFight); err != nil {
+	if _, err := cAlice.DrainUntil(protocol.SendEndFight, 32, 0); err != nil {
 		return err
 	}
-	if _, err := rawExpect(cBob, protocol.SendEndFight); err != nil {
+	if _, err := cBob.DrainUntil(protocol.SendEndFight, 32, 0); err != nil {
 		return err
 	}
 
-	if err := rawSend(cAlice, 3, protocol.RecvEndFightDone, nil); err != nil {
+	if err := cAlice.EndFightDone(); err != nil {
 		return err
 	}
-	if err := rawSend(cBob, 3, protocol.RecvEndFightDone, nil); err != nil {
+	if err := cBob.EndFightDone(); err != nil {
 		return err
 	}
 
