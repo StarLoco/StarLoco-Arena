@@ -30,6 +30,7 @@ import { viewDeploy } from "./deploy";
 import { viewScripts } from "./scriptsview";
 import { listScriptIDs } from "./backend";
 import { confirmDiscardIfDirty, onDirtyChange, dirtyCount, isAnyDirty } from "./dirty";
+import { mountGlobalSearch, invalidateSearchIndex } from "./globalsearch";
 
 // -------- App shell / navigation --------
 
@@ -93,7 +94,8 @@ function renderShell() {
     <div class="brand">
       <div class="logo">DA</div>
       <div class="title"><b>DofusArena Studio</b><span>Data &amp; Asset Explorer</span></div>
-    </div>`;
+    </div>
+    <div class="gs-host" id="gsHost"></div>`;
   for (const [section, entries] of sections) {
     navHtml += `<div class="nav-section">${esc(section)}</div>`;
     for (const e of entries) {
@@ -117,6 +119,9 @@ function renderShell() {
   app.querySelectorAll<HTMLElement>("[data-nav]").forEach((el) => {
     el.addEventListener("click", () => navigate(el.dataset.nav!));
   });
+
+  const gsHost = document.querySelector<HTMLElement>("#gsHost");
+  if (gsHost) mountGlobalSearch(gsHost);
 
   renderStatus();
   renderPage();
@@ -399,8 +404,9 @@ function wireOverview() {
   langSel?.addEventListener("change", async () => {
     langState = await setLanguage(langSel.value);
     await loadNames(true); // refresh cached names for the new language
+    invalidateSearchIndex(); // re-index global search in the new language
     await refreshCounts();
-    renderPage(); // re-render current page with new names
+    renderShell(); // re-render shell (search box) + page with new names
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((btn) => {

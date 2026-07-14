@@ -105,6 +105,71 @@ body {
   color: var(--text-faint);
 }
 
+/* ---- global search (sidebar) ---- */
+.gs-host {
+  padding: 0 4px 6px;
+}
+.gs {
+  position: relative;
+}
+.gs-input {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.gs-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.gs-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gs-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text);
+}
+.gs-item:hover,
+.gs-item.active {
+  background: var(--bg-hover);
+}
+.gs-item-label {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gs-item-sub {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
 .nav-section {
   font-size: 10px;
   text-transform: uppercase;
