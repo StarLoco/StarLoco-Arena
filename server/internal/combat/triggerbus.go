@@ -217,6 +217,49 @@ func (f *Fight) fireTrigger(carrier *Fighter, triggerID int32, phaseBefore bool)
 	}
 }
 
+// applySacrificeRedirect implements Sacrieur's Sacrifice (spell 135): a
+// reactive ExchangePosition armed on the BEFORE-HP-loss trigger (action 64
+// with TriggersBefore=[2]). When `target` is about to take a hit, the
+// Sacrifice buff swaps the target with the Sacrieur who cast it and redirects
+// the whole hit onto the Sacrieur -- "the position of the caster and the
+// target is swapped and caster takes all the damage while the target remains
+// unharmed". Returns the Sacrieur (the new damage recipient) if a redirect
+// happened, or nil to leave the hit on `target`.
+//
+// This is the missing "before-HP-loss" firing the generic trigger-bus never
+// wired (fireTrigger is only ever called AFTER the hit); it's handled inline
+// at the damage entry point instead of a general before-phase dispatch, since
+// Sacrifice is the only before-trigger effect in the real data and it needs a
+// damage-REDIRECT (not just to run the deferred effect). A single hop only:
+// the redirected hit lands on the Sacrieur WITHOUT re-checking their own
+// Sacrifice, matching the wiki's "only one swap will take place" for chains.
+// The buff is NOT consumed -- it redirects every hit for its whole duration.
+// The swap is done directly (no checkInAndOut) so it can't ping-pong through
+// a trap onto the ally it's meant to protect.
+func (f *Fight) applySacrificeRedirect(target *Fighter, triggeringActionID int32) *Fighter {
+	if target == nil {
+		return nil
+	}
+	for _, re := range target.ReactiveEffects {
+		if re.Def.Kind != EffectExchangePosition || !re.listens(trigOnAttacked, true) {
+			continue
+		}
+		sacrier := re.Caster
+		if sacrier == nil || sacrier == target || sacrier.IsDead {
+			continue
+		}
+		// Swap positions and broadcast the exchange (client animates it),
+		// then redirect the hit onto the Sacrieur.
+		sacrier.Position, target.Position = target.Position, sacrier.Position
+		f.broadcastRunningEffect(re.Eff, sacrier, target, 0, triggeringActionID)
+		f.logger.Debug().
+			Int64("protected", target.ID).Int64("sacrier", sacrier.ID).
+			Msg("combat: Sacrifice redirected a hit onto the Sacrieur")
+		return sacrier
+	}
+	return nil
+}
+
 // tickReactiveEffects decrements every armed reactive effect's remaining
 // table-turn counter once per table-turn boundary and drops any that
 // expired, plus fires those listening for the table-turn tick itself

@@ -423,3 +423,152 @@ func TestEsquiveAPMP_IsFlatResistNotRoll(t *testing.T) {
 		}
 	}
 }
+
+// --- Sacrieur's Sacrifice: reactive damage-redirect -------------------
+
+// armSacrifice arms a Sacrifice buff on `ally` bound to `sacrier`: a reactive
+// ExchangePosition (action 64) on the before-HP-loss trigger, per spell 135.
+func armSacrifice(f *Fight, sacrier, ally *Fighter) {
+	f.deferReactiveEffect(sacrier, ally,
+		runningEffectDef{Kind: EffectExchangePosition},
+		gamedata.EffectDef{ActionID: 64, TriggersBefore: []int32{trigOnAttacked}, Duration: []int32{4, 0}})
+}
+
+func TestSacrifice_RedirectsHitAndSwapsPositions(t *testing.T) {
+	f, sac, enemy := newTestFightForEffects(t)
+	ally := NewFighterFromBreed(9, sac.TeamID, BreedFeca, "Ally", 0, 0)
+	sac.Position = Point3{X: 1, Y: 1}
+	ally.Position = Point3{X: 5, Y: 5}
+	enemy.Position = Point3{X: 5, Y: 6}
+	for _, fr := range []*Fighter{sac, ally, enemy} {
+		fr.Characteristics[HP].Value, fr.Characteristics[HP].Max = 100, 100
+	}
+	armSacrifice(f, sac, ally)
+
+	// Enemy hits the protected ally for 30 -> redirected to the Sacrieur,
+	// positions swapped, ally unharmed.
+	f.applyDamageFromEffect(enemy, ally, 30, gamedata.EffectDef{ActionID: 2, Params: []float32{30}}, -1)
+
+	if got := ally.Characteristic(HP); got != 100 {
+		t.Errorf("protected ally HP = %d, want unchanged 100 (hit redirected)", got)
+	}
+	if got := sac.Characteristic(HP); got != 70 {
+		t.Errorf("Sacrieur HP = %d, want 70 (took the 30 hit)", got)
+	}
+	if sac.Position != (Point3{X: 5, Y: 5}) || ally.Position != (Point3{X: 1, Y: 1}) {
+		t.Errorf("positions not swapped: sacrier=%v ally=%v", sac.Position, ally.Position)
+	}
+
+	// The buff persists (not consumed): a second hit also redirects.
+	f.applyDamageFromEffect(enemy, ally, 10, gamedata.EffectDef{ActionID: 2, Params: []float32{10}}, -1)
+	if got := ally.Characteristic(HP); got != 100 {
+		t.Errorf("ally HP after 2nd hit = %d, want 100 (Sacrifice persists for its duration)", got)
+	}
+	if got := sac.Characteristic(HP); got != 60 {
+		t.Errorf("Sacrieur HP after 2nd hit = %d, want 60", got)
+	}
+}
+
+// TestSacrifice_OneHopDoesNotChain verifies the wiki's "only one swap will
+// take place": B is protected by A, and A is protected by C. Hitting B
+// redirects to A (one hop); A takes the damage even though A itself carries a
+// Sacrifice buff -- C is NOT hit.
+func TestSacrifice_OneHopDoesNotChain(t *testing.T) {
+	f, a, enemy := newTestFightForEffects(t)
+	b := NewFighterFromBreed(9, a.TeamID, BreedFeca, "B", 0, 0)
+	c := NewFighterFromBreed(8, a.TeamID, BreedIop, "C", 0, 0)
+	a.Position = Point3{X: 1, Y: 1}
+	b.Position = Point3{X: 5, Y: 5}
+	c.Position = Point3{X: 2, Y: 2}
+	enemy.Position = Point3{X: 5, Y: 6}
+	for _, fr := range []*Fighter{a, b, c, enemy} {
+		fr.Characteristics[HP].Value, fr.Characteristics[HP].Max = 100, 100
+	}
+	armSacrifice(f, a, b) // B protected by A
+	armSacrifice(f, c, a) // A protected by C
+
+	f.applyDamageFromEffect(enemy, b, 30, gamedata.EffectDef{ActionID: 2, Params: []float32{30}}, -1)
+
+	if got := b.Characteristic(HP); got != 100 {
+		t.Errorf("B HP = %d, want 100 (hit redirected off B)", got)
+	}
+	if got := a.Characteristic(HP); got != 70 {
+		t.Errorf("A HP = %d, want 70 (one hop -- A takes it despite its own Sacrifice buff)", got)
+	}
+	if got := c.Characteristic(HP); got != 100 {
+		t.Errorf("C HP = %d, want unchanged 100 (only ONE swap, no chain)", got)
+	}
+}
+
+// --- Caster death removes the buffs/reactive effects it placed ---------
+
+func TestCasterDeath_RemovesAllyBuff(t *testing.T) {
+	f, caster, enemy := newTestFightForEffects(t)
+	ally := NewFighterFromBreed(9, caster.TeamID, BreedFeca, "Ally", 0, 0)
+	f.registerFighter(ally, caster.CoachID) // so removeEffectsCastBy sees it
+	_ = enemy
+
+	// Stimulating Word: a permanent +2 AP buff on the ally, cast by `caster`.
+	ally.Characteristics[AP].Max = 6
+	ally.Characteristics[AP].AddMax(2)
+	ally.Characteristics[AP].ToMax()
+	ally.trackActiveEffect(ActiveEffect{Kind: ActiveEffectCharacBuff, Caster: caster, Charc: AP, Delta: 2, Infinite: true})
+
+	// Caster dies -> the ally's caster-linked buff must be reverted+removed.
+	f.killFighter(caster, -1)
+
+	if got := ally.Characteristics[AP].Max; got != 6 {
+		t.Errorf("ally AP.Max after caster death = %d, want 6 (Stimulating Word lost)", got)
+	}
+	if len(ally.ActiveEffects) != 0 {
+		t.Errorf("ally still has %d active effects after caster death, want 0", len(ally.ActiveEffects))
+	}
+}
+
+func TestCasterDeath_RemovesSacrificeBuff(t *testing.T) {
+	f, sac, enemy := newTestFightForEffects(t)
+	ally := NewFighterFromBreed(9, sac.TeamID, BreedFeca, "Ally", 0, 0)
+	f.registerFighter(ally, sac.CoachID)
+	for _, fr := range []*Fighter{sac, ally, enemy} {
+		fr.Characteristics[HP].Value, fr.Characteristics[HP].Max = 100, 100
+	}
+	armSacrifice(f, sac, ally)
+	if len(ally.ReactiveEffects) != 1 {
+		t.Fatalf("setup: ally should carry the Sacrifice reactive effect")
+	}
+
+	// The Sacrieur dies -> the Sacrifice buff on the ally is removed.
+	f.killFighter(sac, -1)
+	if len(ally.ReactiveEffects) != 0 {
+		t.Errorf("ally still carries the Sacrifice buff after its Sacrieur died, want it removed")
+	}
+
+	// And a subsequent hit on the ally is NOT redirected (no dead sacrier).
+	f.applyDamageFromEffect(enemy, ally, 20, gamedata.EffectDef{ActionID: 2, Params: []float32{20}}, -1)
+	if got := ally.Characteristic(HP); got != 80 {
+		t.Errorf("ally HP after hit (no more Sacrifice) = %d, want 80", got)
+	}
+}
+
+// TestCasterDeath_KeepsUnrelatedBuffs verifies only the DEAD caster's buffs
+// are removed -- a buff another (living) caster placed survives.
+func TestCasterDeath_KeepsUnrelatedBuffs(t *testing.T) {
+	f, caster, other := newTestFightForEffects(t)
+	ally := NewFighterFromBreed(9, caster.TeamID, BreedFeca, "Ally", 0, 0)
+	f.registerFighter(ally, caster.CoachID)
+
+	ally.Characteristics[AP].Max = 6
+	ally.Characteristics[AP].AddMax(3) // +1 from caster, +2 from other
+	ally.trackActiveEffect(ActiveEffect{Kind: ActiveEffectCharacBuff, Caster: caster, Charc: AP, Delta: 1, Infinite: true})
+	ally.trackActiveEffect(ActiveEffect{Kind: ActiveEffectCharacBuff, Caster: other, Charc: AP, Delta: 2, Infinite: true})
+
+	f.killFighter(caster, -1)
+
+	// Only caster's +1 is reverted; other's +2 remains -> Max 6+2 = 8.
+	if got := ally.Characteristics[AP].Max; got != 8 {
+		t.Errorf("ally AP.Max = %d, want 8 (only dead caster's +1 removed, other's +2 kept)", got)
+	}
+	if len(ally.ActiveEffects) != 1 {
+		t.Errorf("ally active effects = %d, want 1 (the surviving caster's buff)", len(ally.ActiveEffects))
+	}
+}

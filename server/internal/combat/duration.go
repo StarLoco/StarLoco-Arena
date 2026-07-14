@@ -261,40 +261,87 @@ func (f *Fight) tickFighterActiveEffects(fighter *Fighter, triggeringActionID in
 		}
 
 		// Expired this boundary: revert if it's a lasting stat change.
-		switch ae.Kind {
-		case ActiveEffectCharacBuff:
-			if c := fighter.Characteristics[ae.Charc]; c != nil {
-				c.AddMax(-ae.Delta)
-				// Expiry revert: broadcast the reverse stat change so the
-				// client updates the number. No spell container here (the
-				// buff's own duration TimeEvent already removed its icon
-				// client-side when it expired), only the characteristic
-				// ActionID is set.
-				f.broadcastRunningEffect(gamedata.EffectDef{ActionID: charcRunningEffectID(ae.Charc)}, ae.Caster, fighter, -ae.Delta, triggeringActionID)
-			}
-		case ActiveEffectCharacValue:
-			// A CharacGain/CharacLoss reverts its current-VALUE delta
-			// (CharacGain.unapply subtracts m_value; CharacLoss.unapply adds
-			// it back) -- e.g. Immunity's +100 resist drops off after 1 round.
-			if c := fighter.Characteristics[ae.Charc]; c != nil {
-				fighter.AddCharacteristic(ae.Charc, -ae.Delta)
-				f.broadcastRunningEffect(gamedata.EffectDef{ActionID: charcRunningEffectID(ae.Charc)}, ae.Caster, fighter, -ae.Delta, triggeringActionID)
-			}
-		case ActiveEffectSpellRebound:
-			// The Spell Rebound buff expired: remove its reflect-chance
-			// contribution so the fighter stops reflecting incoming spells.
-			fighter.SpellReboundRate -= ae.Delta
-			if fighter.SpellReboundRate < 0 {
-				fighter.SpellReboundRate = 0
-			}
-		case ActiveEffectProperty:
-			// A timed property (e.g. PETRIFIED) expired: clear it so the
-			// fighter is no longer immobilized (Petrified.unapply).
-			fighter.Properties &^= ae.Property
-		}
-		// ActiveEffectPoisonTick simply stops -- nothing to revert.
+		f.revertActiveEffect(fighter, ae, triggeringActionID)
 	}
 	fighter.ActiveEffects = remaining
+}
+
+// revertActiveEffect undoes a duration-tracked effect's lasting change on
+// `fighter` (the reverse of how applyRunningEffect applied it), broadcasting
+// the reverse stat change so the client updates. Shared by the two removal
+// paths: natural expiry (tickFighterActiveEffects) and caster-death removal
+// (removeEffectsCastBy). ActiveEffectPoisonTick simply stops -- nothing to
+// revert.
+func (f *Fight) revertActiveEffect(fighter *Fighter, ae ActiveEffect, triggeringActionID int32) {
+	switch ae.Kind {
+	case ActiveEffectCharacBuff:
+		if c := fighter.Characteristics[ae.Charc]; c != nil {
+			c.AddMax(-ae.Delta)
+			// Broadcast the reverse stat change. No spell container here
+			// (the buff's own duration TimeEvent already removed its icon
+			// client-side), only the characteristic ActionID is set.
+			f.broadcastRunningEffect(gamedata.EffectDef{ActionID: charcRunningEffectID(ae.Charc)}, ae.Caster, fighter, -ae.Delta, triggeringActionID)
+		}
+	case ActiveEffectCharacValue:
+		// A CharacGain/CharacLoss reverts its current-VALUE delta
+		// (CharacGain.unapply subtracts m_value; CharacLoss.unapply adds
+		// it back) -- e.g. Immunity's +100 resist drops off after 1 round.
+		if c := fighter.Characteristics[ae.Charc]; c != nil {
+			fighter.AddCharacteristic(ae.Charc, -ae.Delta)
+			f.broadcastRunningEffect(gamedata.EffectDef{ActionID: charcRunningEffectID(ae.Charc)}, ae.Caster, fighter, -ae.Delta, triggeringActionID)
+		}
+	case ActiveEffectSpellRebound:
+		// The Spell Rebound buff ended: remove its reflect-chance
+		// contribution so the fighter stops reflecting incoming spells.
+		fighter.SpellReboundRate -= ae.Delta
+		if fighter.SpellReboundRate < 0 {
+			fighter.SpellReboundRate = 0
+		}
+	case ActiveEffectProperty:
+		// A timed property (e.g. PETRIFIED) ended: clear it so the fighter
+		// is no longer immobilized (Petrified.unapply).
+		fighter.Properties &^= ae.Property
+	}
+}
+
+// removeEffectsCastBy reverts and removes every duration-tracked ActiveEffect
+// and every armed ReactiveEffect that `dead` placed on ANY OTHER living
+// fighter. Ports AbstractFight.onFighterDeath's "remove running effects
+// linked to the dead caster": e.g. an Eniripsa's Stimulating Word / Word of
+// Torture, a Xelor's Devotion, or a Sacrieur's Sacrifice buff all vanish when
+// the caster dies (wiki: "If the eniripsa dies the buff is lost"). Called
+// from killFighter. Reverting a stat buff clamps the ally's current value to
+// the reduced max (same as buff expiry) -- a minor deviation from the wiki's
+// "keep current HP above max" note for Word of Torture, matching how expiry
+// already behaves. Never kills anyone (only stat reverts / icon removals), so
+// it is safe to iterate fightersByID here inside killFighter.
+func (f *Fight) removeEffectsCastBy(dead *Fighter, triggeringActionID int32) {
+	for _, fr := range f.fightersByID {
+		if fr == dead || fr.IsDead {
+			continue
+		}
+		if len(fr.ActiveEffects) > 0 {
+			kept := fr.ActiveEffects[:0]
+			for _, ae := range fr.ActiveEffects {
+				if ae.Caster == dead {
+					f.revertActiveEffect(fr, ae, triggeringActionID)
+					continue
+				}
+				kept = append(kept, ae)
+			}
+			fr.ActiveEffects = kept
+		}
+		if len(fr.ReactiveEffects) > 0 {
+			keptR := fr.ReactiveEffects[:0]
+			for _, re := range fr.ReactiveEffects {
+				if re.Caster == dead {
+					continue // e.g. a Sacrifice buff dies with its Sacrieur
+				}
+				keptR = append(keptR, re)
+			}
+			fr.ReactiveEffects = keptR
+		}
+	}
 }
 
 // clearActiveEffectsOnDeath drops every duration-tracked effect from a

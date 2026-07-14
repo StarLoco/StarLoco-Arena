@@ -21,6 +21,11 @@ func (f *Fight) killFighter(fighter *Fighter, triggeringActionID int32) {
 	fighter.IsDead = true
 	f.Timeline.RemoveFighter(fighter)
 	fighter.clearActiveEffectsOnDeath()
+	// Remove every buff/debuff/reactive effect this fighter placed on OTHERS
+	// (AbstractFight.onFighterDeath: running effects linked to the dead caster
+	// are removed) -- e.g. an ally's Stimulating Word / Devotion / Word of
+	// Torture HP boost, or a Sacrieur's Sacrifice buff, all end here.
+	f.removeEffectsCastBy(fighter, triggeringActionID)
 	f.broadcastAll(buildFighterDies(f.nextActionID(), fighter.ID))
 
 	if fighter.CarriedByFighter != nil {

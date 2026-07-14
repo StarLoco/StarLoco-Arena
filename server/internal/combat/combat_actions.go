@@ -170,6 +170,16 @@ func (f *Fight) applyDamageFromEffect(attacker, target *Fighter, dmg int, eff ga
 	if dmg <= 0 {
 		return
 	}
+	// Sacrieur's Sacrifice fires BEFORE the hit lands: if `target` carries a
+	// Sacrifice buff, swap it with the Sacrieur and redirect this whole hit
+	// onto them (the protected ally stays unharmed). Applies to ALL damage
+	// sources -- spells, close combat, fall damage, AP-poison DoT -- because
+	// this is the single chokepoint every hit flows through. One hop only:
+	// the redirected hit below lands on the Sacrieur without re-checking, so
+	// there's no chain/ping-pong (see applySacrificeRedirect).
+	if protector := f.applySacrificeRedirect(target, triggeringActionID); protector != nil {
+		target = protector
+	}
 	// Apply the hit and capture the ACTUAL HP removed (clamped at 0): a
 	// 10-damage hit on a fighter with 5 HP only removes 5. The client
 	// re-applies the broadcast Value to its own HP bar AND shows it as the
