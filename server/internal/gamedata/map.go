@@ -54,6 +54,25 @@ type Map struct {
 	specialCells []SpecialCellPlacement
 }
 
+// NewMapForTest builds a bare *Map from an explicit set of per-cell
+// surface lists, with no coach/fight-start cell data. Exported strictly
+// so OTHER packages' tests (e.g. internal/combat's line-of-sight tests)
+// can construct a synthetic Map without needing real .amw/elements.ade
+// fixtures -- mirrors the gamedata-internal newSyntheticMapWithSurfaces
+// test helper (map_test.go), just exported for cross-package use. Not
+// intended for any non-test production use.
+func NewMapForTest(cells map[[2]int32][]MapCellFact) *Map {
+	m := &Map{
+		cells:           make(map[[2]int32][]MapCellFact),
+		coachStartCells: make(map[byte][][2]int32),
+		fightStartCells: make(map[byte][][2]int32),
+	}
+	for c, surfaces := range cells {
+		m.cells[c] = surfaces
+	}
+	return m
+}
+
 // IsWalkable reports whether any resolved surface at (x,y) is walkable at
 // the given altitude z -- an exact match on altitude, mirroring
 // WorldCell.isWalkable(short z)'s own exact-altitude lookup (confirmed via
@@ -90,14 +109,24 @@ func (m *Map) HasCell(x, y int32) bool {
 // line-of-sight purposes: a resolved surface with real height that isn't
 // itself walkable (e.g. a wall), at any altitude.
 //
-// This is a deliberate SIMPLIFICATION of the reference's real line-of-
-// sight algorithm (WorldCell.isLineOfSightValid(), confirmed via the
-// decompiled source): the real algorithm checks 6 separate per-direction
-// LineOfSight1/3/5/7/Top/Bottom flags against the exact travel direction
-// at each sub-cell boundary crossing of a full 3D DDA line traversal
-// (LineOfSightUtils.check()/getCellsInputs()) -- a genuinely complex
-// algorithm this project did not attempt to reproduce bit-exact, since
-// doing so without real test vectors (the same problem noted for
+// NOTE: combat's actual cast-validation LOS check (Fight.hasLineOfSight,
+// internal/combat/line_of_sight.go) no longer uses this method -- it now
+// calls LineOfSightValidAt/LineOfSightEndValidAt, a bit-exact port of the
+// reference's real per-direction algorithm (see those methods' doc
+// comments). This coarser method is kept only for the studio map viewer's
+// simplified visualization (cmd/studio/maps.go), where a single
+// direction-agnostic "is this cell solid" flag is what a 2D top-down
+// viewer actually wants to render.
+//
+// This IS still a deliberate SIMPLIFICATION relative to the reference's
+// real line-of-sight algorithm (WorldCell.isLineOfSightValid(), confirmed
+// via the decompiled source): the real algorithm checks 6 separate per-
+// direction LineOfSight1/3/5/7/Top/Bottom flags against the exact travel
+// direction at each sub-cell boundary crossing of a full 3D DDA line
+// traversal (LineOfSightUtils.check()/getCellsInputs()) -- reproduced
+// bit-exact by LineOfSightValidAt/generateLOSCellInputs; reproducing it
+// here too wasn't warranted since doing so without real test vectors (the
+// same problem noted for
 // map-format reverse-engineering in docs/04-game-data-format.md §4.9.1)
 // risks silently-wrong LOS blocking being worse than a conservative,
 // clearly-documented approximation. "Solid, non-walkable, has height" is

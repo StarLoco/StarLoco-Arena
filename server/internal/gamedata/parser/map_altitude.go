@@ -13,10 +13,27 @@ package parser
 // ResolvedSurface is one concrete "you can stand here at this altitude,
 // and it is/isn't walkable" fact for a cell, derived from one Graphical
 // element's resolved (stacked) altitude + its elements.ade Walkable flag.
+//
+// The six LineOfSight* fields carry the element's per-edge/top/bottom LOS
+// flags straight through from its elements.ade SpatialDataProperties
+// (LineOfSight1/3/5/7/Top/Bottom -- see elements_ade.go), unmodified.
+// These are what the reference's WorldCell.isLineOfSightValid() checks
+// per direction during its 3D DDA line traversal (LineOfSightUtils.java);
+// carrying them through ResolvedSurface is what lets the combat layer
+// reproduce that check bit-exactly instead of falling back to the cruder
+// "any solid non-walkable surface blocks every direction" approximation
+// (see gamedata.Map.LineOfSightValidAt / combat/line_of_sight.go).
 type ResolvedSurface struct {
 	Altitude int16
 	Walkable bool
 	Height   float32 // the element's own height (for stacking/ascend-limit purposes)
+
+	LineOfSight1      bool // SOUTH_EAST edge (Direction8=1)
+	LineOfSight3      bool // SOUTH_WEST edge (Direction8=3)
+	LineOfSight5      bool // NORTH_WEST edge (Direction8=5)
+	LineOfSight7      bool // NORTH_EAST edge (Direction8=7)
+	LineOfSightTop    bool // +Z (Direction8=TOP=8)
+	LineOfSightBottom bool // -Z (Direction8=BOTTOM=9)
 }
 
 // ResolvedGfx is one drawable sprite for a cell: which gfx to draw, its
@@ -230,9 +247,15 @@ func ResolveCellSurfaces(cell AMWCell, elements map[int32]ElementDef) []Resolved
 				}
 				height := props.Height()
 				out = append(out, ResolvedSurface{
-					Altitude: elementAltitude,
-					Walkable: props.Walkable,
-					Height:   height,
+					Altitude:          elementAltitude,
+					Walkable:          props.Walkable,
+					Height:            height,
+					LineOfSight1:      props.LineOfSight1,
+					LineOfSight3:      props.LineOfSight3,
+					LineOfSight5:      props.LineOfSight5,
+					LineOfSight7:      props.LineOfSight7,
+					LineOfSightTop:    props.LineOfSightTop,
+					LineOfSightBottom: props.LineOfSightBottom,
 				})
 				if props.Piled {
 					currentAltitude += int16(height)
