@@ -6,6 +6,8 @@ import {
   listJars,
   listJarEntries,
   previewEntry,
+  saveJarText,
+  replaceJarEntry,
   type JarInfo,
   type AssetEntry,
 } from "./backend";
@@ -222,28 +224,35 @@ export function viewAssets(container: HTMLElement) {
     previewPane.innerHTML = `<div class="loading">Loading preview\u2026</div>`;
     previewEntry(state.activeJar!, p)
       .then((prev) => {
+        const jar = state.activeJar!;
+        const editable = prev.kind === "text" && !prev.truncated;
         const head = `
           <div class="preview-head">
             <div class="preview-name">${esc(prev.path)}</div>
-            <div class="preview-meta">${prev.kind} \u00B7 ${fmtBytes(prev.size)}</div>
+            <div class="preview-meta">${prev.kind} \u00B7 ${fmtBytes(prev.size)} \u00B7 ${esc(jar)}</div>
+            <div class="preview-actions">
+              ${editable ? `<button id="asEdit" class="mini-primary">\u270E Edit &amp; Save</button>` : ""}
+              <button id="asReplace">\u21C4 Replace file\u2026</button>
+            </div>
           </div>`;
         let bodyHtml: string;
         if (prev.kind === "image" && prev.dataUrl) {
-          bodyHtml = `<div class="preview-image"><img src="${prev.dataUrl}" alt="${esc(prev.path)}" /></div>`;
+          bodyHtml = `<div class="preview-image insp-checker"><img src="${prev.dataUrl}" alt="${esc(prev.path)}" /></div>`;
         } else if (prev.kind === "text") {
-          bodyHtml = `<pre class="preview-text">${esc(prev.text)}${
-            prev.truncated ? "\n\u2026 (truncated)" : ""
+          bodyHtml = `<pre class="preview-text" id="asText">${esc(prev.text)}${
+            prev.truncated ? "\n\u2026 (truncated \u2014 too large to edit inline)" : ""
           }</pre>`;
         } else {
-          const note =
-            prev.path.toLowerCase().endsWith(".tga")
-              ? "TGA sprite \u2014 visual preview arrives in Phase 3."
-              : "Binary asset \u2014 no inline preview.";
+          const note = prev.path.toLowerCase().endsWith(".tga")
+            ? "TGA sprite \u2014 open the Sprites view for a decoded preview."
+            : "Binary asset \u2014 use Replace to swap it.";
           bodyHtml = `<div class="preview-binary"><div class="big">${
             kindIcon.binary
           }</div><div>${esc(note)}</div></div>`;
         }
-        previewPane.innerHTML = head + bodyHtml;
+        previewPane.innerHTML =
+          head + `<div class="preview-status" id="asStatus"></div>` + bodyHtml;
+        wirePreviewActions(jar, prev.path, prev.text ?? "", editable);
       })
       .catch((err) => {
         previewPane.innerHTML = `<div class="preview-error"><b>Preview failed.</b><div class="mono">${esc(
@@ -251,4 +260,88 @@ export function viewAssets(container: HTMLElement) {
         )}</div></div>`;
       });
   }
+
+  // wirePreviewActions hooks up the Edit & Save (text) and Replace (file)
+  // controls in the preview pane, turning the browser into a live recompiler.
+  function wirePreviewActions(jar: string, entry: string, originalText: string, editable: boolean) {
+    const status = previewPane.querySelector<HTMLElement>("#asStatus");
+    const setStatus = (html: string, cls = "") => {
+      if (status) {
+        status.innerHTML = html;
+        status.className = `preview-status ${cls}`;
+      }
+    };
+
+    if (editable) {
+      previewPane.querySelector<HTMLButtonElement>("#asEdit")?.addEventListener("click", () => {
+        const pre = previewPane.querySelector<HTMLElement>("#asText");
+        if (!pre) return;
+        // Swap the <pre> for an editable code area with Save/Cancel.
+        const ta = document.createElement("textarea");
+        ta.className = "code-editor";
+        ta.value = originalText;
+        ta.spellcheck = false;
+        pre.replaceWith(ta);
+        const btn = previewPane.querySelector<HTMLButtonElement>("#asEdit")!;
+        btn.textContent = "\uD83D\uDCBE Save changes";
+        btn.classList.add("armed");
+        ta.focus();
+        btn.onclick = async () => {
+          btn.disabled = true;
+          setStatus("Saving \u2192 repacking " + esc(jar) + "\u2026");
+          try {
+            const res = await saveJarText(jar, entry, ta.value);
+            setStatus(
+              `Saved &amp; repacked \u00B7 backup ${esc(
+                res.backupPath?.split(/[\\/]/).pop() ?? "created"
+              )}`,
+              "ok"
+            );
+            btn.textContent = "\u270E Edit & Save";
+            btn.classList.remove("armed");
+            btn.disabled = false;
+            // Reload the entry list (size changed) + re-preview.
+            selectEntry(entry);
+          } catch (err) {
+            setStatus(`Failed: ${esc((err as Error).message)}`, "err");
+            btn.disabled = false;
+          }
+        };
+      });
+    }
+
+    previewPane.querySelector<HTMLButtonElement>("#asReplace")?.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        setStatus(`Replacing with ${esc(file.name)} (${fmtBytes(file.size)})\u2026`);
+        try {
+          const dataUrl = await fileToDataURL(file);
+          const res = await replaceJarEntry(jar, entry, dataUrl);
+          setStatus(
+            `Replaced &amp; repacked \u00B7 backup ${esc(
+              res.backupPath?.split(/[\\/]/).pop() ?? "created"
+            )}`,
+            "ok"
+          );
+          selectEntry(entry);
+        } catch (err) {
+          setStatus(`Failed: ${esc((err as Error).message)}`, "err");
+        }
+      };
+      input.click();
+    });
+  }
+}
+
+// fileToDataURL reads a picked file into a base64 data URL for ReplaceJarEntry.
+function fileToDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("file read failed"));
+    reader.readAsDataURL(file);
+  });
 }

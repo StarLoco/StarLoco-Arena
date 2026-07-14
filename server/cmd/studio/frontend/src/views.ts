@@ -29,6 +29,7 @@ import {
 } from "./effectlore";
 import { simulatorHTML, wireSimulator } from "./simulator";
 import { wireCrosslinks } from "./crosslink";
+import { mountEffectEditor } from "./effecteditor";
 
 function esc(v: unknown): string {
   return String(v).replace(
@@ -146,6 +147,13 @@ export function viewSpells(c: HTMLElement) {
         wireIconCells(c);
         wireSimulator(c);
         wireCrosslinks(c);
+        // Mount the full effect editor into any expanded spell drawer.
+        c.querySelectorAll<HTMLElement>(".fe-mount:not([data-fe-done])").forEach((mount) => {
+          mount.dataset.feDone = "1";
+          const sid = Number(mount.dataset.feSpell);
+          const spell = rows.find((r) => r.ID === sid);
+          if (spell) mountEffectEditor(mount, sid, spell.Effects);
+        });
       },
     });
     // Editable spell form wiring (delegated, since the table re-renders).
@@ -267,7 +275,7 @@ function spellEditor(s: Spell): string {
       </div>
     </div>
     ${simulatorHTML(s.Effects)}
-    ${effectsDetail(s.Effects)}`;
+    <div class="fe-mount" data-fe-spell="${s.ID}"></div>`;
 }
 
 function onSaveSpell(host: HTMLElement, id: number) {

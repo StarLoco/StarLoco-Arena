@@ -56,6 +56,44 @@ func TestEncodeRoundTrip_StaticEffects(t *testing.T) {
 	}
 }
 
+// TestSpliceEffects_NoOpPreservesFile confirms that re-splicing a spell's own
+// effects back in the same order reproduces the exact effect list, so a no-op
+// effect save round-trips the whole spells.dat byte-for-byte.
+func TestSpliceEffects_NoOpPreservesFile(t *testing.T) {
+	raw := realData(t, "spells.dat")
+	f, err := parser.ParseSpellsFile(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// Pick the first spell that actually has effects.
+	var target int32 = -1
+	for _, e := range f.Effects {
+		target = e.ParentID
+		break
+	}
+	if target == -1 {
+		t.Skip("no effects in spells.dat")
+	}
+	// Convert that parent's effects to DTOs and splice them back unchanged.
+	var dtos []EffectEditDTO
+	var ptype string
+	for _, e := range f.Effects {
+		if e.ParentID == target {
+			ptype = e.ParentType
+			dtos = append(dtos, EffectEditDTO{
+				ID: e.ID, Reserved: e.Reserved, ActionID: e.ActionID, IsCritical: e.IsCritical,
+				Duration: e.Duration, Params: e.Params, AreaShape: e.AreaShape, AreaSize: e.AreaSize,
+				Targets: e.Targets, TriggersAfter: e.TriggersAfter, TriggersBefore: e.TriggersBefore,
+				AffectedByLocalisation: e.AffectedByLocalisation,
+			})
+		}
+	}
+	f.Effects = spliceEffects(f.Effects, target, ptype, dtos)
+	if got := encode.EncodeSpellsFile(f); !bytesEqual(raw, got) {
+		t.Errorf("no-op effect splice changed spells.dat (orig=%d got=%d)", len(raw), len(got))
+	}
+}
+
 func bytesEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false

@@ -49,6 +49,19 @@ export function hasGameIcons(): boolean {
   return Object.keys(gameIcons).length > 0;
 }
 
+// actionOptions returns every known effect actionId with a human label, sorted
+// by id -- for the effect editor's action dropdown.
+export function actionOptions(): Array<{ id: number; label: string }> {
+  const out = Object.values(lore).map((s) => {
+    const parts = [cap(s.verb)];
+    if (s.element) parts.push(s.element);
+    else if (s.stat) parts.push(s.stat);
+    return { id: s.actionId, label: `${s.actionId} \u00B7 ${parts.join(" ")}` };
+  });
+  out.sort((a, b) => a.id - b.id);
+  return out;
+}
+
 // ---- element / stat visual tokens -------------------------------------------
 
 const ELEMENT_META: Record<string, { color: string; glyph: string; icon: string }> = {

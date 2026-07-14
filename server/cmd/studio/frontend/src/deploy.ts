@@ -3,13 +3,27 @@
 // entry), lets you pick which to push, and repacks them into the client jar
 // (backup + atomic). This is what turns edits into a runnable, modded client.
 
-import { getPushStatus, pushDataToClient, type PushStatus } from "./backend";
+import {
+  getPushStatus,
+  pushDataToClient,
+  listBackups,
+  restoreBackup,
+  deleteBackup,
+  type PushStatus,
+  type BackupEntry,
+} from "./backend";
 
 function esc(v: unknown): string {
   return String(v).replace(
     /[&<>"]/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string)
   );
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
 export function viewDeploy(container: HTMLElement) {
@@ -106,9 +120,89 @@ export function viewDeploy(container: HTMLElement) {
         Only files whose encoder reproduces the current bytes exactly can be pushed \u2014 anything
         unsafe is disabled. Translations are pushed from the <b>Translations</b> view (into
         <code>i18n.jar</code>).
-      </div>`;
+      </div>
+
+      <div class="ov-section-title" style="margin-top:26px">Backups &amp; restore</div>
+      <div id="dpBackups"><div class="loading">Loading backups\u2026</div></div>`;
 
     wire(status);
+    loadBackups();
+  }
+
+  // --- backups panel ---
+
+  async function loadBackups() {
+    const host = container.querySelector<HTMLElement>("#dpBackups");
+    if (!host) return;
+    let entries: BackupEntry[] = [];
+    try {
+      const res = await listBackups();
+      entries = res.entries ?? [];
+    } catch {
+      host.innerHTML = `<div class="dp-note">Could not list backups.</div>`;
+      return;
+    }
+    if (entries.length === 0) {
+      host.innerHTML = `<div class="dp-note">No backups yet. Every save/push writes a timestamped <code>.bak</code> next to the original \u2014 they'll show up here so you can roll back any change.</div>`;
+      return;
+    }
+    const rows = entries
+      .map(
+        (b, i) => `
+        <tr class="bk-row">
+          <td class="bk-name mono">${esc(b.origName)}</td>
+          <td><span class="bk-area ${esc(b.area)}">${esc(b.area)}</span></td>
+          <td class="bk-stamp">${esc(b.stamp)}</td>
+          <td class="bk-size mono">${fmtBytes(b.bytes)}</td>
+          <td class="bk-actions">
+            <button data-restore="${i}" ${b.restorable ? "" : "disabled"}>Restore</button>
+            <button class="bk-del" data-del="${i}" title="Delete this backup">\u00D7</button>
+          </td>
+        </tr>`
+      )
+      .join("");
+    host.innerHTML = `
+      <div class="dp-table-wrap">
+        <table class="dp-table bk-table">
+          <thead><tr><th>File</th><th>Area</th><th>When</th><th>Size</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="dp-status" id="bkStatus"></div>`;
+
+    const st = host.querySelector<HTMLElement>("#bkStatus")!;
+    host.querySelectorAll<HTMLButtonElement>("[data-restore]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const b = entries[Number(btn.dataset.restore)];
+        if (!confirm(`Restore ${b.origName} from ${b.stamp}?\n\nThe current file is backed up first, so this is undoable.`)) return;
+        btn.disabled = true;
+        st.textContent = "Restoring\u2026";
+        st.className = "dp-status";
+        try {
+          await restoreBackup(b.path);
+          st.innerHTML = `<span class="ok">Restored ${esc(b.origName)} \u00B7 current version backed up</span>`;
+          setTimeout(() => {
+            loadBackups();
+            load();
+          }, 600);
+        } catch (err) {
+          st.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
+          btn.disabled = false;
+        }
+      });
+    });
+    host.querySelectorAll<HTMLButtonElement>("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const b = entries[Number(btn.dataset.del)];
+        if (!confirm(`Delete backup ${b.origName} (${b.stamp})? This cannot be undone.`)) return;
+        try {
+          await deleteBackup(b.path);
+          loadBackups();
+        } catch (err) {
+          st.innerHTML = `<span class="err">${esc((err as Error).message)}</span>`;
+        }
+      });
+    });
   }
 
   function wire(status: PushStatus) {

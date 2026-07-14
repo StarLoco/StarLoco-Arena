@@ -107,6 +107,22 @@ export interface StaticEffectEdit {
   targetsToShow: number;
 }
 
+// EffectEditDTO mirrors the Go effect editor DTO (one editable effect row).
+export interface EffectEditDTO {
+  id: number;
+  reserved: number;
+  actionId: number;
+  isCritical: boolean;
+  duration: number[] | null;
+  params: number[] | null;
+  areaShape: number;
+  areaSize: number[] | null;
+  targets: number[] | null;
+  triggersAfter: number[] | null;
+  triggersBefore: number[] | null;
+  affectedByLocalisation: boolean;
+}
+
 export interface PushFileStatus {
   name: string;
   jarEntry: string;
@@ -120,6 +136,20 @@ export interface PushFileStatus {
 export interface PushStatus {
   clientJar: string;
   files: PushFileStatus[];
+  error: string;
+}
+
+export interface BackupEntry {
+  path: string;
+  original: string;
+  origName: string;
+  stamp: string;
+  bytes: number;
+  area: string;
+  restorable: boolean;
+}
+export interface BackupsResult {
+  entries: BackupEntry[];
   error: string;
 }
 
@@ -242,8 +272,14 @@ type AppBindings = {
   SaveCoachCards(edits: CoachCardEdit[]): Promise<ExportResult>;
   SaveFighterCards(edits: FighterCardEdit[]): Promise<ExportResult>;
   SaveStaticEffects(edits: StaticEffectEdit[]): Promise<ExportResult>;
+  SaveSpellEffects(spellId: number, effects: EffectEditDTO[]): Promise<ExportResult>;
   GetPushStatus(): Promise<PushStatus>;
   PushDataToClient(names: string[]): Promise<RepackResult>;
+  SaveJarText(jar: string, entry: string, content: string): Promise<RepackResult>;
+  ReplaceJarEntry(jar: string, entry: string, base64Data: string): Promise<RepackResult>;
+  ListBackups(): Promise<BackupsResult>;
+  RestoreBackup(backupPath: string): Promise<ExportResult>;
+  DeleteBackup(backupPath: string): Promise<void>;
   GetSpells(): Promise<Spell[]>;
   GetCoachCards(): Promise<CoachCard[]>;
   GetFighterCards(): Promise<FighterCard[]>;
@@ -690,6 +726,16 @@ export async function saveStaticEffects(edits: StaticEffectEdit[]): Promise<Expo
   return b.SaveStaticEffects(edits);
 }
 
+// saveSpellEffects replaces the effect list attached to a spell.
+export async function saveSpellEffects(
+  spellId: number,
+  effects: EffectEditDTO[]
+): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveSpellEffects(spellId, effects);
+}
+
 export async function getPushStatus(): Promise<PushStatus> {
   const b = await bindings();
   if (!b) return { clientJar: "", files: [], error: "no runtime" };
@@ -699,6 +745,44 @@ export async function pushDataToClient(names: string[]): Promise<RepackResult> {
   const b = await bindings();
   if (!b) throw new Error(NO_STORE);
   return b.PushDataToClient(names);
+}
+
+// saveJarText overwrites a text entry (lua/xml/properties) in a client jar.
+export async function saveJarText(
+  jar: string,
+  entry: string,
+  content: string
+): Promise<RepackResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.SaveJarText(jar, entry, content);
+}
+
+// replaceJarEntry overwrites any entry with base64 bytes (images/fonts/binary).
+export async function replaceJarEntry(
+  jar: string,
+  entry: string,
+  base64Data: string
+): Promise<RepackResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.ReplaceJarEntry(jar, entry, base64Data);
+}
+
+export async function listBackups(): Promise<BackupsResult> {
+  const b = await bindings();
+  if (!b) return { entries: [], error: "no runtime" };
+  return b.ListBackups();
+}
+export async function restoreBackup(backupPath: string): Promise<ExportResult> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.RestoreBackup(backupPath);
+}
+export async function deleteBackup(backupPath: string): Promise<void> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.DeleteBackup(backupPath);
 }
 
 export async function getSpells(): Promise<Spell[]> {
