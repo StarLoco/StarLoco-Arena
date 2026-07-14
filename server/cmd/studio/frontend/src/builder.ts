@@ -32,6 +32,7 @@ import {
   loadGfxImages,
   TILE_HY,
 } from "./isorender";
+import { setDirty, markClean } from "./dirty";
 
 type Tool = "select" | "paint" | "stack" | "erase" | "marker";
 
@@ -105,6 +106,15 @@ export function viewBuilder(container: HTMLElement) {
   const inspectorEl = container.querySelector<HTMLElement>("#bInspector")!;
   const hudEl = container.querySelector<HTMLElement>("#bHud")!;
 
+  // Dirty key for the global unsaved-changes guard (per map). The builder tracks
+  // st.dirty locally too (for its inline "unsaved" badge and map-switch prompt);
+  // setBuilderDirty keeps both in sync so navigating away via the sidebar warns.
+  let dirtyKey = "map:none";
+  const setBuilderDirty = (dirty: boolean) => {
+    st.dirty = dirty;
+    setDirty(dirtyKey, dirty);
+  };
+
   // ---------- data loading ----------
   Promise.all([listMaps().catch(() => []), listPaletteElements().catch(() => []), getMarkerElements().catch(() => [])])
     .then(([maps, palette, markers]) => {
@@ -121,8 +131,11 @@ export function viewBuilder(container: HTMLElement) {
 
   function selectMap(id: number) {
     if (st.dirty && !confirm("Discard unsaved changes?")) return;
+    // Leaving the previous map: clear its dirty flag in the global registry.
+    markClean(dirtyKey);
     st.mapID = id;
-    st.dirty = false;
+    dirtyKey = `map:${id}`;
+    setBuilderDirty(false);
     st.selectedCell = null;
     inspectorEl.innerHTML = `<div class="loading">Loading map\u2026</div>`;
     getMapEditData(id)
@@ -482,7 +495,7 @@ export function viewBuilder(container: HTMLElement) {
   }
 
   function afterEdit() {
-    st.dirty = true;
+    setBuilderDirty(true);
     drawToolbar();
     refreshPreview();
   }
@@ -644,7 +657,7 @@ export function viewBuilder(container: HTMLElement) {
     const id = st.mapID;
     deleteMap(id)
       .then(() => {
-        st.dirty = false;
+        setBuilderDirty(false);
         return listMaps();
       })
       .then((maps) => {
@@ -660,7 +673,7 @@ export function viewBuilder(container: HTMLElement) {
   }
 
   function reloadMapsThenSelect(id: number) {
-    st.dirty = false;
+    setBuilderDirty(false);
     listMaps().then((maps) => {
       st.maps = maps;
       selectMap(id);
@@ -672,7 +685,7 @@ export function viewBuilder(container: HTMLElement) {
     status("Saving\u2026");
     saveMapEditData(st.mapID, st.edit.cells)
       .then((res) => {
-        st.dirty = false;
+        setBuilderDirty(false);
         drawToolbar();
         status(`Saved ${res.length} chunk(s) to data/maps/${st.mapID} (backup created)`, "ok");
       })
