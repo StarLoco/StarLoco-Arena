@@ -1,6 +1,81 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/dofusarena/go-server/internal/combat"
+	"github.com/dofusarena/go-server/internal/gamedata/parser"
+)
+
+// tryRead reads dir/name, returning nil (not fatal) if absent.
+func tryRead(t *testing.T, dir, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+// TestEffectSemantics_CoverAllRealActions asserts that EVERY effect action id
+// present in the shipped data (spells/cards/events/staticEffects) is modeled by
+// the combat EffectSemantics table -- i.e. the studio's decoder never has to
+// fall back to "action N" for real content. This is a durable regression guard:
+// if data ever references a new action, or the semantics table drops an entry,
+// this fails loudly. (An audit at the time this was written found 62 distinct
+// action ids in use, all modeled.)
+func TestEffectSemantics_CoverAllRealActions(t *testing.T) {
+	a := newAppWithData(t)
+
+	known := map[int32]bool{}
+	for _, s := range combat.EffectSemantics() {
+		known[s.ActionID] = true
+	}
+
+	used := map[int32]int{}
+	addEffects := func(effs []parser.EffectRaw) {
+		for _, e := range effs {
+			used[e.ActionID]++
+		}
+	}
+	dir := a.paths.DataDir
+	if raw := tryRead(t, dir, "spells.dat"); raw != nil {
+		if f, err := parser.ParseSpellsFile(raw); err == nil {
+			addEffects(f.Effects)
+		}
+	}
+	if raw := tryRead(t, dir, "cards.dat"); raw != nil {
+		if f, err := parser.ParseCardsFile(raw); err == nil {
+			addEffects(f.Effects)
+		}
+	}
+	if raw := tryRead(t, dir, "events.dat"); raw != nil {
+		if f, err := parser.ParseEventsFile(raw); err == nil {
+			addEffects(f.Effects)
+		}
+	}
+	if raw := tryRead(t, dir, "staticEffects.dat"); raw != nil {
+		if f, err := parser.ParseStaticEffectsFile(raw); err == nil {
+			addEffects(f.Effects)
+		}
+	}
+	if len(used) == 0 {
+		t.Skip("no effect data available")
+	}
+
+	var unmodeled []int32
+	for id := range used {
+		if !known[id] {
+			unmodeled = append(unmodeled, id)
+		}
+	}
+	if len(unmodeled) > 0 {
+		t.Errorf("real data uses %d unmodeled action id(s): %v -- add them to EffectSemantics", len(unmodeled), unmodeled)
+	}
+	t.Logf("all %d distinct action ids in real data are modeled", len(used))
+}
 
 // TestValidateData_RealData runs the integrity validator over the real
 // repositories and asserts the report is well-formed. It scans a non-trivial
