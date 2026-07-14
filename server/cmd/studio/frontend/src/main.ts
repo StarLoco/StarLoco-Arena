@@ -28,6 +28,7 @@ import { viewSpellbook } from "./spellbook";
 import { viewTranslations } from "./translations";
 import { viewDeploy } from "./deploy";
 import { viewScripts } from "./scriptsview";
+import { viewDiagnostics } from "./diagnostics";
 import { listScriptIDs } from "./backend";
 import { confirmDiscardIfDirty, onDirtyChange, dirtyCount, isAnyDirty } from "./dirty";
 import { mountGlobalSearch, invalidateSearchIndex } from "./globalsearch";
@@ -44,6 +45,7 @@ interface NavEntry {
 
 const NAV: NavEntry[] = [
   { id: "overview", label: "Overview", icon: "\u25C8", section: "Studio", phase: 0 },
+  { id: "diagnostics", label: "Diagnostics", icon: "\u2695", section: "Studio", phase: 0 },
   { id: "deploy", label: "Deploy", icon: "\u2B06", section: "Studio", phase: 0 },
   { id: "spellbook", label: "Spellbook", icon: "\u2727", section: "Game Data", phase: 1 },
   { id: "spells", label: "Spells", icon: "\u2726", section: "Game Data", phase: 1 },
@@ -248,6 +250,7 @@ function renderPage() {
 
   // Phase 1 data views.
   const dataViews: Record<string, (c: HTMLElement) => void> = {
+    diagnostics: viewDiagnostics,
     deploy: viewDeploy,
     spellbook: viewSpellbook,
     translations: viewTranslations,

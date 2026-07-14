@@ -337,6 +337,7 @@ type AppBindings = {
   ListScriptIDs(): Promise<number[]>;
   ExportRecordsJSON(kind: string): Promise<string>;
   ImportRecordsJSON(kind: string, jsonDoc: string): Promise<ExportResult>;
+  ValidateData(): Promise<ValidationReport>;
   ListBackups(): Promise<BackupsResult>;
   RestoreBackup(backupPath: string): Promise<ExportResult>;
   DeleteBackup(backupPath: string): Promise<void>;
@@ -616,6 +617,23 @@ export interface ExportResult {
 // NewRecordResult mirrors datacreate.go: an ExportResult plus the created id.
 export interface NewRecordResult extends ExportResult {
   newId: number;
+}
+
+// ValidationIssue mirrors validate.go: one data-integrity finding.
+export interface ValidationIssue {
+  severity: "error" | "warning" | "info";
+  category: string;
+  message: string;
+  view: string;
+  query: string;
+  recordId: number;
+}
+export interface ValidationReport {
+  issues: ValidationIssue[];
+  errors: number;
+  warnings: number;
+  infos: number;
+  checked: number;
 }
 
 // SpellScript mirrors scriptedit.go: a spell's resolved Lua source in data.jar.
@@ -907,6 +925,13 @@ export async function importRecordsJSON(
   const b = await bindings();
   if (!b) throw new Error(NO_STORE);
   return b.ImportRecordsJSON(kind, jsonDoc);
+}
+
+// --- data-integrity validator ---
+export async function validateData(): Promise<ValidationReport> {
+  const b = await bindings();
+  if (!b) throw new Error(NO_STORE);
+  return b.ValidateData();
 }
 
 export async function getPushStatus(): Promise<PushStatus> {
