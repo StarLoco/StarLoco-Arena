@@ -1,0 +1,15 @@
+# DofusArena 2.70 server — SQLite (local development)
+addr: "127.0.0.1:5555"
+data_dir: "data"          # dir with data.bdat + indexes.bdat (client game data)
+log_level: "debug"
+debug_addr: "127.0.0.1:5599"  # DEV ONLY: live packet-inject endpoint (/s2c /c2s /raw)
+
+db:
+  driver: "sqlite"
+  dsn: "arena.db"         # file path
+  max_open_conns: 1       # sqlite is single-writer
+  max_idle_conns: 1
+
+world:
+  aoi_radius: 75          # cells; overworld chat/movement/spawn reach only
+                          # coaches within this distance (0 = whole map)

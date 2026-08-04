@@ -1,0 +1,78 @@
+# ============================================================================
+#  OS / editor
+# ============================================================================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# ============================================================================
+#  Machine-local tooling config
+#  opencode.json wires the Arena MCP server using an absolute path, so it is
+#  per-machine. Copy the sample in client/arena-mcp/README.md to recreate it.
+# ============================================================================
+/opencode.json
+
+# ============================================================================
+#  Go server build artifacts
+#  Scoped to /server/** so nothing else is caught. See also server/.gitignore.
+# ============================================================================
+/server/bin/
+/server/dist/
+/server/vendor/
+/server/**/*.exe
+/server/**/*.test
+/server/**/*.out
+
+# Wails/Vite output for the studio desktop tool. The dist/ directory must stay
+# present (placeholder) so cmd/studio's `//go:embed all:frontend/dist` resolves
+# on a fresh checkout.
+/server/cmd/studio/build/bin/
+/server/cmd/studio/frontend/node_modules/
+/server/cmd/studio/frontend/wailsjs/
+/server/cmd/studio/frontend/dist/*
+!/server/cmd/studio/frontend/dist/.gitkeep
+/server/cmd/studio/studio-config.json
+
+# ============================================================================
+#  Local databases (dev SQLite) / logs / secrets
+# ============================================================================
+/server/*.db
+/server/*.db-shm
+/server/*.db-wal
+/server/logs/
+/server/configs/config.yaml
+/server/configs/.env
+.env
+*.log
+
+# ============================================================================
+#  Game data — copied out of the retail client, never committed.
+#  The server reads it from server/data/ (data.bdat / indexes.bdat + maps).
+# ============================================================================
+/server/data/
+
+# ============================================================================
+#  Client — we commit the decompiled sources, protocol analysis and RE
+#  tooling, but NOT the ~436 MB compiled retail client (game + bundled JRE +
+#  copyrighted assets), nor anything derived from it.
+# ============================================================================
+/client/compiled/
+/client/work/datacmp/
+/client/work/patched/
+/client/arena-mcp/node_modules/
+# Compiled .class output of the control agent. The tiny built control-agent.jar
+# IS committed: arena-mcp launches the client with it as a -javaagent.
+/client/control-agent/build/
+
+# ============================================================================
+#  Tool-generated output
+# ============================================================================
+/tools/render-out/
+
+# ============================================================================
+#  Python caches
+# ============================================================================
+__pycache__/
+*.pyc

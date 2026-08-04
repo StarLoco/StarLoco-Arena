@@ -1,0 +1,77 @@
+StarLoco-Arena — DofusArena 2.70
+Copyright (c) 2026 StarLoco
+
+This product includes original software (the Go server under server/, the tools
+under tools/, and project documentation) licensed under the MIT License — see
+LICENSE.
+
+It ALSO reproduces third-party and copyrighted material for preservation and
+interoperability purposes. That material is NOT covered by this project's MIT
+license and remains the property of its respective owners. This NOTICE is an
+attribution aid, not a grant of rights. See DISCLAIMER.md.
+
+===============================================================================
+Copyrighted game material — © Ankama Games
+===============================================================================
+  REPRODUCED IN THIS REPOSITORY (interoperability / study reference only):
+  - Decompiled DofusArena 2.70 client source ............. client/decompiled/
+  - Deobfuscation mappings derived from it ............... client/deobf-lab/mappings/
+  - Protocol / data-format analysis derived from it ...... client/analysis/
+
+  NOT DISTRIBUTED HERE (git-ignored; supplied locally by the user):
+  - DofusArena 2.70 retail client and launcher ........... client/compiled/
+  - Game data (breeds, cards, spells, maps, etc.) ........ server/data/
+                                                           (data.bdat, indexes.bdat, maps/)
+
+  "DofusArena", "Dofus", and all related assets are trademarks and/or
+  copyrighted works of Ankama Games. All rights reserved by Ankama.
+
+===============================================================================
+Bundled Java Runtime — © Oracle Corporation / Sun Microsystems
+===============================================================================
+  - The retail client ships its own Oracle/Sun JRE .... client/compiled/jre/
+    It is NOT distributed here (git-ignored).
+
+  Distributed by Ankama under the Oracle Binary Code License Agreement for the
+  Java SE Platform. Java is a registered trademark of Oracle and/or its
+  affiliates.
+
+===============================================================================
+Third-party libraries bundled inside the client
+===============================================================================
+  The retail client and its decompiled sources embed a number of third-party
+  Java libraries, each governed by its own license, including (non-exhaustive):
+
+  - JOGL / JOAL (Java bindings for OpenGL/OpenAL) ......... BSD
+  - GNU Trove (primitive collections) .................... LGPL
+  - Apache Commons / Log4j ............................... Apache-2.0
+  - JDOM (XML) .......................................... JDOM License (BSD-style)
+  - FengGUI (GUI toolkit) ............................... BSD/LGPL
+  - LuaJava (Kepler Project) ............................ MIT
+  - JOrbis (Ogg Vorbis) ................................. LGPL
+  - Xuggler (FFmpeg bindings) ........................... LGPL/GPL
+
+  Refer to each library's upstream project for authoritative license terms.
+
+===============================================================================
+Go module dependencies (server/)
+===============================================================================
+  Fetched at build time via Go modules; each retains its own license:
+
+  - gorm.io/gorm and driver adapters (mysql, postgres) ... MIT
+  - glebarez/sqlite (pure-Go SQLite) ..................... MIT
+  - wailsapp/wails/v2 (studio desktop tool) .............. MIT
+  - gopkg.in/yaml.v3 (configuration) ..................... MIT / Apache-2.0
+  - golang.org/x/crypto, x/image, x/text ................. BSD-3-Clause
+
+  See server/go.mod and server/go.sum for the authoritative, complete list.
+
+===============================================================================
+Reverse-engineering tooling
+===============================================================================
+  - CFR (Class File Reader) decompiler ................... tools/cfr.jar
+    © Lee Benfield — used to produce the decompiled reference sources.
+
+  - The deobfuscation pipeline under client/deobf-lab/ drives third-party tools
+    (SpecialSource, tiny-remapper, Vineflower). Their jars are NOT committed;
+    the scripts download them on demand. Each retains its own license.

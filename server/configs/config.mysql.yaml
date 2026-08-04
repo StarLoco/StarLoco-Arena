@@ -1,0 +1,14 @@
+# DofusArena 2.70 server — MySQL / MariaDB (production)
+addr: "0.0.0.0:5555"
+data_dir: "/data"
+log_level: "info"
+
+db:
+  driver: "mysql"
+  # user:pass@tcp(host:port)/dbname — override via ARENA_DB_DSN in prod.
+  dsn: "arena:arena@tcp(mysql:3306)/arena?charset=utf8mb4&parseTime=True&loc=UTC"
+  max_open_conns: 50
+  max_idle_conns: 10
+
+world:
+  aoi_radius: 75

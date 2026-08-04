@@ -1,0 +1,11 @@
+# Keep the build context small.
+*.db
+*.db-shm
+*.db-wal
+*.log
+/bin/
+/data/
+/deploy/
+*.exe
+*.test
+*.out

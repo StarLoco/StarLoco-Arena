@@ -1,0 +1,30 @@
+# DofusArena 2.70 — standalone server with SQLite (single container).
+# Simplest deployment: one process, an embedded DB file, no external services.
+#
+#   docker compose -f deploy/docker-compose.sqlite.yml up --build
+#
+# Provide the game data by mounting the client's contents/bdata dir at /data.
+
+services:
+  arena:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: dofusarena-2.70:latest
+    ports:
+      - "5555:5555"
+    environment:
+      ARENA_ADDR: "0.0.0.0:5555"
+      ARENA_LOG_LEVEL: "info"
+      ARENA_DATA_DIR: "/data"
+      ARENA_DB_DRIVER: "sqlite"
+      ARENA_DB_DSN: "/state/arena.db"
+    volumes:
+      # Persist the SQLite DB across restarts.
+      - arena-state:/state
+      # Mount the client game data (read-only).
+      - ${ARENA_DATA_DIR:-./data}:/data:ro
+    restart: unless-stopped
+
+volumes:
+  arena-state:

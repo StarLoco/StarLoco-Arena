@@ -1,0 +1,101 @@
+// Package testclient is a scripted wire-protocol client used to drive the
+// server through end-to-end flows in tests (no GUI). It speaks the same framing
+// the real 2.70 client does: C2S frames carry a 5-byte header
+// [u16 totalLen][u8 arch][u16 opcode][payload]; S2C frames are read as
+// [u16 totalLen][u16 opcode][payload]. All fields big-endian.
+package testclient
+
+import (
+	"bufio"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"net"
+	"time"
+)
+
+// Client is a single scripted connection to the server.
+type Client struct {
+	conn net.Conn
+	r    *bufio.Reader
+}
+
+// Dial connects to addr.
+func Dial(addr string) (*Client, error) {
+	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{conn: conn, r: bufio.NewReader(conn)}, nil
+}
+
+// Close closes the connection.
+func (c *Client) Close() error { return c.conn.Close() }
+
+// Frame is a decoded server-to-client message.
+type Frame struct {
+	Opcode  uint16
+	Payload []byte
+}
+
+// Send writes a C2S frame with the given arch byte, opcode and payload.
+func (c *Client) Send(arch byte, opcode uint16, payload []byte) error {
+	total := 5 + len(payload)
+	buf := make([]byte, total)
+	binary.BigEndian.PutUint16(buf[0:2], uint16(total))
+	buf[2] = arch
+	binary.BigEndian.PutUint16(buf[3:5], opcode)
+	copy(buf[5:], payload)
+	_, err := c.conn.Write(buf)
+	return err
+}
+
+// Recv reads the next S2C frame (with a read deadline).
+func (c *Client) Recv(timeout time.Duration) (*Frame, error) {
+	_ = c.conn.SetReadDeadline(time.Now().Add(timeout))
+	var header [4]byte
+	if _, err := io.ReadFull(c.r, header[:]); err != nil {
+		return nil, err
+	}
+	total := binary.BigEndian.Uint16(header[0:2])
+	opcode := binary.BigEndian.Uint16(header[2:4])
+	if total < 4 {
+		return nil, fmt.Errorf("testclient: short frame len=%d", total)
+	}
+	payload := make([]byte, int(total)-4)
+	if _, err := io.ReadFull(c.r, payload); err != nil {
+		return nil, err
+	}
+	return &Frame{Opcode: opcode, Payload: payload}, nil
+}
+
+// WaitFor reads frames until one with the given opcode arrives (or timeout),
+// returning it. Intervening frames are collected and returned too.
+func (c *Client) WaitFor(opcode uint16, timeout time.Duration) (*Frame, []*Frame, error) {
+	deadline := time.Now().Add(timeout)
+	var seen []*Frame
+	for time.Now().Before(deadline) {
+		f, err := c.Recv(time.Until(deadline))
+		if err != nil {
+			return nil, seen, err
+		}
+		if f.Opcode == opcode {
+			return f, seen, nil
+		}
+		seen = append(seen, f)
+	}
+	return nil, seen, fmt.Errorf("testclient: timeout waiting for opcode %d (saw %d frames)", opcode, len(seen))
+}
+
+// DrainReceived reads whatever frames are immediately available (short timeout),
+// used to flush the server's push burst after an action.
+func (c *Client) DrainReceived(quiet time.Duration) []*Frame {
+	var frames []*Frame
+	for {
+		f, err := c.Recv(quiet)
+		if err != nil {
+			return frames
+		}
+		frames = append(frames, f)
+	}
+}

@@ -1,0 +1,341 @@
+package game
+
+import (
+	"errors"
+	"time"
+
+	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
+)
+
+func registerFighterHandlers(r *Router, d *Deps) {
+	r.Register(protocol.OpFighterCreate, handleFighterCreate)
+	r.Register(protocol.OpFighterDelete, handleFighterDelete)
+	r.Register(protocol.OpUpdateFighterInventory, handleFighterInventoryUpdate)
+	r.Register(protocol.OpTeamPresetListRequest, handleTeamPresetListRequest)
+}
+
+// handleTeamPresetListRequest (6031) is sent by the client when it opens the
+// team-management panel AND when it opens the overworld GRAVEYARD. It replies with
+// BOTH the fighter roster (6006) AND the team preset list (6030):
+//
+//   - the team panel's fighter grid is repopulated from this 6006 on every open,
+//     and the client clears its cache when the panel closes, so without re-pushing
+//     the roster here the grid is empty after a close/reopen;
+//   - the graveyard loader files evolution (type-2) fighters into its roster from
+//     a 6006 received while it is the active frame — a login-time 6006 does NOT
+//     reach it — so the graveyard is only ever populated by this reply.
+//
+// ORDER MATTERS: 6006 first, then 6030. The graveyard opens behind a full-screen
+// "loading" veil that ONLY 6030 dismisses (there is no timeout and it cannot be
+// closed), so 6030 must come last, once the content it displays has arrived.
+func handleTeamPresetListRequest(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	if err := s.pushFighterList(); err != nil {
+		return err
+	}
+	return s.pushTeamPresetList()
+}
+
+// handleFighterCreate (6001 C2S: [u8 flag][i16 slot][i16 blobLen][et_2 blob])
+// validates + persists a new fighter and replies FighterCreateResult(6000).
+func handleFighterCreate(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	r := protocol.NewReader(f.Payload)
+	flag, err := r.U8()
+	if err != nil {
+		return err
+	}
+	slot, err := r.U16()
+	if err != nil {
+		return err
+	}
+	blobLen, err := r.U16()
+	if err != nil {
+		return err
+	}
+	blob, err := r.Bytes(int(blobLen))
+	if err != nil {
+		return err
+	}
+	fb, err := decodeFighterBlob(blob)
+	if err != nil {
+		return s.sendFighterCreateError()
+	}
+
+	fighter := s.buildFighter(s.Coach.ID, fb)
+	if err := s.deps.Store.Fighters.Create(fighter); err != nil {
+		return s.sendFighterCreateError()
+	}
+	s.log.Info("fighter created", "name", fighter.Name, "breed", fighter.BreedID,
+		"budget", fighter.Budget, "id", fighter.ID)
+
+	// FighterCreateResult(6000): [u8 0][i64 coachId][i64 fighterId][i16 len]
+	// [et_2 blob][u8 flag][i16 slot].
+	w := protocol.NewWriter().
+		U8(0).
+		I64(int64(s.Coach.ID)).
+		I64(int64(fighter.ID))
+	fbBlob := encodeFighterBlob(fighter)
+	w.U16(uint16(len(fbBlob)))
+	w.Raw(fbBlob)
+	w.U8(flag).U16(slot)
+
+	frame, err := protocol.EncodeS2C(protocol.OpFighterCreateResult, w.Bytes())
+	if err != nil {
+		return err
+	}
+	if err := s.Send(frame); err != nil {
+		return err
+	}
+	// Re-push the full roster (6006) so the team-management grid reflects the
+	// new fighter. The client only ever receives 6006 as a server push (there
+	// is no C2S list request), and it does not re-request when the panel is
+	// reopened — so without this, a newly created fighter would not appear, and
+	// reopening the panel would show a stale (login-time) roster.
+	return s.pushFighterList()
+}
+
+// sendFighterCreateError replies with a non-zero create result.
+func (s *Session) sendFighterCreateError() error {
+	frame, err := protocol.EncodeS2C(protocol.OpFighterCreateResult,
+		protocol.NewWriter().U8(1).Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// handleFighterDelete (6003 C2S: [i64 fighterId][i16 slot]) deletes a fighter
+// (scoped to the owner) and replies FighterDeleteResult(6002).
+func handleFighterDelete(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	r := protocol.NewReader(f.Payload)
+	fighterID, err := r.I64()
+	if err != nil {
+		return err
+	}
+	ok, err := s.deps.Store.Fighters.Delete(uint(fighterID), s.Coach.ID)
+	if err != nil {
+		return err
+	}
+	result := uint8(0)
+	if !ok {
+		result = 1 // not found / not owned
+	}
+	w := protocol.NewWriter().U8(result).I64(fighterID).I64(0)
+	frame, err := protocol.EncodeS2C(protocol.OpFighterDeleteResult, w.Bytes())
+	if err != nil {
+		return err
+	}
+	if err := s.Send(frame); err != nil {
+		return err
+	}
+	if ok {
+		s.log.Info("fighter deleted", "id", fighterID)
+		// Re-push the roster so the grid drops the deleted fighter (6006 is a
+		// server push only; the client never re-requests the list).
+		return s.pushFighterList()
+	}
+	return nil
+}
+
+// buildFighterList builds FighterInformationList(6006) for a coach's roster:
+// [i64 serverTimeSecs][u8 count]{i64 id, u16 blobLen, et_2 blob}.
+//
+// IMPORTANT: the leading i64 (jt_2.Wm() / bmN) is NOT the coach id — it is a
+// server timestamp in SECONDS. The client computes each fighter's form/fatigue
+// as (now - Wm()) / 3600 hours (xi_0/awy callbacks → et_2.a); sending the coach
+// id here made that a nonsensically large hour count, which zeroed the fighter's
+// form and prevented the roster from rendering on a panel reopen (the create
+// result 6000 does NOT apply this fatigue, which is why fighters showed on first
+// create but vanished after close/reopen).
+func buildFighterList(coachID uint, fighters []domain.Fighter) ([]byte, error) {
+	nowSecs := time.Now().Unix()
+	w := protocol.NewWriter().I64(nowSecs).U8(uint8(len(fighters)))
+	for i := range fighters {
+		blob := encodeFighterBlob(&fighters[i])
+		w.I64(int64(fighters[i].ID))
+		w.U16(uint16(len(blob)))
+		w.Raw(blob)
+	}
+	return protocol.EncodeS2C(protocol.OpFighterInformationList, w.Bytes())
+}
+
+// pushFighterList sends the coach's current roster.
+func (s *Session) pushFighterList() error {
+	fighters, err := s.deps.Store.Fighters.ListByCoach(s.Coach.ID)
+	if err != nil {
+		return err
+	}
+	frame, err := buildFighterList(s.Coach.ID, fighters)
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// handleFighterInventoryUpdate (6011 C2S) equips a fighter's cards + spells.
+// Layout: [i64 fighterId][i16 teamId][i16 lenCards][cards][i16 lenSpells][spells]
+// where cards (Oh/ajv_2) = concatenated [i32 cardId] (no slot, no count) and
+// spells (Oi/en_1) = concatenated [i16 slot][i32 spellId] (no count).
+// Persists the loadout and replies UpdatedFighterInventory(6010).
+func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	r := protocol.NewReader(f.Payload)
+	fighterID, err := r.I64()
+	if err != nil {
+		return err
+	}
+	if _, err := r.U16(); err != nil { // teamId (unused server-side)
+		return err
+	}
+	cardsLen, err := r.U16()
+	if err != nil {
+		return err
+	}
+	cardsBlob, err := r.Bytes(int(cardsLen))
+	if err != nil {
+		return err
+	}
+	spellsLen, err := r.U16()
+	if err != nil {
+		return err
+	}
+	spellsBlob, err := r.Bytes(int(spellsLen))
+	if err != nil {
+		return err
+	}
+
+	cards := decodeLoadoutCards(cardsBlob)
+	spells := decodeLoadoutSpells(spellsBlob)
+
+	// Recompute budget from the new loadout (breed base + card values).
+	budget := s.computeLoadoutBudget(cards)
+
+	err = s.deps.Store.Fighters.SaveLoadout(uint(fighterID), s.Coach.ID, cards, spells, budget)
+	if errors.Is(err, store.ErrNotFound) {
+		return s.sendFighterInventoryResult(fighterID, 1, nil, nil) // not owned
+	}
+	if err != nil {
+		return err
+	}
+	s.log.Info("fighter loadout updated", "fighter", fighterID,
+		"cards", len(cards), "spells", len(spells), "budget", budget)
+
+	return s.sendFighterInventoryResult(fighterID, 0, cards, spells)
+}
+
+// sendFighterInventoryResult replies with UpdatedFighterInventory(6010):
+// [i64 fighterId][i8 result]; when result==0 also
+// [i16 lenCards][cards][i16 lenSpells][spells] echoing the stored loadout.
+func (s *Session) sendFighterInventoryResult(fighterID int64, result uint8, cards []domain.FighterObject, spells []domain.FighterSpell) error {
+	w := protocol.NewWriter().I64(fighterID).U8(result)
+	if result == 0 {
+		cb := encodeLoadoutCards(cards)
+		w.U16(uint16(len(cb)))
+		w.Raw(cb)
+		sb := encodeLoadoutSpells(spells)
+		w.U16(uint16(len(sb)))
+		w.Raw(sb)
+	}
+	frame, err := protocol.EncodeS2C(protocol.OpUpdatedFighterInventory, w.Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// decodeLoadoutCards parses the Oh/ajv_2 cards blob: concatenated [i32 cardId]
+// with no slot and no count. Slots are assigned sequentially (the wire carries
+// none). Capped at maxLoadoutCards.
+func decodeLoadoutCards(blob []byte) []domain.FighterObject {
+	r := protocol.NewReader(blob)
+	out := make([]domain.FighterObject, 0, maxLoadoutCards)
+	for r.Remaining() >= 4 && len(out) < maxLoadoutCards {
+		id, err := r.I32()
+		if err != nil {
+			break
+		}
+		out = append(out, domain.FighterObject{TemplateID: id, Slot: int16(len(out))})
+	}
+	return out
+}
+
+// decodeLoadoutSpells parses the Oi/en_1 spells blob: concatenated
+// [i16 slot][i32 spellId] with no count. Duplicate slots keep the first;
+// capped at maxLoadoutSpells.
+func decodeLoadoutSpells(blob []byte) []domain.FighterSpell {
+	r := protocol.NewReader(blob)
+	out := make([]domain.FighterSpell, 0, maxLoadoutSpells)
+	slotUsed := make(map[int16]bool)
+	for r.Remaining() >= 6 && len(out) < maxLoadoutSpells {
+		slot, err := r.U16()
+		if err != nil {
+			break
+		}
+		id, err := r.I32()
+		if err != nil {
+			break
+		}
+		if slotUsed[int16(slot)] {
+			continue
+		}
+		slotUsed[int16(slot)] = true
+		out = append(out, domain.FighterSpell{Slot: int16(slot), SpellID: id})
+	}
+	return out
+}
+
+// encodeLoadoutCards serializes cards as the Oh/ajv_2 blob: [i32 cardId]* (no
+// slot, no count).
+func encodeLoadoutCards(cards []domain.FighterObject) []byte {
+	w := protocol.NewWriter()
+	for _, c := range cards {
+		w.I32(c.TemplateID)
+	}
+	return w.Bytes()
+}
+
+// encodeLoadoutSpells serializes spells as the Oi/en_1 blob:
+// [i16 slot][i32 spellId]* (no count).
+func encodeLoadoutSpells(spells []domain.FighterSpell) []byte {
+	w := protocol.NewWriter()
+	for _, sp := range spells {
+		w.U16(uint16(sp.Slot)).I32(sp.SpellID)
+	}
+	return w.Bytes()
+}
+
+// computeLoadoutBudget = breed base (400) + Σ card values (spell prices need
+// spell gamedata; treated as 0). Clamped to int16.
+//
+// The values MUST come from the FIGHTER-card table (type 250): a fighter's
+// objects are its equipment (client ve_0), not coach cards. Both tables are keyed
+// by small ints and overlap almost completely, so looking equipment up in the
+// coach-card table (type 100) silently returned an unrelated card's price — 66 of
+// the 75 fighter cards got a wrong value and NONE matched (card 85 is worth 200
+// but scored 18200), which saturated the int16 clamp and broke team budgeting.
+func (s *Session) computeLoadoutBudget(cards []domain.FighterObject) int16 {
+	value := breedBaseValue
+	if s.deps.FighterCards != nil {
+		for _, c := range cards {
+			if card := s.deps.FighterCards.Get(c.TemplateID); card != nil {
+				value += int(card.Value)
+			}
+		}
+	}
+	if value > 32767 {
+		value = 32767
+	}
+	return int16(value)
+}

@@ -1,0 +1,3 @@
+# Modes
+
+Dofus Arena is played most commonly in 1 vs 1 mode but can also be played [2 vs 2](./2vs2.md) which basically work the same except for a few exceptions. In both cases one can choose to play a Ladder Game or a Practice Game. The difference between them are that in the second case, your [characters](./Characters.md) don't get any [skill experience](../mechanics/Levels.md) or [ladder experience](./Ladder.md). Also if one choose practice, you have the option to specify which opponent to practice with, which is not the case of a Ladder Game where teams are matched together randomly. (Allthough the server tries to match players with similar [rank level](./Ladder.md).)

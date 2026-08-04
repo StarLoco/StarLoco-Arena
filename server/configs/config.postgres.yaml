@@ -1,0 +1,14 @@
+# DofusArena 2.70 server — PostgreSQL (production)
+addr: "0.0.0.0:5555"
+data_dir: "/data"
+log_level: "info"
+
+db:
+  driver: "postgres"
+  # host/user/password/dbname/port — override via ARENA_DB_DSN in prod.
+  dsn: "host=postgres user=arena password=arena dbname=arena port=5432 sslmode=disable TimeZone=UTC"
+  max_open_conns: 50
+  max_idle_conns: 10
+
+world:
+  aoi_radius: 75

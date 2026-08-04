@@ -1,0 +1,14 @@
+# Go build artifacts
+/bin/
+*.exe
+*.test
+*.out
+
+# Local dev databases / logs
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Client game data (2.70 data.bdat/indexes.bdat) — copied locally, never committed
+/data/

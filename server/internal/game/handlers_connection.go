@@ -1,0 +1,311 @@
+package game
+
+import (
+	"errors"
+
+	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/handshake"
+	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
+)
+
+// startWorldID is the world the client loads on entering the overworld
+// (the i16 "world" field of ENTER_WORLD_INSTANCE / opcode 4600). The retail
+// client streams gfx/tplg/env from contents/maps/{gfx,tplg,env}/<worldID>.jar
+// and worlds.lib registers ids 5..113 (NO world 0).
+//
+// The island-map panel ("carte de l'île", i18n key showMap) is 100% CLIENT-LOCAL
+// and keyed off THIS worldId (see docs/OVERWORLD-MAP.md, "Island map"): it renders
+// the island NAME (i18n content.61.<id>) and PICTURE (GUI theme style
+// containerMap<id> -> map<id>.dds) only for worlds that ship BOTH. That
+// intersection is exactly 23..28 — Maknala, Sturbia, Venivici, du Passage,
+// Fourmagnet, Magmara. World 85 (the Gostof island we used before) has NEITHER,
+// so its island map rendered blank with "!content.61.85!".
+//
+// We spawn on world 25 (Venivici / "Île de Veniviki"): its chunk 0_0 topology is
+// fully populated (~1.4 KB, solid land at the origin — unlike world 23 whose 0_0
+// is 187 B of ocean), so the island map renders AND the coach spawns on walkable
+// ground at a simple near-origin cell. (The map's "you are here" dot stays hidden
+// on every world because 2.70's config.properties omits fullMapPath — a
+// client-side limitation, not fixable server-side.)
+//
+// NOTE: the scripted intro cutscene ("Aïe ! Aïe aïe !" / "Hey ! Toi là bas !")
+// is NOT a static world — it is Lua scenario 0/1/99 (scripts/scenario/*.lua)
+// run on a dynamic instance, triggered by a scenario/zone-trigger message the
+// server does not yet implement. See docs/OVERWORLD-MAP.md.
+const startWorldID int16 = 25
+
+// startCellX/startCellY place the coach on world 25's Zaap cell (40,-20) — the
+// island's teleporter (see internal/game/zaap.go) — so the coach arrives right at
+// the Zaap it can travel from. It is a walkable cell (the Zaap element sits on
+// it). Both the render (ENTER_WORLD_INSTANCE) and the server-side coach position
+// are set here so movement works from the spawn.
+const (
+	startCellX float32 = 40
+	startCellY float32 = -20
+)
+
+func registerConnectionHandlers(r *Router, d *Deps) {
+	r.Register(protocol.OpClientVersion, handleClientVersion)
+	r.Register(protocol.OpPing, handlePing)
+	r.Register(protocol.OpClientAuthentication, handleAuthentication)
+	r.Register(protocol.OpCoachCreation, handleCoachCreation)
+}
+
+func handleClientVersion(s *Session, f *protocol.C2SFrame) error {
+	cv, err := handshake.DecodeClientVersion(f.Payload)
+	if err != nil {
+		return err
+	}
+	s.log.Info("client version", "version", cv.Version, "build", cv.Build)
+	if !cv.Accepted() {
+		// Tell the client its version is wrong and let it self-disconnect (it shows
+		// a modal and closes the socket on opcode 8), instead of silently letting an
+		// unsupported build proceed to auth. Sent through the normal write queue.
+		s.log.Warn("rejecting unsupported client version",
+			"version", cv.Version, "expected", protocol.VersionMinor)
+		frame, err := handshake.EncodeInvalidClientVersion(protocol.VersionMajor, protocol.VersionMinor)
+		if err != nil {
+			return err
+		}
+		return s.Send(frame)
+	}
+	return nil
+}
+
+// handlePing answers the client's keepalive. After auth the client sends TWO
+// 107s roughly every 60s (one per "channel", flag 1 and 2) and credits its
+// connection-health counter for each 108 it decodes back; if a round goes
+// uncredited it logs "Too high ping detected: Server reply number is low". The
+// debug line here makes that round-trip observable.
+func handlePing(s *Session, f *protocol.C2SFrame) error {
+	ping, err := handshake.DecodePing(f.Payload)
+	if err != nil {
+		s.log.Warn("ping decode failed", "arch", f.Arch, "len", len(f.Payload), "err", err)
+		return err
+	}
+	now := nowNanos()
+	reply, err := handshake.EncodePingReply(ping, now, now, now)
+	if err != nil {
+		return err
+	}
+	s.log.Debug("ping", "flag", ping.Flag, "key", ping.Key, "replyBytes", len(reply))
+	return s.Send(reply)
+}
+
+// handleAuthentication verifies credentials (auto-creating an account on first
+// login for convenience), then either prompts for coach creation (no coach) or
+// runs the full login into the world (existing coach).
+func handleAuthentication(s *Session, f *protocol.C2SFrame) error {
+	auth, err := handshake.DecodeClientAuthentication(f.Payload)
+	if err != nil {
+		return err
+	}
+	s.log.Info("auth attempt", "login", auth.Login)
+
+	acc, err := s.deps.Store.Accounts.FindByName(auth.Login)
+	if errors.Is(err, store.ErrNotFound) {
+		// Auto-register on first login (dev convenience). Dev/preservation
+		// server: grant admin so GM commands (/WORLD, /TP, …) are usable
+		// out of the box.
+		acc, err = s.deps.Store.Accounts.CreateAccount(auth.Login, auth.Password, true)
+		if err != nil {
+			return err
+		}
+		s.log.Info("account auto-created", "login", auth.Login, "admin", true)
+	} else if err != nil {
+		return err
+	} else if !s.deps.Store.Accounts.VerifyPassword(acc, auth.Password) {
+		result, _ := handshake.EncodeAuthResult(protocol.AuthInvalidLogin)
+		_ = s.Send(result)
+		return nil
+	} else if !acc.IsAdmin {
+		// Dev/preservation server: promote existing accounts so GM commands
+		// work without a manual reseed.
+		if err := s.deps.Store.Accounts.SetAdmin(acc.ID, true); err == nil {
+			acc.IsAdmin = true
+		}
+	}
+
+	// Kick any existing live session for this account (reconnect / dup login),
+	// last-writer-wins. This avoids locking a player out when they reconnect
+	// after a network drop before the old socket timed out.
+	if old := s.deps.Sessions.Swap(acc.ID, s); old != nil {
+		s.log.Info("kicking previous session", "login", acc.Name)
+		old.kick()
+	}
+
+	s.Account = acc
+	_ = s.deps.Store.Accounts.SetConnected(acc.ID, true)
+
+	result, err := handshake.EncodeAuthResult(protocol.AuthOK)
+	if err != nil {
+		return err
+	}
+	if err := s.Send(result); err != nil {
+		return err
+	}
+
+	if acc.CoachID == nil {
+		// No coach yet -> prompt creation.
+		req, err := handshake.EncodeCoachCreationRequest()
+		if err != nil {
+			return err
+		}
+		s.log.Info("no coach, prompting creation", "login", auth.Login)
+		return s.Send(req)
+	}
+
+	coach, err := s.deps.Store.Coaches.Get(*acc.CoachID)
+	if err != nil {
+		return err
+	}
+	return s.completeLogin(coach)
+}
+
+// handleCoachCreation persists a newly created coach then runs the full login.
+func handleCoachCreation(s *Session, f *protocol.C2SFrame) error {
+	if s.Account == nil {
+		return errors.New("coach creation before auth")
+	}
+	req, err := handshake.DecodeCoachCreation(f.Payload)
+	if err != nil {
+		return err
+	}
+	s.log.Info("coach creation", "name", req.Name)
+
+	coach, err := s.deps.Store.Coaches.Create(s.Account.ID, req.Name, req.HairColor, req.SkinColor, req.Sex)
+	if errors.Is(err, store.ErrNameTaken) {
+		res, _ := handshake.EncodeCoachCreationResult(coachNameTaken)
+		return s.Send(res)
+	}
+	if err != nil {
+		return err
+	}
+
+	res, err := handshake.EncodeCoachCreationResult(protocol.AuthOK)
+	if err != nil {
+		return err
+	}
+	if err := s.Send(res); err != nil {
+		return err
+	}
+	return s.completeLogin(coach)
+}
+
+// coach-creation result codes (client: 0=ok, 10/11/12/13=errors).
+const coachNameTaken uint8 = 11
+
+// completeLogin runs the shared post-auth sequence: attach coach, send
+// info + social lists + stats, register online, enter world, spawn fan-out.
+func (s *Session) completeLogin(coach *domain.Coach) error {
+	s.Coach = coach
+	s.currentWorld = startWorldID
+	s.grantStarterCards(coach)
+	s.grantZaapCards(coach)
+	s.grantStarterWallet(coach)
+
+	// Align the coach's in-memory position with the rendered spawn cell so the
+	// ENTER_WORLD_INSTANCE render, the World registry (enterWorld), and
+	// movement validation all agree — otherwise the client renders at the start
+	// cell while the server tracks the coach elsewhere and moves desync.
+	//
+	// Spawn on the start world's primary Zaap: it is a known-walkable cell, its
+	// ground altitude is known (the 4600 `alt` must equal it or the client's
+	// pathfinder can't move the coach — see zaapElement.alt), and the coach starts
+	// on a teleporter it can travel from.
+	spawnX, spawnY, spawnZ := float32(startCellX), float32(startCellY), coach.PosZ
+	if z, ok := primaryZaap(startWorldID); ok {
+		spawnX, spawnY, spawnZ = float32(z.cellX), float32(z.cellY), z.alt
+	}
+	coach.PosX, coach.PosY, coach.PosZ = int32(spawnX), int32(spawnY), spawnZ
+
+	sends := [](func() ([]byte, error)){
+		func() ([]byte, error) { return buildCoachInformation(coach) },
+		func() ([]byte, error) { return buildFriendList(coach, s.deps.World) },
+		func() ([]byte, error) { return buildIgnoreList(coach) },
+		func() ([]byte, error) { return buildPlayerStatisticsReport(coach) },
+	}
+	for _, build := range sends {
+		frame, err := build()
+		if err != nil {
+			return err
+		}
+		if err := s.Send(frame); err != nil {
+			return err
+		}
+	}
+	if err := s.sendEnterOverworld(spawnX, spawnY, spawnZ, startWorldID); err != nil {
+		return err
+	}
+
+	// Push the coach's card inventory (separate from the 2052 blob).
+	if err := s.pushInventory(coach); err != nil {
+		return err
+	}
+	// Push the coach's token wallet (4001 full sync) so the shop UI shows a
+	// balance.
+	if wallet, err := buildWalletUpdate(coach.Wallet); err == nil {
+		if err := s.Send(wallet); err != nil {
+			return err
+		}
+	}
+	// Push the coach's fighter roster.
+	if err := s.pushFighterList(); err != nil {
+		return err
+	}
+	// Push the coach's saved team presets.
+	if err := s.pushTeamPresetList(); err != nil {
+		return err
+	}
+
+	return s.enterWorld(coach)
+}
+
+// enterWorld registers the coach online and exchanges ACTOR_SPAWN lists so all
+// overworld coaches see each other.
+func (s *Session) enterWorld(coach *domain.Coach) error {
+	online := &Online{Coach: coach, Session: s}
+	if !s.deps.World.Add(online) {
+		s.log.Warn("coach already online", "coach_id", coach.ID)
+		return nil
+	}
+
+	// AoI seed: spawn in-range coaches to the joiner, and the joiner to them,
+	// establishing the bilateral known sets. O(neighbors), not O(N).
+	spawnToJoiner, joinerView, spawnJoinerTo := s.deps.World.EnterAoI(coach.ID)
+	if len(spawnToJoiner) > 0 {
+		if frame, err := buildActorSpawn(spawnToJoiner); err == nil {
+			_ = s.Send(frame)
+		}
+	}
+	if len(spawnJoinerTo) > 0 {
+		if frame, err := buildActorSpawn([]CoachView{joinerView}); err == nil {
+			for _, sess := range spawnJoinerTo {
+				_ = sess.Send(frame)
+			}
+		}
+	}
+	// Push online notifications to friends/ignorers who are watching this coach.
+	s.notifyPresence(coach, true)
+
+	// If this coach dropped out of a fight that is still open (within its reconnect
+	// grace), offer to RESUME it: push the reconnect QUESTION (26333) while the
+	// coach is in the lobby. The client answers with 26334 (see
+	// handleReconnectFightAnswer) — accept replays the fight, decline forfeits. The
+	// grace timer keeps running, so a coach who never answers still forfeits.
+	if f := s.deps.Fights.ByCoach(coach.ID); f != nil {
+		cid := coach.ID
+		sess := s
+		f.Post(func(f *Fight) {
+			if t := f.teamOfCoach(cid); t != nil && t.Absent {
+				if frame, err := buildReconnectFightQuestion(); err == nil {
+					_ = sess.Send(frame)
+				}
+			}
+		})
+	}
+
+	s.log.Info("entered world", "coach", coach.Name, "id", coach.ID)
+	return nil
+}

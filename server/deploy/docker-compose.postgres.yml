@@ -1,0 +1,46 @@
+# DofusArena 2.70 — server + PostgreSQL (production).
+#
+#   docker compose -f deploy/docker-compose.postgres.yml up --build
+#
+# The server waits for a healthy Postgres before starting.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: arena
+      POSTGRES_DB: arena
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arena -d arena"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  arena:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: dofusarena-2.70:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+    environment:
+      ARENA_ADDR: "0.0.0.0:5555"
+      ARENA_LOG_LEVEL: "info"
+      ARENA_DATA_DIR: "/data"
+      ARENA_DB_DRIVER: "postgres"
+      ARENA_DB_DSN: "host=postgres user=arena password=arena dbname=arena port=5432 sslmode=disable TimeZone=UTC"
+      ARENA_DB_MAX_OPEN_CONNS: "50"
+      ARENA_DB_MAX_IDLE_CONNS: "10"
+    volumes:
+      - ${ARENA_DATA_DIR:-./data}:/data:ro
+    restart: unless-stopped
+
+volumes:
+  pg-data:

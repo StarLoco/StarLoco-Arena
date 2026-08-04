@@ -1,0 +1,52 @@
+# ============================================================================
+#  Attributes — DofusArena 2.70
+# ----------------------------------------------------------------------------
+#  This branch does NOT use Git LFS. Everything committed here is source,
+#  documentation or small tooling assets (~18 MB total, largest file ~2 MB),
+#  so plain Git objects are cheaper and simpler than an LFS dependency.
+#
+#  The heavy, copyrighted material is never committed at all — it is excluded
+#  by .gitignore:
+#    - client/compiled/   the runnable retail client + bundled JRE (~436 MB)
+#    - server/data/       game data copied out of the client (data/indexes.bdat)
+#
+#  Line endings are intentionally NOT normalized (no `text=auto`): the repo
+#  holds decompiled sources and byte-sensitive fixtures, and renormalizing
+#  would create large spurious diffs.
+# ============================================================================
+
+# Binary files: never diff as text, never touch line endings.
+*.jar    binary
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.class  binary
+
+# Binary game data / fixtures
+*.amw    binary
+*.dat    binary
+*.ade    binary
+*.bdat   binary
+*.pack   binary
+*.bin    binary
+
+# Fonts
+*.ttf    binary
+*.otf    binary
+*.fnt    binary
+*.pf     binary
+
+# Images & audio
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.wav    binary
+*.ogg    binary
+*.mp3    binary
+
+# Generated / vendored files — keep them out of language stats and diffs.
+client/decompiled/**   linguist-generated=true
+client/deobf-lab/**    linguist-vendored=true
