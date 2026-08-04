@@ -6,7 +6,7 @@ retail 2.70 client (`build.version=2.70`, `revision=72909`, Feb 2012).
 Everything here was reverse-engineered from the obfuscated client
 (`compiled/game/core.jar`, decompiled to `decompiled/core/`), cross-referenced
 against the fully-named 2007 client source
-(`client/source/` on the **`main`** branch - the 2.04b line). Opcode numbers are stable across
+(`client/source/` on the **`v2.04`** branch - the 2.04b line). Opcode numbers are stable across
 versions; **payload layouts are not** — this doc reflects the **2.70** layouts.
 
 Companion files:

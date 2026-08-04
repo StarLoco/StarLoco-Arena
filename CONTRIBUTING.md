@@ -10,7 +10,7 @@ This branch (`v2.70`) targets the **DofusArena 2.70** line (the Feb-2012 retail
 build, rev 72909). The primary actively developed component is the **Go server**
 in [`server/`](./server). Most contributions belong there.
 
-> The 2006-era **2.04b** line lives on the **`main`** branch. Contributions for
+> The 2006-era **2.04b** line lives on the **`v2.04`** branch. Contributions for
 > that line belong there, not here.
 
 The other directories are reference material:

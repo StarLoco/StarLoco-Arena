@@ -5,7 +5,7 @@ client (build 2.70, rev 72909). Built from the protocol/data specs in
 [`../client/analysis/`](../client/analysis).
 
 Separate Go module (`github.com/StarLoco/arena-2.70`) parallel to the existing
-the 2006 server (`server/` on this repo's **`main`** branch), which stays intact as a reference.
+the 2006 server (`server/` on this repo's **`v2.04`** branch), which stays intact as a reference.
 
 ## Status
 

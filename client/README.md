@@ -99,7 +99,7 @@ Key classes (obfuscated → role):
 
 Opcodes are **stable** between the 2007 client and 2.70 (verified on 3152, 3153,
 5101, 5102, 5105 …), so the fully-named 2007 source at
-the 2.04b client source (`client/source/` on the **`main`** branch of this repo) is used as a Rosetta Stone.
+the 2.04b client source (`client/source/` on the **`v2.04`** branch of this repo) is used as a Rosetta Stone.
 **Caveat:** a field layout can still change even when an opcode is unchanged
 (e.g. 5105 "add card" narrowed the card id `long`→`int`, 18→14 byte body).
 Always confirm the 2.70 `encode()`/decode body before trusting a field layout —

@@ -3,7 +3,7 @@
 Reverse-engineered from the **complete retail client** at
 `E:\Projets\DofusArena2-06\client\compiled` (2015 build). This is the client whose
 decompiled sources live in `client/`. The **incomplete** client under
-the 2.04b client (`client/compiled/` on the **`main`** branch) is a different build that ships **no** map env/tplg/gfx data
+the 2.04b client (`client/compiled/` on the **`v2.04`** branch) is a different build that ships **no** map env/tplg/gfx data
 and therefore renders no NPCs — do not use it for this work.
 
 > Purpose: understand the overworld so the Go server can drop a coach onto the

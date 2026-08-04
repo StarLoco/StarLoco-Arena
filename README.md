@@ -7,7 +7,7 @@ that client's exact language over the network, plus the decompiled client and
 protocol analysis used as the reference.
 
 > 🌿 **Branches.** This is the **`v2.70`** branch. The 2006-era **2.04b** line
-> (a different client and a different Go server) lives on the **`main`** branch.
+> (a different client and a different Go server) lives on the **`v2.04`** branch.
 
 > 💬 **Stuck or have a question? [Join us on Discord](https://discord.com/invite/k3Yk9DuhgY)** — see [Community & Support](#-community--support).
 

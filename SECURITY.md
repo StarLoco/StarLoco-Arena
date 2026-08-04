@@ -14,7 +14,9 @@ injection, credential leakage, etc. — are in scope and worth reporting.
 
 ## Supported versions
 
-Only the latest `main` is supported. There are no long-term release branches.
+Only the tip of the default branch (`v2.70`) is supported. There are no
+long-term release branches. The legacy 2.04b line on `v2.04` is preserved for
+reference and is not maintained.
 
 ## Reporting a vulnerability
 

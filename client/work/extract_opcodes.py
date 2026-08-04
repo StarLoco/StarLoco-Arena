@@ -14,7 +14,7 @@ import os, re, csv, sys
 
 DEC = r"E:\Projets\DofusArena2-06\client\decompiled\core"
 # 2.04b (2007) client source, used as a Rosetta Stone. It lives on this repo's
-# `main` branch, not on v2.70 - check it out elsewhere and point SRC at it.
+# `v2.04` branch, not on v2.70 - check it out elsewhere and point SRC at it.
 SRC = r"E:\Projets\StarLoco-Arena-main\client\source"
 OUT = r"E:\Projets\DofusArena2-06\client\analysis"
 

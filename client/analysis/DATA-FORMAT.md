@@ -293,7 +293,7 @@ Breed is a hardcoded Java **enum** (no loader). Transcribe these into the server
 Baked-in per-breed stats: `baseHp, baseAp=6, baseMp=3, baseInit, baseCH=5,
 baseCM=1, value, closeCombatElement, closeCombatAp=5, closeCombatDamages=5,
 closeCombatCriticalDamages=7`. Read the exact per-breed numbers from
-`client/source/com/ankamagames/dofusarena/common/game/fighter/Breed.java` on the **`main`** branch (the 2.04b line)
+`client/source/com/ankamagames/dofusarena/common/game/fighter/Breed.java` on the **`v2.04`** branch (the 2.04b line)
 (the enum was stable across versions).
 
 ---

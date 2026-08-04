@@ -15,7 +15,7 @@ byte-for-byte. The decompiled client under `client/` is the source of truth for
 every opcode, field order and data layout.
 
 > The 2006-era **2.04b** line (a separate client + Go server) lives on the
-> **`main`** branch of this repository. Comments in this codebase that say
+> **`v2.04`** branch of this repository. Comments in this codebase that say
 > "ported from the v2.04b reference" refer to that branch — it is a useful
 > *unobfuscated* cross-check, but 2.70 re-tuned most numbers, so client data
 > always wins over anything inherited from 2.04b.
