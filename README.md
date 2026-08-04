@@ -78,7 +78,7 @@ You need your own copy of the **DofusArena 2.70** retail client. Once you have
 it:
 
 1. Put the client at **`client/compiled/`**, so that
-   `client/compiled/game/DofusArena.exe` exists.
+   `client/compiled/DofusArena.exe` and `client/compiled/game/core.jar` exist.
 2. Copy the game data the server reads:
 
    ```
@@ -130,7 +130,7 @@ to grant admin rights.
 **On Windows**, launch:
 
 ```
-client\compiled\game\DofusArena.exe
+client\compiled\DofusArena.exe
 ```
 
 It ships pointed at `127.0.0.1:5555` already
