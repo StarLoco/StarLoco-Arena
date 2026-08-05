@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.1.0...v0.2.0) (2026-08-05)
+
+
+### Features
+
+* **gamedata:** find the game data in the player's own client install ([942198e](https://github.com/StarLoco/StarLoco-Arena/commit/942198e237f0bdf872b210d864d2880a6aa5a0cc))
+
 ## 0.1.0 (2026-08-05)
 
 
