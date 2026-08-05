@@ -52,6 +52,31 @@ type CoachCard struct {
 	// Effects is the card's full akw_0 effect array (field 15). The action ids
 	// are the client's AI enum — the coach META layer, not in-fight combat.
 	Effects []CardSetEffect
+
+	// --- fields 19-26 (see parameters.go for why these were unreachable) ---
+
+	// Parameters (19, tv()) are the card's `np_1` gameplay parameters. The client
+	// gathers them across a team preset to build its fight profile
+	// (acx_2: `jk_1.mf().mg().a(np_1Array)`).
+	Parameters []Parameter
+	// Unknown19/20 (20-21, tw()/tx()) are handed to the runtime card object and
+	// never read again — dead in the client, kept so the record round-trips.
+	Unknown19 int16
+	Unknown20 int16
+	// FusionPower (22, tz()) and FusionQuality (23, tA()) are the fusion
+	// laboratory's "labPower" and "quality" fields (client ajt_1's Xulor field
+	// names). They are also formatted into the description of pet-type cards.
+	FusionPower   int16
+	FusionQuality uint8
+	// PetModelID (24, tB()) is the pet appearance id: `aez_0.aQv()` spawns one
+	// visual instance per owned pet using it.
+	PetModelID int32
+	// ColourSlot (25, tD()) and ColourIndex (26, tE()) are a colouring card's
+	// target and palette entry — client `setFighterColorIndex`, one of the few
+	// unobfuscated method names in the jar: slot 0/1/2 maps to element ids
+	// 16650/16651/16652 (hair / skin / eyes).
+	ColourSlot  uint8
+	ColourIndex int32
 }
 
 // EffectParam returns the first parameter of this card's effect with the given
@@ -173,7 +198,13 @@ func (c *Cards) Len() int { return len(c.byID) }
 // pet model, colour slot/palette) sits behind it. They are listed in
 // docs/DATA-COVERAGE.md rather than silently ignored.
 func decodeCoachCard(data []byte) (*CoachCard, error) {
-	c := &cur{b: data}
+	return decodeCoachCardCursor(&cur{b: data})
+}
+
+// decodeCoachCardCursor is decodeCoachCard over a caller-owned cursor, so a test
+// can inspect how many bytes of the record were consumed. A record that decodes
+// with ZERO bytes left over is the strongest evidence a layout is right.
+func decodeCoachCardCursor(c *cur) (*CoachCard, error) {
 	card := &CoachCard{}
 	card.ID = c.i32()      // 1 id
 	card.Type = c.i32()    // 2 type (client enum aMK)
@@ -220,6 +251,24 @@ func decodeCoachCard(data []byte) (*CoachCard, error) {
 	c.u8()              // 16 aZd() — dead in the client too
 	c.i32()             // 17 aZe() — dead in the client too
 	card.Rank = c.i32() // 18 getRank(): drives the client's rarity frame colour
+
+	// 19-26: the tail that used to be unreachable because the `np_1` element
+	// layout was unknown (see parameters.go). Field order from aPp's own
+	// deserializer `a(ByteBuffer,int,short)`.
+	params, ok := decodeParameters(c) // 19 tv(): gameplay parameters
+	card.Parameters = params
+	if !ok {
+		// A parameter carried an inline effect we cannot skip; everything after
+		// it would be garbage. Keep what we have rather than invent values.
+		return card, nil
+	}
+	card.Unknown19 = c.i16()    // 20 tw(): passed to the runtime card, never read
+	card.Unknown20 = c.i16()    // 21 tx(): idem
+	card.FusionPower = c.i16()  // 22 tz(): the fusion lab's "labPower" field
+	card.FusionQuality = c.u8() // 23 tA(): the fusion lab's "quality" field
+	card.PetModelID = c.i32()   // 24 tB(): pet appearance, spawned by aez_0.aQv()
+	card.ColourSlot = c.u8()    // 25 tD(): 0 hair / 1 skin / 2 eyes
+	card.ColourIndex = c.i32()  // 26 tE(): palette index within that slot
 
 	if card.ID <= 0 {
 		return nil, errShort

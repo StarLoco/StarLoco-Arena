@@ -151,10 +151,17 @@ obtainable-in-draw + drop %, **bound**, **undestructible**, has-usable-action, t
 array (incl. the resurrection scan) and rank. The two tradability flags are now enforced
 in exchanges (B-061).
 
-**Still unread (8):** fields 19-26 — `np_1[]` gameplay parameters, two dead i16s, fusion
-power/quality, pet model id, colour slot + palette index. They sit *behind* the `np_1[]`
-array, whose element layout has not been decoded yet; that array is the blocker for all
-of them.
+**Fields 19-26 are now read too (B-071),** so this record is **26 of 26** and every one
+of the 907 shipped records is consumed to **zero residual bytes** — the strongest check
+available that the layout is right. They are: the `np_1[]` gameplay parameters (19), two
+i16 the client hands to its runtime card object and never reads again (20-21), the
+fusion laboratory's `labPower` and `quality` (22-23), the pet model id (24, which
+`aez_0.aQv()` uses to spawn one visual per owned pet), and a colouring card's slot and
+palette index (25-26, named by the unobfuscated `setFighterColorIndex`: slot 0 hair /
+1 skin / 2 eyes).
+
+Cross-check worth keeping: exactly **7** cards carry a pet model id, and the client
+ships exactly **7** pet descriptions (`content.24.71/75/80/88/92/99/103`).
 
 ### Type 300 — Summons (`jz_2`) — 17 of 17 fields ✅ complete
 Was 7 of 17. The tail is now decoded, and the four innate displacement properties are
@@ -204,7 +211,7 @@ records will not change that. The list is ordered accordingly.
    subsystem that would activate ~78 already-decoded set effects, most coach-card
    effects, and the type-902 condition layer at once. This is the biggest *unlock* per
    unit of work, but it is a feature, not a fix; size it first.
-2. **`np_1[]` element layout** — one unknown that unblocks 8 coach-card fields *and*
+2. ~~**`np_1[]` element layout**~~ — DONE (B-071). Was: one unknown that unblocks 8 coach-card fields *and*
    parts of the challenge and tournament records. Decode it once, gain three records.
 3. **Spell `TargetMasks` + `MaxActive`** — both decoded, neither evaluated; needs the
    client's `aLc` evaluator and a live-instance counter respectively. Small payoff (3
@@ -213,10 +220,35 @@ records will not change that. The list is ordered accordingly.
    rewards and prize tables.
 5. **Types 900/901 Sphere Board** — the largest unimplemented system (17 542 records).
 
+## 5b. The `np_1` fight-ruleset types (`ajr_2`)
+
+Decoded in B-071 and **not yet wired to anything**. The low block is a fight-ruleset
+system — the mechanism a challenge or tournament uses to customise a match:
+
+| type | meaning | note |
+|---|---|---|
+| 1-3 | budget, min/max fighters | |
+| 4-9 | spell/equipment allow + ban lists (incl. "ban everything") | |
+| **10** | **per-fighter turn duration (ms)** | server hardcodes this |
+| **11** | **sudden-death start turn** | server hardcodes this |
+| 12 | cast an effect on all fighters at fight creation | carries an inline `Ht` |
+| 13 | multiply bonus-cell effects | |
+| **14** | **victory condition** | the ONE type with its own layout (`wi_0` + `mp_2`); 9 challenges |
+| 15-25 | class limits, class bans, fighter/spell/equipment prices | |
+| 26, 32 | event list, sudden-death event list | |
+| 27 | add a coach spell | |
+| 28 | max distinct classes | |
+| 29 | choose the arena | |
+| 30 | max league | |
+| 31 | hide opponent statistics | |
+| 900 | class parameter | |
+| 901-912 | per-breed spell parameters (Féca … Pandawa) | |
+
 ## 6. Change log
 
 | Date | Change |
 |---|---|
+| 2026-08-04 | Decoded the `np_1` element (B-071): coach cards now 26/26 fields with zero residual across all 907 records; challenges 36/39 exact; the ajr_2 type enum documented as a fight-ruleset system. |
 | 2026-08-04 | Evolution fighters can be created: the et_2 type byte is honoured via a persisted Fighter.Evolution flag, separate from State (B-070). |
 | 2026-08-04 | Challenge reward cards reported on the end-of-fight panel; the won/lost card-blob order corrected (B-069). |
 | 2026-08-04 | Wire text encoding corrected to windows-1252 in both directions; the length prefix now counts encoded bytes (B-068). |

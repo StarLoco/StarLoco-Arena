@@ -22,8 +22,8 @@ const TypeChallengeDef = 400
 //	u8 bool(QA), i16(QB), i32(QC), i32(QD), i32(QE), i32(QF),
 //	u8 bonusCount, np_1×bonusCount, i32(QG), i32(QH)
 //
-// We decode through QE and stop: the bonus list (np_1) and the two trailing ints
-// are client-presentation data with no server consumer.
+// The whole record is now read: the bonus list is an `np_1[]` (see
+// parameters.go), which was the last unknown here.
 //
 // IMPORTANT — the client carries NO opponent roster for a challenge. Its own
 // loader (ahy_1.a) keeps just the display name (content.30.<id>), description
@@ -44,6 +44,12 @@ type Challenge struct {
 	//
 	// field5 is 0 in every record.
 	Fields [6]int32
+	// Bonuses is the trailing `np_1[]` gameplay-parameter list (field 16).
+	Bonuses []Parameter
+	// Unknown1/Unknown2 are the two trailing i32 (GE getters QG/QH). Decoded so
+	// the record round-trips; their meaning is not established.
+	Unknown1 int32
+	Unknown2 int32
 	// RewardCards are CoachCard template ids (verified: every value resolves in
 	// the type-100 card table, e.g. challenge 32 -> 187,189,194). Not all
 	// challenges award cards — 17..28 and several demons have none.
@@ -120,7 +126,12 @@ func (c *Challenges) All() map[int32]*Challenge {
 }
 
 func decodeChallenge(data []byte) *Challenge {
-	c := &cur{b: data}
+	return decodeChallengeCursor(&cur{b: data})
+}
+
+// decodeChallengeCursor is decodeChallenge over a caller-owned cursor so a test
+// can assert the record is consumed exactly (zero bytes left over).
+func decodeChallengeCursor(c *cur) *Challenge {
 	id := c.i32()
 	ch := &Challenge{ID: id}
 	for i := range ch.Fields {
@@ -147,5 +158,16 @@ func decodeChallenge(data []byte) *Challenge {
 	if c.ok() {
 		ch.TimeChallenge = qe
 	}
+	c.i32() // QF
+
+	// The tail used to stop here because the np_1 element layout was unknown.
+	// It is decodable now (see parameters.go), so the record is read to its end.
+	bonuses, ok := decodeParameters(c)
+	if !ok {
+		return ch // an inline effect we cannot skip; keep what we have
+	}
+	ch.Bonuses = bonuses
+	ch.Unknown1 = c.i32() // QG
+	ch.Unknown2 = c.i32() // QH
 	return ch
 }

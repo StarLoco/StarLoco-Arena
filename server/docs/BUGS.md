@@ -22,8 +22,13 @@ decompiled client, no runtime).
   and the drop table, so ~30 of the 78 card-set effects remain inert.
 - **Fighter conditions (type 902) are unmodelled** — wounds never accrue between fights.
   Fully decodable (0 unknown fields); needs the roller `bf_1.b` ported.
-- **`np_1[]` element layout is unknown**, blocking 8 coach-card fields plus parts of the
-  challenge and tournament records.
+- **Three challenge records (29/30/31) still stop short**: each carries a type-12
+  parameter whose trailing `Ht` effect is inline and unlength-prefixed, so it cannot be
+  skipped without a full effect parser. Everything else in that record decodes (B-071).
+- **The `np_1` fight-ruleset system is decoded but not WIRED.** Types 10 and 11 carry
+  the per-fighter turn duration and the sudden-death start turn, which the server still
+  hardcodes; the rest cover budget, roster limits, banned spells/equipment, arena and
+  event-list choice. This is how challenges and tournaments customise a fight.
 - **Spell `TargetMasks` / `MaxActive` decoded but not evaluated** (3 and 6 spells).
 - **The evolution debrief PANEL is not yet visually confirmed** — the server side of
   B-065 is verified live, but the panel needs a true evolution fight (client-initiated,
@@ -32,6 +37,69 @@ decompiled client, no runtime).
 ---
 
 ## Fixed
+
+### B-071 · The `np_1` element layout — the last decode blocker on three records
+`np_1` was the one unknown standing between us and the tail of the coach-card
+record (fields 19-26), the tail of the challenge record, and parts of the
+tournament tables. Its layout turned out to be plainly readable in
+`np_1.k(ByteBuffer)`, cross-checkable against both its writer `cd()` and its size
+function `nj()`:
+
+```
+[i32 type][i32 id][i32 parentId][u8 n][i32 × n params][i16 effectVersion]
+  if effectVersion != 0: [i32 effectId][Ht blob, inline, NO length prefix]
+```
+
+**Two traps, both different from every other effect list in this format:** the
+trailing effect is written **version first, then id** (the reverse of
+`decodeEffectList`'s `[id][ver][len]`), and it has **no length prefix**.
+
+**And `np_1` is polymorphic.** Exactly one of its 30-odd subclasses overrides the
+read: type **14, "Condition de victoire"** (`wi_0`), which has no param array and
+no effect, just `[i32 id][i32 parentId][mp_2 blob]`. Decoding it generically reads
+the `mp_2`'s leading `i16` as a param count and desynchronises everything after —
+which is precisely what happened to challenges 14 and 37..44, whose "effect
+version" came out as the nonsense value 1024. That 1024 is the tell: it is an
+`mp_2` type field being read one field too early.
+
+**What the type enum turns out to be.** `ajr_2` names all 32 low types, and they
+are a **fight-ruleset system**: budget, min/max fighters, banned or allowed
+spells and equipment, class limits and prices, arena choice, event-list choice —
+and notably **type 10 "modifies each fighter's turn duration in milliseconds"**
+and **type 11 "modifies the sudden-death start turn"**, both of which this server
+currently hardcodes. The 900+ block is per-breed spell parameters. Recorded in
+`DATA-COVERAGE.md`; nothing is wired to it yet.
+
+**Results.**
+- Coach cards: **26/26 fields**, and all **907 records consume to exactly zero
+  residual bytes**. A format that ends precisely where the decoder stops, 907
+  times out of 907, is the strongest evidence a layout is right.
+- Challenges: **36 of 39** records exact. The other three (29/30/31) each carry a
+  type-12 parameter ("Lance un effet sur tous les combattants à la création du
+  combat") whose inline `Ht` cannot be skipped without a full effect parser;
+  `decodeParameters` stops there deliberately rather than desynchronise, and the
+  test pins those three by id so the day someone writes that parser, it fails and
+  tells them to move them out of the blocked set.
+
+**An independent cross-check fell out of it:** exactly **7 cards** carry a pet
+model id, and the client ships exactly **7 pet descriptions**
+(`content.24.71/75/80/88/92/99/103`, "Ce familier Augmente les drops dans tous les
+modes de jeu"). Two unrelated sources agreeing on 7 is worth more than either
+alone.
+
+Field names came from the few unobfuscated fragments in the jar: the fusion
+laboratory's Xulor field names give `tz` = **labPower** and `tA` = **quality**,
+and the method `setFighterColorIndex` gives `tD` = colour slot (0 hair / 1 skin /
+2 eyes) and `tE` = palette index. `tB` is the pet model id — `aez_0.aQv()` spawns
+one visual instance per owned pet from it. `tw`/`tx` are handed to the runtime
+card object and never read again: dead in the client, decoded here only so the
+record round-trips.
+
+**Verified:** `unit` — zero-residual over all 907 coach cards and 36/39
+challenges; the element decoded against the client's own size functions
+(`np_1.nj()` and `wi_0.nj() = 12 + mp_2.nj()`); the inline-effect guard; and the
+victory-condition case built from the exact byte pattern (type `1024`) that used
+to be misread.
 
 ### B-070 · You could not create an evolution fighter at all
 Recruiting from the **Évolution** tab produced a CLASSIC fighter. The evolution roster
