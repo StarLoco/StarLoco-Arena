@@ -147,6 +147,29 @@ func TestOwnerHintDisappearsAfterFirstAccount(t *testing.T) {
 	_ = hint
 }
 
+// The client-download link only appears when configured, and shows the
+// configured URL verbatim — an operator pointing it at their own mirror must
+// not see a stale or hardcoded one instead.
+func TestClientDownloadLinkShownWhenConfigured(t *testing.T) {
+	s, _ := newTestServer(t, func(c *config.WebConfig) { c.ClientDownloadURL = "https://example.com/client.zip" })
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), "https://example.com/client.zip") {
+		t.Error("configured client download URL not shown on the page")
+	}
+}
+
+// A blank URL (e.g. a fork's operator with no mirror to offer) must hide the
+// panel entirely rather than render a dead link.
+func TestClientDownloadLinkHiddenWhenBlank(t *testing.T) {
+	s, _ := newTestServer(t, func(c *config.WebConfig) { c.ClientDownloadURL = "" })
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if strings.Contains(rec.Body.String(), "Get the client") {
+		t.Error("client download panel shown despite a blank URL")
+	}
+}
+
 func TestDuplicateNameRejected(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 

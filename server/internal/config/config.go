@@ -24,6 +24,17 @@ import (
 //go:embed config.template.yaml
 var Template string
 
+// defaultClientDownloadURL is StarLoco's own mirror of the retail client,
+// shown on the web portal so a player who found this project on GitHub has
+// somewhere to get the game itself. It is never committed to this repository
+// (client/compiled/ stays git-ignored — see AGENTS.md constraint 4); only
+// linked. An operator running their own fork can point web.client_download_url
+// at their own mirror, or blank it to hide the link entirely.
+//
+// If this link ever needs to move (Mega links do get taken down), update it
+// here, in .goreleaser.yaml's release.footer, and in the root README.md.
+const defaultClientDownloadURL = "https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4"
+
 // Config is the full server configuration.
 type Config struct {
 	// Addr is the TCP listen address for the game client (default 0.0.0.0:5555).
@@ -59,6 +70,11 @@ type WebConfig struct {
 	// MinLoginLength / MinPasswordLength gate new sign-ups.
 	MinLoginLength    int `yaml:"min_login_length"`
 	MinPasswordLength int `yaml:"min_password_length"`
+	// ClientDownloadURL, when set, is shown on the portal as a link to get the
+	// DofusArena 2.70 client itself — this server never bundles or commits
+	// that (see AGENTS.md constraint 4), only links to it. Empty hides the
+	// link entirely.
+	ClientDownloadURL string `yaml:"client_download_url"`
 }
 
 // UpdateCheckConfig configures the startup "a newer release exists" notice.
@@ -106,6 +122,7 @@ func Default() Config {
 			RegistrationEnabled: true,
 			MinLoginLength:      3,
 			MinPasswordLength:   6,
+			ClientDownloadURL:   defaultClientDownloadURL,
 		},
 		UpdateCheck: UpdateCheckConfig{
 			Enabled:        true,
@@ -205,6 +222,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("ARENA_WEB_PUBLIC_HOST"); v != "" {
 		c.Web.PublicHost = v
+	}
+	if v := os.Getenv("ARENA_WEB_CLIENT_DOWNLOAD_URL"); v != "" {
+		c.Web.ClientDownloadURL = v
 	}
 	if v, ok := envBool("ARENA_UPDATE_CHECK_ENABLED"); ok {
 		c.UpdateCheck.Enabled = v

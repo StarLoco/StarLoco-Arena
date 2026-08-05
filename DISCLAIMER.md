@@ -30,10 +30,18 @@ respective owners.
     subset the maintainer has chosen to include so the server runs without
     requiring every operator to separately source a client. It ships in every
     downloadable release and in `git clone`.
-- **Not distributed here at all** (git-ignored — you supply your own copy to
-  actually play):
+- **Not committed to this repository, but linked to an external mirror**
+  (© Ankama Games):
   - `client/compiled/` — the full retail game client (launcher, `core.jar`,
-    art, audio, ~436 MB) and its bundled Oracle/Sun JRE.
+    art, audio, ~436 MB) and its bundled Oracle/Sun JRE. This repository's
+    source tree, `git clone`, and every release archive still do not contain
+    it (it stays git-ignored — see `AGENTS.md` constraint 4). What changed is
+    that the maintainer (StarLoco) now hosts a personal mirror and links to it
+    from the GitHub release notes, the root `README.md`, and the web portal's
+    registration page, so a player doesn't have to source the client
+    elsewhere. That is a deliberate distribution decision, distinct from what
+    the repository itself contains — see the takedown note below.
+- **Not distributed or linked anywhere by this project**:
   - `server/data/` — a git-ignored scratch folder for pointing a local build
     at your own client copy instead of the bundled `server/data-dist/`.
 
@@ -59,5 +67,6 @@ If you are a rights holder and believe material in this repository should not be
 distributed, please open a confidential report (see [`SECURITY.md`](./SECURITY.md))
 or contact the maintainer, and the material in question will be removed promptly.
 
-This applies to `server/data-dist/` and any release built from it as much as to
-anything else here.
+This applies to `server/data-dist/` and any release built from it, and to the
+client mirror linked from the release notes, README and web portal, as much as
+to anything else here.

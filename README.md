@@ -34,7 +34,8 @@ included inside every download).
 > The download already includes the small set of card/spell/arena data the
 > *server* needs to run fights. You still need your own copy of the retail
 > **DofusArena 2.70 client** — the actual playable game — to connect and play;
-> that part is Ankama's and is not distributed here.
+> that part is Ankama's and isn't committed to this repository. The release
+> notes above, and the web portal once it's running, link to a mirror.
 
 The server tells you at startup when a newer version is available. That check is
 a single anonymous request to GitHub's public releases page — nothing about your
@@ -51,16 +52,18 @@ off with `update_check: enabled: false` in `config.yaml`.
 | 🗃️ **Server game data** | `data.bdat` / `indexes.bdat` + maps: the card/spell/arena records the *server's own logic* needs to run a fight. | ✅ Yes — `server/data-dist/` (~2.5 MB) |
 | 📖 **Decompiled client** | The 2.70 client source used as the protocol reference, plus protocol/data write-ups. | ✅ Yes — `client/decompiled/`, `client/analysis/` |
 | 🧪 **RE tooling** | An MCP server + Java agent that boot the retail client and drive it for testing. | ✅ Yes — `client/arena-mcp/`, `client/control-agent/` |
-| 🎮 **Retail game client** | The actual playable game window (launcher, `core.jar`, assets, bundled JRE, ~436 MB). | ❌ **No** — you supply it, see [Step 2](#step-2--supply-the-client-and-its-game-data) |
+| 🎮 **Retail game client** | The actual playable game window (launcher, `core.jar`, assets, bundled JRE, ~436 MB). | ❌ **No** — mirrored, not committed, see [Step 2](#step-2--supply-the-client-and-its-game-data) |
 
 > ⚖️ **Server game data vs. the retail client.** `server/data-dist/` is a small,
 > deliberately curated subset of records — no art, audio, or executable code —
 > needed for the server's own fight logic, and StarLoco (the maintainer) has
 > chosen to include it so the server runs with zero setup. The full retail
 > client is a different matter entirely: it is the complete playable game plus
-> a bundled Oracle/Sun JRE, and stays out of this repository — you supply your
-> own copy to actually play. See [`DISCLAIMER.md`](./DISCLAIMER.md) for the
-> exact split and [`SECURITY.md`](./SECURITY.md) for takedown requests.
+> a bundled Oracle/Sun JRE, and stays out of this **repository** (never
+> committed) — but StarLoco hosts a mirror players can get it from, linked from
+> the release notes, this README, and the web portal. See
+> [`DISCLAIMER.md`](./DISCLAIMER.md) for the exact split and
+> [`SECURITY.md`](./SECURITY.md) for takedown requests.
 >
 > Everything else committed here is source, documentation and small tooling
 > assets, so a plain `git clone` stays fast and **no Git LFS is required**.
@@ -118,8 +121,11 @@ The repo already includes the data the *server* needs
 finds it automatically and nothing below is required just to start the server.
 
 To actually **play**, though, you need your own copy of the **DofusArena 2.70**
-retail client — the game window itself. Put it at **`client/compiled/`**, so
-that `client/compiled/DofusArena.exe` and `client/compiled/game/core.jar` exist.
+retail client — the game window itself. Don't have it?
+**[Download a mirror here](https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4)**
+(not an official Ankama link — hosted by StarLoco; the running server's web
+portal offers the same link too). Put it at **`client/compiled/`**, so that
+`client/compiled/DofusArena.exe` and `client/compiled/game/core.jar` exist.
 
 If you'd rather the server use your own client's data instead of the bundled
 copy (e.g. after a client update), point it there with any of:

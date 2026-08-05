@@ -92,6 +92,11 @@ release:
     and run `arena-server`. It writes its own `config.yaml`, creates its
     database, and prints the address of a web page where players register.
 
+    **Need the DofusArena 2.70 client itself?**
+    [Download it here](https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4)
+    (mirrored by the maintainer, not an official Ankama link — the server's web
+    portal links to the same copy once you're running it).
+
     Verify a download against `checksums.txt`:
     `sha256sum -c checksums.txt` (Linux/macOS) or
     `Get-FileHash <file>` (Windows).

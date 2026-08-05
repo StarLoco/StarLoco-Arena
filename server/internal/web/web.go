@@ -102,6 +102,7 @@ type pageData struct {
 	GameAddress         string
 	PlayersOnline       int
 	RegistrationEnabled bool
+	ClientDownloadURL   string
 	MinLogin            int
 	MinPassword         int
 
@@ -130,6 +131,7 @@ func (s *Server) newPageData(r *http.Request) pageData {
 		GameAddress:         s.gameAddress(r),
 		PlayersOnline:       n,
 		RegistrationEnabled: s.cfg.RegistrationEnabled,
+		ClientDownloadURL:   s.cfg.ClientDownloadURL,
 		MinLogin:            s.cfg.MinLoginLength,
 		MinPassword:         s.cfg.MinPasswordLength,
 		FirstAccount:        first,

@@ -234,6 +234,31 @@ claiming this data is excluded when it no longer is. Verified with the real
 with zero flags — 907 cards / 203 spells / 47 arenas, no setup. Archives also renamed
 `dofusarena-server_*` → `arena-server_*` in the same change.
 
+**2026-08-05, later still — the retail client itself, by link, not by commit.**
+The maintainer supplied a personal Mega mirror of the full retail client and asked
+for it on the web portal, the README and the release notes. Unlike the data-dist
+call above, `client/compiled/` is **not** going into git — it is the actual
+copyrighted game (art, audio, the executable, ~436 MB), a materially bigger claim
+than the small server-record subset, and directly contradicted what `DISCLAIMER.md`
+said about it minutes earlier ("not distributed here at all"). Flagged that once
+before touching anything (bigger legal-exposure surface than data-dist, GitHub does
+act on repos that link piracy hosts, sometimes at the account level) and let the
+maintainer choose with that in view; the answer was to add it in all three places.
+Implemented as `web.client_download_url` (`internal/config`, default = the mirror
+link, blank hides it, overridable per-fork) rather than hardcoding the URL into the
+template — Mega links get taken down and need rotating, and a config field means
+that never needs a rebuild. Rendered as a new conditional panel on the portal
+(`internal/web`), templated into every future GoReleaser release footer, and added
+to the root README (top callout, the client/data comparison table, Step 2). Fixed
+a stale, now-provably-false line in `config.template.yaml` found while in there:
+the `data_dir` comment still claimed "not distributed... fights are unavailable",
+left over from before the data-dist bundling above. `DISCLAIMER.md` and `NOTICE`
+restructured from a two-way (committed / not-distributed-at-all) split into three:
+committed-in-git, linked-to-an-external-mirror-but-not-committed, and genuinely
+neither (now only `server/data/`, the local dev scratch copy). `AGENTS.md` gained
+a constraint (5) so a future pass does not "clean up" the link thinking it is an
+oversight, and pins the raw URL to four places on purpose, not scattered further.
+
 **Web portal** (`internal/web`) — single embedded page, no JS, no external assets.
 Players self-register; **the first account created becomes admin** (a release archive has
 no `seedaccount`, so there must be some path to a GM). Rate-limited per IP, same-origin

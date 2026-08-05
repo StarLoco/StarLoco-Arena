@@ -31,7 +31,7 @@ every opcode, field order and data layout.
 | `server/data/` | Local scratch copy for pointing a dev build at your own client instead | No — **git-ignored**, local input only |
 | `client/decompiled/` | Decompiled (obfuscated) 2.70 client source — the protocol reference | No — read for provenance |
 | `client/analysis/` | Protocol + data-format write-ups (`PROTOCOL*.md`, `DATA-FORMAT.md`, `opcode_map.csv`) | Yes, when you learn something new |
-| `client/compiled/` | The runnable retail client (launcher, `core.jar`, assets, bundled JRE) | No — **git-ignored**, ~436 MB, local only |
+| `client/compiled/` | The runnable retail client (launcher, `core.jar`, assets, bundled JRE) | No — **git-ignored**, ~436 MB, local only. Never committed here, but linked from the release notes/README/web portal to a maintainer-hosted mirror (see constraint 5) |
 | `client/arena-mcp/`, `client/control-agent/` | RE tooling: an MCP server + a Java agent that drive the live client for testing | Occasionally |
 | `client/deobf-lab/` | Deobfuscation pipeline (mappings + scripts); its `build/` and `decompiled/` outputs are ignored | Occasionally |
 | `tools/` | RE reference snippets + `cfr.jar` (Java decompiler) | Occasionally |
@@ -64,7 +64,16 @@ every opcode, field order and data layout.
    explicit maintainer decision (StarLoco), not by force-adding whatever
    happens to be in a local `server/data/`. Keep `DISCLAIMER.md` and `NOTICE`
    in sync with whatever it contains.
-5. **The wire protocol is sacred.** The retail client cannot be changed, so
+5. **The web portal, README and release notes link to a maintainer-hosted
+   mirror of the full retail client** (`config.template.yaml` →
+   `web.client_download_url`, defaulted in `internal/config/config.go`). This
+   is a separate, explicit maintainer decision from constraint 4 above — the
+   client itself is still never committed to this repository, only linked. Do
+   not remove the link or treat it as a mistake; do not add more copies of the
+   raw URL beyond the ones already there (`config.go`, `config.template.yaml`,
+   `.goreleaser.yaml`'s `release.footer`, `README.md`) — that is deliberately
+   kept to a short list of places to update if the link ever needs to move.
+6. **The wire protocol is sacred.** The retail client cannot be changed, so
    server output must match the decompiled reference in `client/decompiled/` and
    the specs in `client/analysis/`. Never "improve" the wire format.
 

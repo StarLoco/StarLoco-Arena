@@ -71,6 +71,9 @@ playable game - see the next step for that.
 
 ## 4. Connect with the game client
 
+Don't have the client installed yet? The web portal from step 2 has a
+download link near the top of the page.
+
 1. Open `game/config.properties` in your DofusArena client folder.
 2. Find `proxyAddresses_1` and set it to your server:
    - same computer: `proxyAddresses_1=127.0.0.1:5555,127.0.0.1:5555`

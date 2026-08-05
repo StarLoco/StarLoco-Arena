@@ -54,6 +54,7 @@
   }
   ol { margin:0; padding-left:1.2rem; }
   ol li { margin-bottom:.4rem; }
+  .panel a { color:var(--gold); }
   footer { text-align:center; color:var(--muted); font-size:.8rem; margin-top:2rem; }
   footer a { color:var(--muted); }
 </style>
@@ -112,6 +113,15 @@
     <h2>Registration closed</h2>
     <p>New accounts are not being accepted on this server right now. Ask the
        person running it to create one for you.</p>
+  </div>
+  {{end}}
+
+  {{if .ClientDownloadURL}}
+  <div class="panel">
+    <h2>Get the client</h2>
+    <p>You'll need the DofusArena 2.70 client installed to actually play.
+       <a href="{{.ClientDownloadURL}}" rel="noopener noreferrer" target="_blank">Download it here</a>
+       &mdash; mirrored by this server's operator, not an official Ankama link.</p>
   </div>
   {{end}}
 

@@ -19,7 +19,9 @@ The other directories are reference material:
 - `client/analysis/` — protocol and data-format write-ups derived from it.
 - `client/arena-mcp/`, `client/control-agent/`, `client/deobf-lab/` — RE tooling.
 - `client/compiled/` — the retail client. **Not committed** (git-ignored); you
-  supply it locally.
+  supply it locally. The release notes, README and web portal link to a
+  maintainer-hosted mirror as a convenience — a separate, deliberate decision
+  from what this repository commits (see `AGENTS.md` constraint 5).
 - `server/data/` — a git-ignored scratch copy of your own client's data, for
   local development.
 - `server/data-dist/` — the small, deliberately-curated data subset that *is*

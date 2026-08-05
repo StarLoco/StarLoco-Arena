@@ -50,6 +50,12 @@ web:
   # and the portal becomes read-only.
   registration_enabled: true
 
+  # A link shown on the portal for players who still need the DofusArena 2.70
+  # client itself - this server never bundles or commits that (see
+  # DISCLAIMER.md), only links to it. Point this at your own mirror, or leave
+  # it blank ("") to hide the link entirely.
+  client_download_url: "https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4"
+
   # The address players should type into their game client, shown on the portal
   # page. Leave empty to show the address the visitor is already using.
   # public_host: ""
@@ -65,20 +71,21 @@ web:
 
 # Where your DofusArena game data lives.
 #
-# The simplest answer is the folder that holds DofusArena.exe - the server
-# understands the client's own layout and finds the cards, spells and arenas
-# inside it. Its game and game/contents folders work too, as does a folder you
-# have copied data.bdat, indexes.bdat and maps/ into.
+# A small set of this data (cards, spells, arenas - no art, audio, or code)
+# ships bundled with the server, so fights already work with no change here.
+#
+# Only set this if you want to use your own client's data instead - e.g. after
+# a client update changes card numbers. The simplest answer is the folder that
+# holds DofusArena.exe - the server understands the client's own layout and
+# finds the cards, spells and arenas inside it. Its game and game/contents
+# folders work too, as does a folder you have copied data.bdat, indexes.bdat
+# and maps/ into.
 #
 #   data_dir: "C:/Program Files (x86)/Ankama/DofusArena"
 #
-# Leave it as "data" to use a data folder next to the server. If nothing is
-# there, the server also checks the usual DofusArena install locations, so this
-# often needs no change at all. Relative paths are resolved from wherever the
+# Leave it as "data" to use the bundled copy (or a data folder you place next
+# to the server yourself). Relative paths are resolved from wherever the
 # server is started.
-#
-# The game data is Ankama's and is not distributed with this server. Without
-# it the server still runs, but fights are unavailable.
 data_dir: "data"
 
 

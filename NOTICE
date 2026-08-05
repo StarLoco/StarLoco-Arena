@@ -22,8 +22,13 @@ Copyrighted game material — © Ankama Games
     executable code) — ships in git and in every release ... server/data-dist/
                                                               (data.bdat, indexes.bdat, maps/)
 
-  NOT DISTRIBUTED HERE (git-ignored; supplied locally by the user):
+  NOT COMMITTED HERE, BUT LINKED TO AN EXTERNAL MIRROR (git-ignored; the
+  repository, git clone and release archives do not contain it — the
+  maintainer separately hosts and links a personal copy from the GitHub
+  release notes, README.md and the web portal, see DISCLAIMER.md):
   - DofusArena 2.70 retail client and launcher ........... client/compiled/
+
+  NOT DISTRIBUTED OR LINKED ANYWHERE BY THIS PROJECT (git-ignored):
   - A local scratch copy of your own client's data ....... server/data/
 
   "DofusArena", "Dofus", and all related assets are trademarks and/or
