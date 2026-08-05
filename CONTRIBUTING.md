@@ -60,14 +60,61 @@ No Git LFS is needed — a plain `git clone` gets everything that is tracked.
 - **Line endings:** this repo does not force normalization; preserve existing
   line endings and avoid whole-file reformatting that creates CRLF churn.
 
+## Commit messages
+
+Releases are automated, and the version number and changelog are derived from
+commit messages, so this project uses
+[Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<optional scope>): <description>
+```
+
+| Type | Use it for | Effect on the next release |
+|---|---|---|
+| `feat` | a new capability | bumps the **minor** version, listed under *Features* |
+| `fix` | a bug fix | bumps the **patch** version, listed under *Bug fixes* |
+| `perf` | a performance improvement | patch bump |
+| `docs` | documentation only | no version bump |
+| `refactor`, `test`, `build`, `ci`, `chore` | internal work | no version bump, hidden from the changelog |
+
+Examples:
+
+```
+feat(web): let players register their own accounts
+fix(fight): stop the turn clock leaking after a forfeit
+docs: explain the update check in the quick start
+```
+
+A breaking change adds a `!` after the type (`feat!: ...`) or a
+`BREAKING CHANGE:` footer. While the project is pre-1.0 that bumps the minor
+version, not the major one.
+
+If a commit doesn't follow this format nothing breaks — it simply won't appear
+in the changelog.
+
 ## Pull requests
 
 1. Keep PRs small and single-purpose.
 2. Ensure `go build ./...`, `go vet ./...`, and `go test ./...` pass from
-   `server/`.
-3. Describe what changed and why; reference any opcode/design doc you touched.
-4. By contributing, you agree that your contributions are your own original work
+   `server/`. CI runs these on Linux and Windows for every PR.
+3. Run `gofmt -w` on files you touched (CI enforces it).
+4. Describe what changed and why; reference any opcode/design doc you touched.
+5. By contributing, you agree that your contributions are your own original work
    and are licensed under the project's [MIT License](./LICENSE).
+
+## How a release happens
+
+Nobody tags by hand:
+
+1. Commits land on `v2.70`.
+2. **release-please** keeps a *"chore: release x.y.z"* pull request open,
+   containing the version bump and the generated `CHANGELOG.md`.
+3. Merging that PR creates the git tag and the GitHub release.
+4. **GoReleaser** then builds Windows/Linux/macOS binaries and attaches them,
+   with a `checksums.txt`.
+
+To cut a release, merge the release PR. To hold one back, leave it open.
 
 ## Reporting bugs & security issues
 

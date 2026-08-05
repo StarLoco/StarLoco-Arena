@@ -13,6 +13,35 @@ protocol analysis used as the reference.
 
 ---
 
+## 🎮 Just want to play? Download the server
+
+You don't need Go, Git, or a build step. Grab a ready-to-run server:
+
+### **[⬇ Download the latest release](https://github.com/StarLoco/StarLoco-Arena/releases/latest)**
+
+Available for **Windows**, **Linux** and **macOS** (Intel & Apple Silicon).
+
+1. Unzip it and run **`arena-server`**.
+2. It writes its own `config.yaml`, creates its database, and prints a **web
+   portal** address.
+3. Open that address in a browser and **register an account** — the first
+   account created becomes the server administrator.
+4. Point your game client at the server and log in.
+
+Full walkthrough: [`docs/QUICKSTART.md`](./docs/QUICKSTART.md) (it is also
+included inside every download).
+
+> You still need your own copy of the retail **DofusArena 2.70 client** and its
+> game data — those are Ankama's and are not distributed here. See
+> [Step 2](#step-2--supply-the-client-and-its-game-data).
+
+The server tells you at startup when a newer version is available. That check is
+a single anonymous request to GitHub's public releases page — nothing about your
+server or your players is sent, and nothing is installed automatically. Turn it
+off with `update_check: enabled: false` in `config.yaml`.
+
+---
+
 ## What's in this branch
 
 | Piece | What it is | Included here? |
@@ -33,7 +62,10 @@ The **server** is the actively developed part.
 
 ---
 
-## 🚀 Getting started
+## 🚀 Getting started (building from source)
+
+> Only needed if you want to modify the server or run unreleased code. To just
+> play, [download a release](#-just-want-to-play-download-the-server) instead.
 
 ### Step 0 — Install Go
 
@@ -102,28 +134,44 @@ Both paths are git-ignored, so they will never be committed by accident.
 Open a terminal **in the `server` folder** and run:
 
 ```
-go run ./cmd/server --config configs/config.sqlite.yaml
+go run ./cmd/server
 ```
 
 The first time, Go downloads dependencies and this may take a minute. When it's
-ready you'll see log lines and the program **keeps running** — that's normal. It
-is now listening for the game client on **port 5555**, and creates a small
-database file (`arena.db`) in the `server` folder.
+ready the program **keeps running** — that's normal — and prints:
+
+```
+  DofusArena 2.70 server dev
+
+  Game server   0.0.0.0:5555
+  Web portal    http://localhost:8080
+
+  Settings written to config.yaml - edit it and restart to change anything.
+  Press Ctrl+C to stop.
+```
+
+On that first run it creates, in the `server` folder:
+
+- **`config.yaml`** — every setting, documented inline. Edit and restart.
+- **`arena.db`** — the SQLite database (accounts, coaches, teams).
 
 > **Leave this terminal window open** the whole time you want to play. To stop
 > the server later, click the window and press `Ctrl + C`.
 
+The bundled `configs/config.*.yaml` files remain as examples for PostgreSQL and
+MySQL; pass one with `--config configs/config.postgres.yaml`.
+
 ### Step 4 — Create an account
 
-Accounts aren't created from inside the game, so make one first. Open a
-**second** terminal in the `server` folder:
+Open the **web portal** address the server printed and fill in the form. The
+**first account created becomes the administrator**.
+
+Prefer the command line, or scripting a lot of accounts? The seed tool still
+works — open a **second** terminal in the `server` folder:
 
 ```
-go run ./cmd/seedaccount --config configs/config.sqlite.yaml --login test --password test123
+go run ./cmd/seedaccount --login test --password test123 --admin
 ```
-
-That creates an account with login `test` and password `test123`. Add `--admin`
-to grant admin rights.
 
 ### Step 5 — Play
 
@@ -153,8 +201,9 @@ server's IP, e.g. `192.168.1.20:5555,192.168.1.20:5555`.
 | Problem | Fix |
 |---|---|
 | `go` / `git` **is not recognized** (Windows) or **command not found** (macOS) | The tool isn't installed or isn't on your `PATH`. Reopen the terminal after installing. |
-| Server logs **"game data not loaded"** | `server/data/` is missing or incomplete — see [Step 2](#step-2--supply-the-client-and-its-game-data). It must contain `data.bdat` and `indexes.bdat`. |
-| **"port already in use"** / address `5555` in use | Another copy of the server is still running. Close the other terminal (`Ctrl + C`), or change `addr` in `server/configs/config.sqlite.yaml`. |
+| Server says **"No game data ... fights are unavailable"** | `server/data/` is missing or incomplete — see [Step 2](#step-2--supply-the-client-and-its-game-data). It must contain `data.bdat` and `indexes.bdat`. |
+| **"another program is already using that port"** | Another copy of the server is still running. Close the other terminal (`Ctrl + C`), or change `addr` in `config.yaml`. |
+| The **web portal** doesn't open | Read the address the server printed — port 80 usually needs admin rights, so it falls back to another port automatically. Set `web.addr` in `config.yaml` to pin one, or `web.enabled: false` to turn it off. |
 | The client **can't connect** | Make sure the Step 3 terminal is still running. On first launch your firewall may ask for permission — **allow** it. |
 | `go test -race` **fails to build** | The race detector needs a C compiler. It's optional — plain `go test ./...` works without one. |
 | Something else | Ask on **[Discord](https://discord.com/invite/k3Yk9DuhgY)** — we're happy to help. |
@@ -165,10 +214,12 @@ server's IP, e.g. `192.168.1.20:5555,192.168.1.20:5555`.
 
 ```
 StarLoco-Arena/  (branch v2.70)
+├── .github/workflows/      CI (build/test) and Release (release-please + GoReleaser)
+├── .goreleaser.yaml        How the downloadable binaries are built and packaged
 ├── server/                 The Go 1.26 server — the primary active project
 │   │                       (module github.com/StarLoco/arena-2.70)
 │   ├── cmd/                Entry points: server, seedaccount, studio (editor), loadtest
-│   ├── internal/           Implementation (protocol, gamedata, handshake, game, net, store…)
+│   ├── internal/           Implementation (protocol, gamedata, web portal, game, store…)
 │   ├── configs/            Example YAML configs (sqlite / postgres / mysql)
 │   ├── deploy/             Docker Compose files, one per database
 │   ├── test/e2e/           End-to-end tests driving a real server over a real socket

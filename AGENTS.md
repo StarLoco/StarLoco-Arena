@@ -34,7 +34,9 @@ every opcode, field order and data layout.
 | `client/arena-mcp/`, `client/control-agent/` | RE tooling: an MCP server + a Java agent that drive the live client for testing | Occasionally |
 | `client/deobf-lab/` | Deobfuscation pipeline (mappings + scripts); its `build/` and `decompiled/` outputs are ignored | Occasionally |
 | `tools/` | RE reference snippets + `cfr.jar` (Java decompiler) | Occasionally |
-| `docs/` | Game wiki (rules, breeds, spells, mechanics) + in-client console commands | Occasionally |
+| `docs/` | Game wiki (rules, breeds, spells, mechanics), console commands, `QUICKSTART.md` (ships inside releases) | Occasionally |
+| `.github/workflows/` | `ci.yml` (build/test on Linux+Windows), `release.yml` (release-please → GoReleaser) | Occasionally |
+| `.goreleaser.yaml` | How the downloadable binaries are cross-compiled and packaged | Occasionally |
 
 ## Critical constraints — do not break these
 
@@ -71,12 +73,37 @@ go run ./cmd/server --config configs/config.sqlite.yaml
 go run ./cmd/seedaccount --login test --password test123
 ```
 
-- First run creates `arena.db` (SQLite, WAL) in `server/` — git-ignored.
+- First run creates `config.yaml` (from the embedded, fully commented
+  `internal/config/config.template.yaml`) and `arena.db` (SQLite, WAL) in
+  `server/` — both git-ignored.
 - The retail client already ships pointed at `127.0.0.1:5555`
   (`client/compiled/game/config.properties` → `proxyAddresses_1`), so it
   connects with no change.
 - End-to-end tests live in `server/test/e2e/` and drive a real server over a
   real socket.
+
+## Releases
+
+Fully automated; **do not tag by hand**. Conventional-Commit messages on `v2.70`
+drive `release-please`, which maintains a release PR; merging it tags, creates
+the GitHub release, and triggers GoReleaser to attach the binaries. See
+["How a release happens"](./CONTRIBUTING.md#how-a-release-happens).
+
+```powershell
+goreleaser check                              # validate .goreleaser.yaml
+goreleaser release --snapshot --clean         # build all targets locally, publish nothing
+```
+
+Two constraints worth knowing before editing the workflows:
+
+1. **GoReleaser must stay in the same workflow run as release-please.** Tags
+   pushed with the built-in `GITHUB_TOKEN` do not trigger new workflow runs, so
+   a separate `on: push: tags` build would never fire and releases would ship
+   with no binaries.
+2. **`cmd/studio` is excluded from Linux CI and from releases.** It is a Wails
+   desktop app needing CGO + GTK/WebKit headers; the shipped server is built
+   with `CGO_ENABLED=0` so one Linux runner cross-compiles every target.
+   Windows CI still builds and tests it.
 
 ## Testing against the live client
 

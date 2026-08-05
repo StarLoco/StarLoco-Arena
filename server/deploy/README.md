@@ -52,13 +52,26 @@ YAML config (`configs/config.*.yaml`). Env vars override the file.
 
 | Var | Meaning |
 |---|---|
-| `ARENA_ADDR` | listen address (e.g. `0.0.0.0:5555`) |
+| `ARENA_ADDR` | game listen address (e.g. `0.0.0.0:5555`) |
 | `ARENA_DATA_DIR` | game-data dir (mounted at `/data`) |
 | `ARENA_LOG_LEVEL` | debug / info / warn / error |
+| `ARENA_WEB_ENABLED` | serve the account-registration portal (`true`/`false`) |
+| `ARENA_WEB_ADDR` | portal listen address (image default `0.0.0.0:8080`) |
+| `ARENA_WEB_REGISTRATION_ENABLED` | allow visitors to sign themselves up |
+| `ARENA_WEB_PUBLIC_HOST` | hostname shown to players as the game address |
+| `ARENA_UPDATE_CHECK_ENABLED` | startup "newer release available" notice |
 | `ARENA_DB_DRIVER` | sqlite / postgres / mysql |
 | `ARENA_DB_DSN` | connection string / file path |
 | `ARENA_DB_MAX_OPEN_CONNS` | pool size (server DBs) |
 | `ARENA_DB_MAX_IDLE_CONNS` | idle pool size |
+
+## Accounts
+
+Players register themselves on the web portal (port `8080` above). **The first
+account created becomes the administrator**, so open it and register before
+exposing the server to anyone else.
+
+The `seedaccount` tool below remains available for scripted setup.
 
 ## Notes on scaling
 

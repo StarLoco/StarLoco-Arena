@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| DIST | Shipping pipeline: automated releases, self-writing config, web sign-up, update notice (§10) |
 | B-073 | Challenges 39/39: inline unlength-prefixed effects now parsed exactly |
 | B-072 | Turn clock + sudden-death turn now per-fight, from data (were hardcoded globals) |
 | B-071 | Decoded `np_1`: coach cards 26/26 (zero residual x907), challenges 36/39 |
@@ -166,3 +167,54 @@ distribution** across all records. A mis-assigned field shows up instantly as an
 implausible histogram (spell cooldown: 97/203 on field 10 vs 6 on field 8). Finish with a
 real-data canary test asserting the population size, so a future field-order slip fails
 loudly instead of silently zeroing a mechanic.
+
+## 10. Distribution — the server as a product
+
+Added 2026-08-05. The server is now something a non-technical person downloads and runs;
+it no longer assumes a Go toolchain or a terminal-literate operator.
+
+**Release pipeline** (`.github/workflows/`, `.goreleaser.yaml`)
+
+- `ci.yml` — build/vet/test on Linux **and** Windows for every push/PR, plus `gofmt`, a
+  `go mod tidy` check, and a cross-compile of `cmd/server` for all five release targets so
+  a portability break is caught on the commit that causes it, not at release time.
+- `release.yml` — `release-please` maintains a release PR from Conventional Commits;
+  merging it tags + creates the GitHub release, then **GoReleaser** attaches
+  Windows/Linux/macOS archives (amd64 + arm64, except Windows) and `checksums.txt`.
+- **Do not split GoReleaser into its own `on: push: tags` workflow.** Tags pushed with the
+  built-in `GITHUB_TOKEN` do not trigger workflow runs, so it would never fire and every
+  release would ship empty. It must stay a dependent job in the same run.
+- `cmd/studio` is excluded from releases and from Linux CI (Wails needs CGO + GTK/WebKit);
+  the shipped binary is `CGO_ENABLED=0`, which is why one Linux runner can build everything.
+
+**First-run behaviour** (`internal/config`)
+
+- `config.template.yaml` is embedded and written to `config.yaml` on first start —
+  every setting documented inline, unused ones commented out. This file is the only
+  documentation most operators will read.
+- `config_template_test.go` reflects over `Config` and **fails if a field has no key in the
+  template**. Add a config field ⇒ document it, or CI breaks. Deliberate.
+- Template and console output are **ASCII-only**: em-dashes rendered as mojibake in the
+  Windows console (cp850). Keep it that way.
+- Defaults changed for end users: `addr` `127.0.0.1` → **`0.0.0.0`** (friends can connect),
+  `log_level` `debug` → **`info`** (quiet console).
+
+**Web portal** (`internal/web`) — single embedded page, no JS, no external assets.
+Players self-register; **the first account created becomes admin** (a release archive has
+no `seedaccount`, so there must be some path to a GM). Rate-limited per IP, same-origin
+checked, bcrypt via the existing store. Port ladder: 80 → 8080 → 8090 → 3000 → 5000 → any
+free port, so it always starts even unprivileged.
+
+**Update check** (`internal/update`) — one anonymous GET of GitHub's `/releases/latest` at
+startup; prints a notice if newer. Never downloads or installs. Silent on every failure
+(offline servers must not be nagged). Skipped entirely on unstamped `dev` builds.
+
+Open follow-ups, none blocking:
+
+1. **Windows SmartScreen** warns on the unsigned `.exe`. Real fix is a code-signing
+   certificate (paid) or [SignPath](https://signpath.org/) (free for OSS). Documented as a
+   click-through in `docs/QUICKSTART.md` for now.
+2. **No Docker image is published** on release. The `Dockerfile` still builds locally; only
+   the binaries are automated.
+3. **First release must be cut manually-ish**: `.release-please-manifest.json` starts at
+   `0.0.0`, so the first `feat:` commit produces `v0.1.0`.
