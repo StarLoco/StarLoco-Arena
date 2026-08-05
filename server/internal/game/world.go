@@ -88,6 +88,13 @@ func (r *Registry) GetByName(name string) *Online {
 	return nil
 }
 
+// Len reports how many coaches are currently online.
+func (r *Registry) Len() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.byID)
+}
+
 // IsOnline reports whether a coach id is currently online.
 func (r *Registry) IsOnline(id uint) bool {
 	r.mu.RLock()

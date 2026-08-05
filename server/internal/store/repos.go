@@ -36,6 +36,16 @@ func (r *AccountRepo) FindByName(name string) (*domain.Account, error) {
 	return &acc, nil
 }
 
+// Count returns the number of accounts on the server. Used to detect a brand
+// new install, where the first account registered becomes the owner.
+func (r *AccountRepo) Count() (int64, error) {
+	var n int64
+	if err := r.db.Model(&domain.Account{}).Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // CreateAccount creates an account with a bcrypt-hashed password.
 func (r *AccountRepo) CreateAccount(name, password string, admin bool) (*domain.Account, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

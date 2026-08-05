@@ -1,34 +1,65 @@
 // Command server runs the DofusArena 2.70 game server.
+//
+// Run it with no arguments and it does the right thing: on first start it
+// writes a documented config.yaml next to itself, creates its database, serves
+// a small web portal where players register their own accounts, and prints the
+// two addresses that matter.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/config"
 	"github.com/StarLoco/arena-2.70/internal/game"
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/store"
+	"github.com/StarLoco/arena-2.70/internal/update"
+	"github.com/StarLoco/arena-2.70/internal/version"
+	"github.com/StarLoco/arena-2.70/internal/web"
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "path to YAML config file (optional)")
+	configPath := flag.String("config", "config.yaml", "path to the YAML config file")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		slog.Error("config", "err", err)
+	if *showVersion {
+		fmt.Println(version.String())
+		return
+	}
+
+	if err := run(*configPath); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
+	}
+}
+
+func run(configPath string) error {
+	// First run: leave the operator a documented file to edit. Never fatal -
+	// a read-only directory should not stop the server from working.
+	createdConfig, cfgErr := config.EnsureFile(configPath)
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLevel(cfg.LogLevel),
 	}))
+	if cfgErr != nil {
+		log.Warn("could not write the default config file", "err", cfgErr)
+	}
 
 	st, err := store.OpenConfig(store.Config{
 		Driver:       cfg.DB.Driver,
@@ -37,38 +68,185 @@ func main() {
 		MaxIdleConns: cfg.DB.MaxIdleConns,
 	})
 	if err != nil {
-		log.Error("open store", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("open database: %w", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	if err := st.ResetConnectedFlags(); err != nil {
 		log.Warn("reset connected flags", "err", err)
 	}
 
-	// Load static game data (cards/spells/fighter-cards). Optional: the server
-	// still runs without it, just with no templates.
-	var cards *gamedata.Cards
-	var spells *gamedata.Spells
-	var fighterCards *gamedata.FighterCards
-	var summonings *gamedata.Summonings
-	var staticEffects *gamedata.StaticEffects
-	var challengeDefs *gamedata.Challenges
-	var events *gamedata.Events
-	var cardSets *gamedata.CardSets
-	var conditions *gamedata.Conditions
-	// Fight arenas come from the client's own map files rather than the bdat store,
-	// so they load independently: a server without them still runs, falling back to
-	// the built-in world 5.
+	deps := buildDeps(cfg, st, log)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	srv := game.NewServer(cfg.Addr, deps)
+
+	// Bind both ports BEFORE announcing anything, so a port clash is reported
+	// as a plain problem with a fix, rather than after a banner claiming the
+	// server is up.
+	gameLn, err := srv.Listen(ctx)
+	if err != nil {
+		return portInUse(cfg.Addr, err)
+	}
+	defer func() { _ = gameLn.Close() }()
+
+	var webLn net.Listener
+	if cfg.Web.Enabled {
+		var webErr error
+		webLn, webErr = web.Listen(cfg.Web.Addr)
+		if webErr != nil {
+			log.Warn("web portal disabled: no port available", "err", webErr)
+		} else if want := requestedPort(cfg.Web.Addr); want > 0 && want != web.Port(webLn) {
+			log.Warn("web portal port was busy, using another one",
+				"requested", want, "using", web.Port(webLn))
+		}
+	}
+
+	srv.StartDebugInject(cfg.DebugAddr) // no-op unless debug_addr is set
+
+	banner(cfg, gameLn, webLn, createdConfig, configPath, deps)
+
+	if webLn != nil {
+		portal := web.New(st, cfg.Web, cfg.Addr, func() int { return deps.World.Len() }, log)
+		go func() {
+			if err := portal.Serve(ctx, webLn); err != nil {
+				log.Error("web portal stopped", "err", err)
+			}
+		}()
+	}
+
+	if cfg.UpdateCheck.Enabled {
+		go checkForUpdate(ctx, cfg, log)
+	}
+
+	if err := srv.Serve(ctx, gameLn); err != nil {
+		return fmt.Errorf("game server stopped: %w", err)
+	}
+	fmt.Println("Server stopped.")
+	return nil
+}
+
+// portInUse turns a bind failure into something an operator can act on. "Port
+// already in use" is the single most common startup problem, so it is worth
+// spelling out the two ways to fix it.
+func portInUse(addr string, err error) error {
+	if errors.Is(err, syscall.EADDRINUSE) || strings.Contains(err.Error(), "address already in use") ||
+		strings.Contains(strings.ToLower(err.Error()), "only one usage of each socket address") {
+		return fmt.Errorf(
+			"cannot start the game server on %s - another program is already using that port.\n"+
+				"       Either stop it (a server you left running?), or change `addr` in your config file.",
+			addr)
+	}
+	return fmt.Errorf("cannot listen on %s: %w", addr, err)
+}
+
+// banner is the whole of the server's normal startup output. Everything an
+// operator needs, nothing they don't.
+func banner(cfg config.Config, gameLn, webLn net.Listener, createdConfig bool, configPath string, deps *game.Deps) {
+	fmt.Println()
+	fmt.Printf("  DofusArena 2.70 server %s\n", version.Short())
+	fmt.Println()
+	fmt.Printf("  Game server   %s\n", gameLn.Addr().String())
+	if webLn != nil {
+		fmt.Printf("  Web portal    %s\n", web.URL(webLn))
+	} else if cfg.Web.Enabled {
+		fmt.Println("  Web portal    unavailable (see the warning above)")
+	} else {
+		fmt.Println("  Web portal    disabled in config.yaml")
+	}
+	fmt.Println()
+
+	if createdConfig {
+		fmt.Printf("  Settings written to %s - edit it and restart to change anything.\n", configPath)
+	}
+	if deps.Cards == nil {
+		fmt.Printf("  No game data in %q, so fights are unavailable.\n", cfg.DataDir)
+		fmt.Println("  Copy the client's contents/bdata folder there to enable them.")
+	} else {
+		fmt.Printf("  Game data     %d cards, %d spells, %d arenas\n",
+			cardsLen(deps.Cards), spellsLen(deps.Spells), arenaCount(deps))
+	}
+	if webLn != nil && cfg.Web.RegistrationEnabled {
+		fmt.Println("  Players create their accounts on the web portal, then log in with the game client.")
+	}
+	fmt.Println("  Press Ctrl+C to stop.")
+	fmt.Println()
+}
+
+// checkForUpdate tells the operator when a newer release exists. Every failure
+// is deliberately quiet: an offline server must not be nagged, and a GitHub
+// outage is not the operator's problem.
+func checkForUpdate(ctx context.Context, cfg config.Config, log *slog.Logger) {
+	timeout := time.Duration(cfg.UpdateCheck.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = update.DefaultTimeout
+	}
+	res, err := update.Check(ctx, timeout)
+	switch {
+	case errors.Is(err, update.ErrDevBuild), errors.Is(err, update.ErrNoRelease):
+		return // nothing meaningful to compare against
+	case err != nil:
+		log.Debug("update check failed", "err", err)
+		return
+	case !res.Available:
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("  A new version is available: %s (you have %s)\n", res.Latest, res.Current)
+	if res.Major {
+		fmt.Println("  This is a major update - read the release notes before upgrading.")
+	}
+	fmt.Printf("  Download: %s\n", res.URL)
+	fmt.Println("  (Turn this check off with update_check.enabled: false in config.yaml)")
+	fmt.Println()
+}
+
+// requestedPort reports the port an operator explicitly asked for, or 0 when
+// they left it on automatic.
+func requestedPort(addr string) int {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return 0
+	}
+	n, err := net.LookupPort("tcp", port)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// buildDeps loads the static game data and assembles the server dependencies.
+// Missing or unreadable data is survivable: the server starts, and only real
+// fights are unavailable.
+func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) *game.Deps {
+	var (
+		cards         *gamedata.Cards
+		spells        *gamedata.Spells
+		fighterCards  *gamedata.FighterCards
+		summonings    *gamedata.Summonings
+		staticEffects *gamedata.StaticEffects
+		challengeDefs *gamedata.Challenges
+		events        *gamedata.Events
+		cardSets      *gamedata.CardSets
+		conditions    *gamedata.Conditions
+	)
+
+	// Fight arenas come from the client's own map files rather than the bdat
+	// store, so they load independently: a server without them still runs,
+	// falling back to the built-in world 5.
 	fightMaps, err := gamedata.LoadFightMaps(cfg.DataDir)
 	if err != nil {
-		log.Warn("fight maps not loaded; falling back to the built-in arena",
+		log.Debug("fight maps not loaded; falling back to the built-in arena",
 			"dir", cfg.DataDir, "err", err)
 	} else {
-		log.Info("fight maps loaded", "arenas", fightMaps.Len(),
+		log.Debug("fight maps loaded", "arenas", fightMaps.Len(),
 			"skipped", fightMaps.Skipped(), "unreachableSpecials", fightMaps.UnreachableSpecials())
 	}
+
 	if gdStore, err := gamedata.Open(cfg.DataDir); err != nil {
-		log.Warn("game data not loaded", "dir", cfg.DataDir, "err", err)
+		log.Debug("game data not loaded", "dir", cfg.DataDir, "err", err)
 	} else {
 		if cards, err = gdStore.LoadCards(); err != nil {
 			log.Warn("card load failed", "err", err)
@@ -97,18 +275,14 @@ func main() {
 		if conditions, err = gdStore.LoadConditions(); err != nil {
 			log.Warn("fighter-condition load failed", "err", err)
 		}
-		log.Info("game data loaded", "cards", cardsLen(cards), "spells", spellsLen(spells),
+		log.Debug("game data loaded", "cards", cardsLen(cards), "spells", spellsLen(spells),
 			"fighterCards", fighterCardsLen(fighterCards), "summonings", summoningsLen(summonings),
 			"staticEffects", staticEffectsLen(staticEffects), "challenges", challengeDefs.Len(),
 			"eventCards", events.Len(), "cardSets", cardSets.Len(),
 			"conditions", conditions.Len())
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(),
-		syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	deps := &game.Deps{
+	return &game.Deps{
 		Store:         st,
 		World:         game.NewRegistry(cfg.World.AoIRadius),
 		Cards:         cards,
@@ -129,16 +303,6 @@ func main() {
 		Tournaments:   game.NewTournamentManager(),
 		Log:           log,
 	}
-	srv := game.NewServer(cfg.Addr, deps)
-	// Dev-only live packet-inject endpoint (no-op unless debug_addr is set).
-	srv.StartDebugInject(cfg.DebugAddr)
-	log.Info("DofusArena 2.70 server starting", "addr", cfg.Addr, "db", cfg.DB.Driver)
-
-	if err := srv.ListenAndServe(ctx); err != nil {
-		log.Error("server stopped", "err", err)
-		os.Exit(1)
-	}
-	log.Info("server stopped cleanly")
 }
 
 func parseLevel(s string) slog.Level {
@@ -152,6 +316,13 @@ func parseLevel(s string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func arenaCount(deps *game.Deps) int {
+	if deps.FightMaps == nil {
+		return 0
+	}
+	return deps.FightMaps.Len()
 }
 
 func cardsLen(c *gamedata.Cards) int {

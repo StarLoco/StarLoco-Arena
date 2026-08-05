@@ -36,8 +36,14 @@ Thumbs.db
 /server/cmd/studio/studio-config.json
 
 # ============================================================================
+#  Release artifacts (GoReleaser writes to /dist at the repo root)
+# ============================================================================
+/dist/
+
+# ============================================================================
 #  Local databases (dev SQLite) / logs / secrets
 # ============================================================================
+/server/config.yaml
 /server/*.db
 /server/*.db-shm
 /server/*.db-wal

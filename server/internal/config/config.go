@@ -1,19 +1,32 @@
 // Package config loads server configuration from a YAML file with environment
 // variable overrides (12-factor friendly for containerized deployments).
+//
+// On first run the server writes a fully commented config file (see
+// EnsureFile), so an operator who downloaded a release binary has a documented
+// starting point without reading any docs.
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+// Template is the annotated config file written on first run. It documents
+// every setting; keep it in sync with Config (config_template_test.go fails if
+// a field is added here without a matching key in the template).
+//
+//go:embed config.template.yaml
+var Template string
+
 // Config is the full server configuration.
 type Config struct {
-	// Addr is the TCP listen address (retail client defaults to 127.0.0.1:5555).
+	// Addr is the TCP listen address for the game client (default 0.0.0.0:5555).
 	Addr string `yaml:"addr"`
 	// DataDir holds the client game data (data.bdat + indexes.bdat).
 	DataDir string `yaml:"data_dir"`
@@ -23,8 +36,40 @@ type Config struct {
 	// live packet injection (see internal/game/debug.go). Leave empty in prod.
 	DebugAddr string `yaml:"debug_addr"`
 
-	DB    DBConfig    `yaml:"db"`
-	World WorldConfig `yaml:"world"`
+	Web         WebConfig         `yaml:"web"`
+	UpdateCheck UpdateCheckConfig `yaml:"update_check"`
+	DB          DBConfig          `yaml:"db"`
+	World       WorldConfig       `yaml:"world"`
+}
+
+// WebConfig configures the browser-facing portal where players register their
+// own accounts.
+type WebConfig struct {
+	// Enabled serves the portal at all.
+	Enabled bool `yaml:"enabled"`
+	// Addr is the portal listen address. A port of 0 means "pick one": the
+	// portal tries 80 first, then a short ladder of common alternatives, then
+	// any free port (see internal/web.Listen).
+	Addr string `yaml:"addr"`
+	// RegistrationEnabled allows visitors to create accounts themselves.
+	RegistrationEnabled bool `yaml:"registration_enabled"`
+	// PublicHost overrides the host shown to players as the game-server address
+	// (e.g. "arena.example.com"). Empty = use the host the visitor requested.
+	PublicHost string `yaml:"public_host"`
+	// MinLoginLength / MinPasswordLength gate new sign-ups.
+	MinLoginLength    int `yaml:"min_login_length"`
+	MinPasswordLength int `yaml:"min_password_length"`
+}
+
+// UpdateCheckConfig configures the startup "a newer release exists" notice.
+type UpdateCheckConfig struct {
+	// Enabled performs one HTTPS GET against the public GitHub releases API at
+	// startup. Nothing is downloaded or installed, and no data about this
+	// server is transmitted.
+	Enabled bool `yaml:"enabled"`
+	// TimeoutSeconds bounds that request. The check is asynchronous and never
+	// delays startup.
+	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
 // WorldConfig tunes overworld behavior.
@@ -48,12 +93,24 @@ type DBConfig struct {
 	MaxIdleConns int `yaml:"max_idle_conns"`
 }
 
-// Default returns a config suitable for local development (SQLite).
+// Default returns the configuration a fresh install runs with. It must stay in
+// agreement with the values documented in config.template.yaml.
 func Default() Config {
 	return Config{
-		Addr:     "127.0.0.1:5555",
-		DataDir:  `data`,
-		LogLevel: "debug",
+		Addr:     "0.0.0.0:5555",
+		DataDir:  "data",
+		LogLevel: "info",
+		Web: WebConfig{
+			Enabled:             true,
+			Addr:                "0.0.0.0:0", // 0 = auto-select, see internal/web
+			RegistrationEnabled: true,
+			MinLoginLength:      3,
+			MinPasswordLength:   6,
+		},
+		UpdateCheck: UpdateCheckConfig{
+			Enabled:        true,
+			TimeoutSeconds: 5,
+		},
 		DB: DBConfig{
 			Driver:       "sqlite",
 			DSN:          "arena.db",
@@ -64,6 +121,42 @@ func Default() Config {
 			AoIRadius: 75, // cells; overworld events reach only nearby coaches
 		},
 	}
+}
+
+// EnsureFile writes the commented default config to path when no file is there
+// yet, and reports whether it created one. A path pointing at an existing file
+// is left untouched — the operator's edits are never overwritten.
+//
+// Failing to write is not fatal to the caller: the server runs fine on
+// defaults, it just cannot offer the file to edit.
+func EnsureFile(path string) (created bool, err error) {
+	if path == "" {
+		return false, nil
+	}
+	if _, err := os.Stat(path); err == nil {
+		return false, nil // already there
+	} else if !os.IsNotExist(err) {
+		return false, fmt.Errorf("config: stat %q: %w", path, err)
+	}
+
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return false, fmt.Errorf("config: create %q: %w", dir, err)
+		}
+	}
+	// O_EXCL so two servers starting at once cannot clobber each other.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return false, nil // lost the race; the other file is just as good
+		}
+		return false, fmt.Errorf("config: write %q: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(Template); err != nil {
+		return false, fmt.Errorf("config: write %q: %w", path, err)
+	}
+	return true, nil
 }
 
 // Load reads a YAML config file (if path is non-empty and exists), starting
@@ -101,27 +194,60 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("ARENA_DEBUG_ADDR"); v != "" {
 		c.DebugAddr = v
 	}
+	if v, ok := envBool("ARENA_WEB_ENABLED"); ok {
+		c.Web.Enabled = v
+	}
+	if v := os.Getenv("ARENA_WEB_ADDR"); v != "" {
+		c.Web.Addr = v
+	}
+	if v, ok := envBool("ARENA_WEB_REGISTRATION_ENABLED"); ok {
+		c.Web.RegistrationEnabled = v
+	}
+	if v := os.Getenv("ARENA_WEB_PUBLIC_HOST"); v != "" {
+		c.Web.PublicHost = v
+	}
+	if v, ok := envBool("ARENA_UPDATE_CHECK_ENABLED"); ok {
+		c.UpdateCheck.Enabled = v
+	}
 	if v := os.Getenv("ARENA_DB_DRIVER"); v != "" {
 		c.DB.Driver = v
 	}
 	if v := os.Getenv("ARENA_DB_DSN"); v != "" {
 		c.DB.DSN = v
 	}
-	if v := os.Getenv("ARENA_DB_MAX_OPEN_CONNS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.DB.MaxOpenConns = n
-		}
+	if v, ok := envInt("ARENA_DB_MAX_OPEN_CONNS"); ok {
+		c.DB.MaxOpenConns = v
 	}
-	if v := os.Getenv("ARENA_DB_MAX_IDLE_CONNS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.DB.MaxIdleConns = n
-		}
+	if v, ok := envInt("ARENA_DB_MAX_IDLE_CONNS"); ok {
+		c.DB.MaxIdleConns = v
 	}
-	if v := os.Getenv("ARENA_AOI_RADIUS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			c.World.AoIRadius = n
-		}
+	if v, ok := envInt("ARENA_AOI_RADIUS"); ok {
+		c.World.AoIRadius = v
 	}
+}
+
+func envInt(key string) (int, bool) {
+	v := os.Getenv(key)
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func envBool(key string) (bool, bool) {
+	v := os.Getenv(key)
+	if v == "" {
+		return false, false
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, false
+	}
+	return b, true
 }
 
 func (c *Config) validate() error {
@@ -135,6 +261,9 @@ func (c *Config) validate() error {
 	}
 	if c.Addr == "" {
 		return fmt.Errorf("config: addr is required")
+	}
+	if c.Web.Enabled && c.Web.Addr == "" {
+		return fmt.Errorf("config: web.addr is required when web.enabled is true")
 	}
 	return nil
 }

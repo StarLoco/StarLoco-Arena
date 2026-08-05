@@ -41,14 +41,29 @@ func (s *Server) closeAll() {
 	}
 }
 
+// Listen binds the TCP port without accepting connections yet.
+//
+// Binding separately from serving lets a caller report a port clash before it
+// has told the operator the server is up.
+func (s *Server) Listen(ctx context.Context) (net.Listener, error) {
+	var lc net.ListenConfig
+	return lc.Listen(ctx, "tcp", s.addr)
+}
+
 // ListenAndServe binds the TCP port and serves until ctx is cancelled.
 func (s *Server) ListenAndServe(ctx context.Context) error {
-	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "tcp", s.addr)
+	ln, err := s.Listen(ctx)
 	if err != nil {
 		return err
 	}
-	s.deps.Log.Info("listening", "addr", ln.Addr().String())
+	return s.Serve(ctx, ln)
+}
+
+// Serve accepts connections on ln until ctx is cancelled.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	// Debug, not Info: cmd/server already tells the operator the listen address
+	// in its startup banner, and repeating it is noise.
+	s.deps.Log.Debug("listening", "addr", ln.Addr().String())
 
 	go func() {
 		<-ctx.Done()

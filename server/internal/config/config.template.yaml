@@ -1,0 +1,129 @@
+# =============================================================================
+#  DofusArena 2.70 server - configuration
+# =============================================================================
+#  This file was created automatically the first time the server ran, and it is
+#  yours to edit. Restart the server after changing anything here.
+#
+#  Every available setting is listed below. Lines starting with "#" are turned
+#  off and simply show you the value the server uses by default - delete the "#"
+#  to take control of one.
+#
+#  Handbook: https://github.com/StarLoco/StarLoco-Arena
+#  Need help: https://discord.com/invite/k3Yk9DuhgY
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+#  Game server - the port the DofusArena game client connects to.
+# -----------------------------------------------------------------------------
+
+# Where the game server listens, as "host:port".
+#   0.0.0.0:5555     every network interface - friends on your network/internet
+#                    can join (this is the default)
+#   127.0.0.1:5555   this computer only - nobody else can connect
+#
+# Players joining from another computer must point their client at your machine:
+# edit their client's game/config.properties and set
+#   proxyAddresses_1=YOUR-IP:5555,YOUR-IP:5555
+addr: "0.0.0.0:5555"
+
+
+# -----------------------------------------------------------------------------
+#  Web portal - the page where players create their own accounts.
+# -----------------------------------------------------------------------------
+web:
+  # Serve the portal at all. With this off, create accounts yourself using the
+  # command line instead (see the handbook).
+  enabled: true
+
+  # Where the portal listens, as "host:port".
+  #
+  # Port 0 means "choose one for me": the server tries 80 (the normal web port,
+  # so players can just type your address with no ":port" suffix), then 8080,
+  # 8090, 3000 and 5000, and finally any free port. Ports below 1024 usually
+  # need administrator/root rights, which is why it falls back automatically.
+  #
+  # Set an explicit port to pin it, e.g. "0.0.0.0:8080".
+  addr: "0.0.0.0:0"
+
+  # Let visitors sign themselves up. Turn this off once everyone has registered
+  # and the portal becomes read-only.
+  registration_enabled: true
+
+  # The address players should type into their game client, shown on the portal
+  # page. Leave empty to show the address the visitor is already using.
+  # public_host: ""
+
+  # Smallest allowed account name / password length for new sign-ups.
+  # min_login_length: 3
+  # min_password_length: 6
+
+
+# -----------------------------------------------------------------------------
+#  Game data - the card, spell and map files copied out of the game client.
+# -----------------------------------------------------------------------------
+
+# Folder holding data.bdat and indexes.bdat (plus maps/). Relative paths are
+# resolved from wherever the server is started. The server still runs without
+# it, but fights cannot use real cards or arenas.
+data_dir: "data"
+
+
+# -----------------------------------------------------------------------------
+#  Updates
+# -----------------------------------------------------------------------------
+update_check:
+  # Ask GitHub once at startup whether a newer server release exists, and print
+  # a short notice if so. Nothing is ever downloaded or installed for you, and
+  # nothing about your server or your players is sent - it is a plain HTTPS GET
+  # of a public page. Set to false to switch it off completely.
+  enabled: true
+
+  # How long to wait for GitHub before giving up, in seconds. The check runs in
+  # the background and never holds up startup.
+  # timeout_seconds: 5
+
+
+# -----------------------------------------------------------------------------
+#  Database - where accounts, coaches, fighters and teams are stored.
+# -----------------------------------------------------------------------------
+db:
+  # sqlite | postgres | mysql
+  # sqlite needs no setup at all: the file below is created on first run and is
+  # the right choice unless you are running a large public server.
+  driver: "sqlite"
+
+  # sqlite:   path to the database file, created automatically.
+  # postgres: "host=localhost user=arena password=secret dbname=arena port=5432 sslmode=disable"
+  # mysql:    "arena:secret@tcp(localhost:3306)/arena?charset=utf8mb4&parseTime=True&loc=Local"
+  dsn: "arena.db"
+
+  # Database connection pool. sqlite allows a single writer so it stays at 1;
+  # raise both for postgres/mysql on a busy server.
+  max_open_conns: 1
+  max_idle_conns: 1
+
+
+# -----------------------------------------------------------------------------
+#  World
+# -----------------------------------------------------------------------------
+world:
+  # How far, in cells, overworld events (chat, movement, other players
+  # appearing) travel. Keeps a crowded map from sending everything to everyone.
+  # 0 means no limit - every event reaches every player.
+  aoi_radius: 75
+
+
+# -----------------------------------------------------------------------------
+#  Logging & diagnostics
+# -----------------------------------------------------------------------------
+
+# How much detail to print: error | warn | info | debug.
+# "info" keeps the console quiet; "debug" is very noisy and meant for
+# development or for chasing a specific problem.
+log_level: "info"
+
+# DEVELOPMENT ONLY - a local HTTP endpoint for injecting packets into a running
+# server. Leave this off unless you are working on the server itself; it grants
+# full control to anything that can reach it.
+# debug_addr: "127.0.0.1:5599"
