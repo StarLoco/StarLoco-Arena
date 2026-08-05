@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    branches: [v2.70]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never let two releases run at once, and never cancel one midway: a
+# half-uploaded release is worse than a slow one.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Maintain the release PR.
+  #
+  # release-please reads the Conventional Commit messages landed on this branch
+  # and keeps a "chore(main): release x.y.z" pull request open, containing the
+  # version bump and the generated CHANGELOG. Nothing is released until that PR
+  # is merged; merging it creates the git tag and the GitHub release.
+  # ---------------------------------------------------------------------------
+  release-please:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # This repository hosts two independent product lines on two
+          # branches; releases are cut from this one only.
+          target-branch: v2.70
+
+  # ---------------------------------------------------------------------------
+  # 2. Build and attach the binaries.
+  #
+  # This runs as a dependent job in the SAME workflow run rather than as a
+  # separate "on: push: tags" workflow, on purpose: tags pushed by the built-in
+  # GITHUB_TOKEN do not trigger new workflow runs, so a tag-triggered build
+  # would silently never fire and every release would ship with no binaries.
+  # ---------------------------------------------------------------------------
+  goreleaser:
+    name: Build & publish binaries
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the tag release-please just created, not the branch head.
+          ref: ${{ needs.release-please.outputs.tag }}
+          # GoReleaser needs the full history and tags to resolve the version.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Run the test suite before publishing
+        working-directory: server
+        run: go test $(go list ./... | grep -v '/cmd/studio')
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # release-please created the tag; make sure GoReleaser stamps that
+          # exact version into the binaries.
+          GORELEASER_CURRENT_TAG: ${{ needs.release-please.outputs.tag }}

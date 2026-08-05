@@ -1,0 +1,94 @@
+# GoReleaser — builds the downloadable server for every supported platform and
+# attaches the archives to the GitHub release.
+#
+# The Go module lives in server/, not at the repository root, hence `dir:`.
+#
+# Try it locally without publishing anything:
+#   goreleaser release --snapshot --clean
+#
+# Docs: https://goreleaser.com
+version: 2
+
+project_name: dofusarena-server
+
+before:
+  hooks:
+    - go -C server mod download
+
+builds:
+  - id: arena-server
+    dir: server
+    main: ./cmd/server
+    binary: arena-server
+    # CGO off keeps the binary static and lets one Linux runner cross-compile
+    # every target. The database drivers (sqlite/postgres/mysql) are pure Go,
+    # so nothing is lost. cmd/studio is deliberately NOT released: it is a
+    # Wails desktop app that needs CGO and per-OS UI toolkits.
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    ignore:
+      # Windows on ARM is not a platform this game's players run.
+      - goos: windows
+        goarch: arm64
+    # -trimpath (below, as a flag) plus these stamps make the build
+    # reproducible and let `arena-server --version` report the truth.
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/StarLoco/arena-2.70/internal/version.Version={{ .Tag }}
+      - -X github.com/StarLoco/arena-2.70/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/StarLoco/arena-2.70/internal/version.Date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids: [arena-server]
+    # dofusarena-server_v0.1.0_windows_amd64.zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Tag }}_
+      {{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
+      {{- .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip] # Windows has no built-in tar.gz extractor in Explorer
+    # Everything a player needs and nothing they don't: the config file is
+    # generated on first run, so no sample config is shipped.
+    files:
+      - src: docs/QUICKSTART.md
+        dst: README.md
+      - LICENSE
+      - NOTICE
+      - DISCLAIMER.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# release-please writes the release notes from the commit history, so
+# GoReleaser must not generate a competing changelog.
+changelog:
+  disable: true
+
+release:
+  # The GitHub release already exists (release-please created it when the
+  # release PR was merged); append the binaries to it rather than replacing it.
+  mode: append
+  # A pre-release tag (v1.2.0-rc.1) is published as a GitHub pre-release, so
+  # the update check — which reads /releases/latest — never offers it.
+  prerelease: auto
+  footer: |
+    ---
+    **Getting started:** download the archive for your system below, unzip it,
+    and run `arena-server`. It writes its own `config.yaml`, creates its
+    database, and prints the address of a web page where players register.
+
+    Verify a download against `checksums.txt`:
+    `sha256sum -c checksums.txt` (Linux/macOS) or
+    `Get-FileHash <file>` (Windows).
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
