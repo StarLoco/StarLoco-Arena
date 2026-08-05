@@ -49,6 +49,7 @@ func (d *Deps) startFightWithTeams(a *arena, teamA, teamB *FightTeam, practice b
 		arena:        a,
 		Practice:     practice,
 		ChallengeID:  challengeID,
+		Rules:        d.rulesForChallenge(challengeID),
 		Evolution:    evolution,
 		Teams:        [2]*FightTeam{teamA, teamB},
 		deps:         d,
@@ -359,7 +360,7 @@ func (f *Fight) beginTurn(ff *FightFighter) {
 		return
 	}
 	ai := f.isAIControlled(ff)
-	clock := turnClock
+	clock := f.turnClockFor()
 	if ai {
 		clock = aiTurnClock
 	}
@@ -389,7 +390,7 @@ func (f *Fight) beginTurn(ff *FightFighter) {
 	case ai:
 		f.armClock(aiTurnClock, func(f *Fight) { f.runAITurn(ff) })
 	default:
-		f.armClock(turnClock, func(f *Fight) { f.forceEndTurn(ff.WireID) })
+		f.armClock(f.turnClockFor(), func(f *Fight) { f.forceEndTurn(ff.WireID) })
 	}
 }
 

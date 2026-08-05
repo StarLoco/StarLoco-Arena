@@ -25,10 +25,13 @@ decompiled client, no runtime).
 - **Three challenge records (29/30/31) still stop short**: each carries a type-12
   parameter whose trailing `Ht` effect is inline and unlength-prefixed, so it cannot be
   skipped without a full effect parser. Everything else in that record decodes (B-071).
-- **The `np_1` fight-ruleset system is decoded but not WIRED.** Types 10 and 11 carry
-  the per-fighter turn duration and the sudden-death start turn, which the server still
-  hardcodes; the rest cover budget, roster limits, banned spells/equipment, arena and
-  event-list choice. This is how challenges and tournaments customise a fight.
+- **Most `np_1` rule types are decoded but not ENFORCED.** Turn duration, sudden death
+  and the bonus-cell multiplier are wired (B-072); budget (incl. type 1000 "no budget
+  limit"), roster limits, banned/allowed spells and equipment, class limits and prices,
+  arena and event-list choice, and victory conditions are carried but inert.
+  **Consult `content.54.<type>` for a rule''s exact semantics before implementing it** —
+  it is the authoritative label table, and it is what revealed the timing rules are
+  deltas rather than absolutes.
 - **Spell `TargetMasks` / `MaxActive` decoded but not evaluated** (3 and 6 spells).
 - **The evolution debrief PANEL is not yet visually confirmed** — the server side of
   B-065 is verified live, but the panel needs a true evolution fight (client-initiated,
@@ -37,6 +40,66 @@ decompiled client, no runtime).
 ---
 
 ## Fixed
+
+### B-072 · The turn clock and sudden-death turn were hardcoded — and package-global
+Two fight rules the data actually specifies were invented constants in this server:
+`turnClock = 30s` and `suddenDeathTurn = 15`. Both are `np_1` rule types (10 and 11,
+decoded in B-071), so the data was there to read as soon as the element layout was.
+
+**The second half of the bug is worse than the first.** Both were **package-level**,
+so a fight that changed either would have changed it for *every other fight in the
+process*. Nothing set them at runtime yet, so it had never fired — but wiring the
+ruleset without noticing would have introduced a genuine cross-fight leak on the very
+first challenge that customises a turn.
+
+**Fix.** A per-`Fight` `Rules` struct resolved from the fight's parameter list at
+creation, with `turnClockFor()` / `suddenDeathTurnFor()` accessors that fall back to
+the package defaults. The existing test hooks keep working because the defaults are
+what `defaultFightRules()` reads.
+
+**THE TIMING RULES ARE DELTAS — my first version of this got that wrong.** I initially
+applied both as absolute values. The client's own label table settles it:
+
+```
+content.54.10 = "[£1] secondes en {[+1]?plus:moins} pour jouer chaque combattant"
+content.54.11 = "La mort subite a lieu [£1] tours plus {[+1]?tard:tôt}"
+```
+
+"N seconds **more/less**", "sudden death happens N turns **later/earlier**". The
+`{[+1]?…:…}` construct selects wording from the SIGN, which only makes sense for a
+signed offset. `suddendeath.go` had even recorded it already — "tournament rule cards
+shift it by ±5/±10 turns" — and I did not read my own comment carefully enough the
+first time. `content.54.*` is the authoritative per-rule semantics table and should be
+consulted before implementing any further rule.
+
+So challenge 46 ("Tuto de Baan") does not set a one-hour turn; it **adds** an hour to
+the default. For a tutorial that must not time out on a player who is reading, the
+effect is the same, which is exactly why the error would have been easy to miss.
+
+**What the shipped data uses.** Of the 39 challenges, exactly **one** carries a
+turn-duration rule (challenge 46). **No** challenge sets a sudden-death delta — that is
+presumably tournament-side, and the mechanism is now in place for when those are
+decoded. **Five** carry a bonus-cell multiplier (×2, ×2, ×5, ×10), now applied. Type
+1000 ("Pas de limite de budget", used by challenge 12) is named but not enforced.
+
+**Robustness choices:** a delta that would drive the value non-positive is IGNORED, not
+applied — a zero-length turn clock would end every turn instantly, and a sudden-death
+turn of 0 would shrink the arena from turn one. A multiplier of 0 or absent behaves as
+×1, never ×0, which would silently disable every bonus cell.
+
+**The multiplier covers the BENEFICIAL tiles only** — the five stat buffs and the
+healing heart. The killer cell has no magnitude to scale, and the trap is a *piège*, a
+malus: scaling it ×10 under a rule the client advertises as a *bonus* would be a
+perverse reading of "il bénéficie de ses effets… lui apporter des PA, de la
+résistance". Including the healing heart is a judgement call, flagged as such in the
+code — nothing in the data distinguishes it either way.
+
+**Verified:** `unit` — deltas in both directions (a negative one shortening the clock
+and moving sudden death earlier); over-large negative deltas being ignored rather than
+producing a zero clock; the multiplier being absolute while the timings are relative;
+an unimplemented rule type inert rather than fatal; per-fight isolation (a customised
+and a normal fight side by side, plus a zero-valued `Fight` still playable); and the
+multiplier applied at ×2/×5/×10 with ×0 and "no rules" both behaving as ×1.
 
 ### B-071 · The `np_1` element layout — the last decode blocker on three records
 `np_1` was the one unknown standing between us and the tail of the coach-card

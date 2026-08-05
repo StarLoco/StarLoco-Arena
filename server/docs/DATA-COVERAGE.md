@@ -222,17 +222,17 @@ records will not change that. The list is ordered accordingly.
 
 ## 5b. The `np_1` fight-ruleset types (`ajr_2`)
 
-Decoded in B-071 and **not yet wired to anything**. The low block is a fight-ruleset
+Decoded in B-071; types 10/11/13 wired in B-072. The low block is a fight-ruleset
 system — the mechanism a challenge or tournament uses to customise a match:
 
 | type | meaning | note |
 |---|---|---|
 | 1-3 | budget, min/max fighters | |
 | 4-9 | spell/equipment allow + ban lists (incl. "ban everything") | |
-| **10** | **per-fighter turn duration (ms)** | server hardcodes this |
-| **11** | **sudden-death start turn** | server hardcodes this |
+| **10** | **per-fighter turn duration (ms) — a DELTA** | ✅ wired (B-072); only challenge 46 uses it: +3 600 000 ms |
+| **11** | **sudden-death turn — a DELTA (±turns)** | ✅ wired (B-072); unused by challenges, expected tournament-side |
 | 12 | cast an effect on all fighters at fight creation | carries an inline `Ht` |
-| 13 | multiply bonus-cell effects | |
+| 13 | multiply bonus-cell effects (absolute) | ✅ wired (B-072); 5 challenges (x2, x2, x5, x10) |
 | **14** | **victory condition** | the ONE type with its own layout (`wi_0` + `mp_2`); 9 challenges |
 | 15-25 | class limits, class bans, fighter/spell/equipment prices | |
 | 26, 32 | event list, sudden-death event list | |
@@ -242,12 +242,15 @@ system — the mechanism a challenge or tournament uses to customise a match:
 | 30 | max league | |
 | 31 | hide opponent statistics | |
 | 900 | class parameter | |
+| 1000 | `Pas de limite de budget` (no params) | named, not enforced; challenge 12 |
 | 901-912 | per-breed spell parameters (Féca … Pandawa) | |
 
 ## 6. Change log
 
 | Date | Change |
 |---|---|
+| 2026-08-04 | np_1 rule 13 (bonus-cell multiplier) applied to the beneficial tiles; timing rules 10/11 corrected to DELTAS per content.54.* (B-072). |
+| 2026-08-04 | Wired np_1 rule types 10/11: the turn clock and sudden-death turn are per-fight and read from data instead of hardcoded package globals (B-072). |
 | 2026-08-04 | Decoded the `np_1` element (B-071): coach cards now 26/26 fields with zero residual across all 907 records; challenges 36/39 exact; the ajr_2 type enum documented as a fight-ruleset system. |
 | 2026-08-04 | Evolution fighters can be created: the et_2 type byte is honoured via a persisted Fighter.Evolution flag, separate from State (B-070). |
 | 2026-08-04 | Challenge reward cards reported on the end-of-fight panel; the won/lost card-blob order corrected (B-069). |

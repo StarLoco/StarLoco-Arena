@@ -161,7 +161,7 @@ func (f *Fight) cellDestroyed(x, y int32) bool {
 // the sudden-death turn. Called on each new table turn; a no-op before then and
 // after the arena has shrunk to its core. Must run on the fight goroutine.
 func (f *Fight) maybeTriggerSuddenDeath() {
-	if f.tableTurn < suddenDeathTurn {
+	if f.tableTurn < f.suddenDeathTurnFor() {
 		return
 	}
 	f.advanceSuddenDeath()

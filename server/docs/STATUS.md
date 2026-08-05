@@ -3,7 +3,7 @@
 Single entry point for picking the 2.70 server back up cold. Everything else is
 detail; this is state.
 
-**Updated:** 2026-08-04
+**Updated:** 2026-08-05
 
 ---
 
@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-072 | Turn clock + sudden-death turn now per-fight, from data (were hardcoded globals) |
 | B-071 | Decoded `np_1`: coach cards 26/26 (zero residual x907), challenges 36/39 |
 | B-070 | Evolution fighters could not be created (et_2 type byte was decoded and dropped) |
 | B-069 | Challenge reward cards now reported in 8300; won/lost blob order corrected |
@@ -77,11 +78,14 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    ships is almost certainly cp1252 too. Every field we currently read is ASCII
    (`"FIGHTER_CONDITION"`, `"FIGHTER_CARD_USE"`), so nothing is broken today — but the
    moment a name or description field is decoded it will need `protocol.DecodeText`.
-4. **Wire the `np_1` fight-ruleset system** (decoded in B-071, unused). Type 10 is the
-   per-fighter turn duration and type 11 the sudden-death start turn - both hardcoded
-   in the server today - plus budget, roster limits, banned spells/equipment, arena and
-   event-list choice. This is the mechanism challenges and tournaments use to customise
-   a fight, so it is a prerequisite for doing tournaments from data properly.
+4. **Enforce the remaining `np_1` rules.** Turn duration, sudden death and the
+   bonus-cell multiplier are wired (B-072); still inert are budget (incl. type 1000
+   "no budget limit"), roster limits, banned/allowed spells and equipment, class limits
+   and prices, arena choice, event-list choice, and victory conditions (9 challenges,
+   type 14 — needs the four `mp_2` subclasses decoded first). Each is small on its own
+   now that the ruleset plumbing exists. **Read `content.54.<type>` before implementing
+   any rule** — it is the authoritative semantics table, and it is what revealed that
+   the timing rules are deltas rather than absolutes.
 5. **Spell `TargetMasks` + `MaxActive`** — decoded, not evaluated. Needs the client's
    `aLc` evaluator / a live-instance counter. Small payoff (3 and 6 spells).
 6. **Tournaments** (types 1000/1001) — currently three hand-built definitions; the real

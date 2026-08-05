@@ -213,8 +213,13 @@ type Fight struct {
 	// suddenDeathStep is how many shrink steps have run (an index into
 	// suddenDeathSchedule). 0 means the collapse has not started.
 	suddenDeathStep int
-	effectAreaSeq   int64
-	inAreaTrigger   bool
+
+	// Rules is this fight's resolved ruleset (see fightrules.go). Per-fight
+	// rather than package-level, so a challenge's turn duration cannot leak into
+	// unrelated fights.
+	Rules         fightRules
+	effectAreaSeq int64
+	inAreaTrigger bool
 
 	// rng is the fight's damage/dice source (lazily seeded via roll()). Tests may
 	// set it directly for deterministic rolls.

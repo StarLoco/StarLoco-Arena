@@ -149,7 +149,7 @@ func (f *Fight) applyTurnStartSpecialCell(ff *FightFighter) (died bool) {
 		// applyHPDelta clamps to MaxHP and broadcasts the ACTUAL amount, so the
 		// client's HP bar cannot overshoot.
 		if ff.HP < ff.MaxHP {
-			f.applyHPDelta(ff, ff, gamedata.ActionHeal, 0, specialHealingHeartHP)
+			f.applyHPDelta(ff, ff, gamedata.ActionHeal, 0, f.scaleBonusCell(specialHealingHeartHP))
 		}
 		return false
 	}
@@ -159,30 +159,33 @@ func (f *Fight) applyTurnStartSpecialCell(ff *FightFighter) (died bool) {
 	// — without it the stat changes silently server-side and the player sees
 	// nothing happen (B-049). The action ids are the client's characteristic-boost
 	// ids (v2.04b charcRunningEffectID parity).
+	// Every magnitude below is scaled by the fight's bonus-cell multiplier
+	// (np_1 rule 13, "Effets des cases bonus multipliés par [#1]"). Five of the
+	// shipped challenges set it, up to x10.
 	b := cellBuff{wireID: ff.WireID}
 	var boostAction, boostValue int32
 	switch kind {
 	case specialCellEnthusiasm:
-		b.dmgPct = specialEnthusiasmDmg
+		b.dmgPct = f.scaleBonusCell(specialEnthusiasmDmg)
 		ff.Stats.dmgPctAll += b.dmgPct
 		boostAction, boostValue = runEffectDmgPctBoost, b.dmgPct
 	case specialCellShield:
-		b.resPct = specialShieldRes
+		b.resPct = f.scaleBonusCell(specialShieldRes)
 		ff.Stats.resPctAll += b.resPct
 		boostAction, boostValue = runEffectResPctBoost, b.resPct
 	case specialCellEagleEye:
-		b.rng = specialEagleEyeRange
+		b.rng = f.scaleBonusCell(specialEagleEyeRange)
 		ff.Range += b.rng
 		boostAction, boostValue = runEffectRangeBoost, b.rng
 	case specialCellPanacea:
-		b.healPct = specialPanaceaHeal
+		b.healPct = f.scaleBonusCell(specialPanaceaHeal)
 		ff.Stats.healPct += b.healPct
 		boostAction, boostValue = runEffectHealBoost, b.healPct
 	case specialCellMotivation:
 		// Raise the ceiling as well as the current value: AP is clamped to MaxAP,
 		// so bumping only the current value would be silently clamped straight
 		// back down and the tile would do nothing.
-		b.ap = specialMotivationAP
+		b.ap = f.scaleBonusCell(specialMotivationAP)
 		ff.MaxAP += b.ap
 		ff.AP += b.ap
 		boostAction, boostValue = runEffectAPBoost, b.ap
@@ -252,4 +255,25 @@ func buildEffectAreaAction(uid int32, instanceID, templateID, fighterWireID int6
 	w.I64(templateID)
 	w.I64(fighterWireID)
 	return protocol.EncodeS2C(protocol.OpEffectAreaAction, w.Bytes())
+}
+
+// scaleBonusCell applies the fight's bonus-cell multiplier (np_1 rule type 13).
+//
+// It deliberately covers only the BENEFICIAL tiles — the five stat buffs and the
+// healing heart. The killer cell has no magnitude to scale (it sets HP to 0
+// outright) and the trap is a "piège", a malus rather than a "case bonus": the
+// client consistently describes cases bonus as things that help you
+// ("Lorsqu'un combattant débute son tour sur une case bonus, il bénéficie de ses
+// effets. Elle pourra lui apporter des PA, de la résistance et bien d'autres
+// choses"). Scaling a trap by x10 under a rule advertised as a bonus would be a
+// surprising reading of the same sentence.
+//
+// The healing heart being included is a judgement call: it is beneficial and
+// turn-start triggered like the buffs, which puts it under "bien d'autres
+// choses". Nothing in the data distinguishes it either way.
+func (f *Fight) scaleBonusCell(v int32) int32 {
+	if f == nil || f.Rules.BonusCellMultiplier <= 1 {
+		return v
+	}
+	return v * f.Rules.BonusCellMultiplier
 }
