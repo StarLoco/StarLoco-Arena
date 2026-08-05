@@ -63,9 +63,22 @@ web:
 #  Game data - the card, spell and map files copied out of the game client.
 # -----------------------------------------------------------------------------
 
-# Folder holding data.bdat and indexes.bdat (plus maps/). Relative paths are
-# resolved from wherever the server is started. The server still runs without
-# it, but fights cannot use real cards or arenas.
+# Where your DofusArena game data lives.
+#
+# The simplest answer is the folder that holds DofusArena.exe - the server
+# understands the client's own layout and finds the cards, spells and arenas
+# inside it. Its game and game/contents folders work too, as does a folder you
+# have copied data.bdat, indexes.bdat and maps/ into.
+#
+#   data_dir: "C:/Program Files (x86)/Ankama/DofusArena"
+#
+# Leave it as "data" to use a data folder next to the server. If nothing is
+# there, the server also checks the usual DofusArena install locations, so this
+# often needs no change at all. Relative paths are resolved from wherever the
+# server is started.
+#
+# The game data is Ankama's and is not distributed with this server. Without
+# it the server still runs, but fights are unavailable.
 data_dir: "data"
 
 

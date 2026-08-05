@@ -106,28 +106,39 @@ the **`server`** folder of the clone.
 
 ### Step 2 — Supply the client and its game data
 
-You need your own copy of the **DofusArena 2.70** retail client. Once you have
-it:
+You need your own copy of the **DofusArena 2.70** retail client. Put it at
+**`client/compiled/`**, so that `client/compiled/DofusArena.exe` and
+`client/compiled/game/core.jar` exist.
 
-1. Put the client at **`client/compiled/`**, so that
-   `client/compiled/DofusArena.exe` and `client/compiled/game/core.jar` exist.
-2. Copy the game data the server reads:
+That's it — the server reads the game data **straight out of the client**. It
+looks for `client/compiled/game` automatically from a source checkout, and also
+checks the usual install locations. Nothing needs copying.
 
-   ```
-   client/compiled/game/contents/bdata   →   server/data/
-   ```
+To point it somewhere else, use any of:
 
-   `server/data/` must end up containing `data.bdat` and `indexes.bdat` (plus
-   `maps/`).
+```
+go run ./cmd/server --data "C:/Program Files (x86)/Ankama/DofusArena"
+```
 
-Both paths are git-ignored, so they will never be committed by accident.
+the `ARENA_DATA_DIR` environment variable, or `data_dir` in `config.yaml`. Any
+of these paths work — the client's own layout is understood:
 
-> Prefer to keep the data elsewhere? Point the server at it instead with the
-> `ARENA_DATA_DIR` environment variable, or change `data_dir` in
-> `server/configs/config.sqlite.yaml`.
->
-> The server still **starts** without game data — it just logs a warning and
-> can't run real fights.
+| Path you give it | |
+|---|---|
+| the folder holding `DofusArena.exe` | simplest |
+| `…/game` or `…/game/contents` | |
+| a folder holding `data.bdat`, `indexes.bdat` **and** `maps/` | a private copy |
+
+> ⚠️ The two `.bdat` files live in `game/contents/**bdata**/` while the arenas
+> live in `game/contents/**maps**/`. If you hand-copy a private `data/` folder,
+> take **both** — copying only `bdata` gives you cards and spells but no arenas.
+
+Both `client/compiled/` and `server/data/` are git-ignored, so neither is ever
+committed by accident.
+
+> The server still **starts** without game data — you can log in and move
+> around, but fights are unavailable. The startup message tells you exactly
+> what it found and where.
 
 ### Step 3 — Start the server
 

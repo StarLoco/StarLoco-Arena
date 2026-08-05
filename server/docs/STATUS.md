@@ -199,6 +199,23 @@ it no longer assumes a Go toolchain or a terminal-literate operator.
 - Defaults changed for end users: `addr` `127.0.0.1` → **`0.0.0.0`** (friends can connect),
   `log_level` `debug` → **`info`** (quiet console).
 
+**Game-data discovery** (`internal/gamedata/locate.go`) — added after the first
+release. The data is Ankama's and **must never be bundled into a release**; instead the
+server now finds the operator's own copy.
+
+- The client stores the two halves in **different** directories:
+  `game/contents/bdata/` (data.bdat + indexes.bdat) and `game/contents/maps/`
+  (fight/ + tplg/). The old instruction "copy contents/bdata to data/" was therefore
+  **wrong** — it silently produced a server with cards but **zero arenas**.
+- `Resolve(root)` accepts any of: a merged `data/` dir, the client's `contents/`,
+  its `game/`, or the install root holding `DofusArena.exe`. `Discover(configured)`
+  walks the configured path, then exe-relative, cwd-relative (incl. the source-checkout
+  `client/compiled/game`), then the usual per-OS install locations — and will combine
+  halves found in **different** roots (records in `data/`, arenas still in the client).
+- New `--data` flag overrides `data_dir` for one run.
+- The failure message now names which half is missing and how to fix it, and lists
+  where it looked. `Location.Complete()` distinguishes "no data" from "half the data".
+
 **Web portal** (`internal/web`) — single embedded page, no JS, no external assets.
 Players self-register; **the first account created becomes admin** (a release archive has
 no `seedaccount`, so there must be some path to a GM). Rate-limited per IP, same-origin

@@ -30,6 +30,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to the YAML config file")
+	dataDir := flag.String("data", "", "path to the game data, or to your DofusArena folder (overrides the config)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
@@ -38,13 +39,13 @@ func main() {
 		return
 	}
 
-	if err := run(*configPath); err != nil {
+	if err := run(*configPath, *dataDir); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(configPath string) error {
+func run(configPath, dataOverride string) error {
 	// First run: leave the operator a documented file to edit. Never fatal -
 	// a read-only directory should not stop the server from working.
 	createdConfig, cfgErr := config.EnsureFile(configPath)
@@ -52,6 +53,9 @@ func run(configPath string) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return err
+	}
+	if dataOverride != "" {
+		cfg.DataDir = dataOverride
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -75,7 +79,7 @@ func run(configPath string) error {
 		log.Warn("reset connected flags", "err", err)
 	}
 
-	deps := buildDeps(cfg, st, log)
+	deps, dataLoc := buildDeps(cfg, st, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -105,7 +109,7 @@ func run(configPath string) error {
 
 	srv.StartDebugInject(cfg.DebugAddr) // no-op unless debug_addr is set
 
-	banner(cfg, gameLn, webLn, createdConfig, configPath, deps)
+	banner(cfg, gameLn, webLn, createdConfig, configPath, deps, dataLoc)
 
 	if webLn != nil {
 		portal := web.New(st, cfg.Web, cfg.Addr, func() int { return deps.World.Len() }, log)
@@ -143,7 +147,7 @@ func portInUse(addr string, err error) error {
 
 // banner is the whole of the server's normal startup output. Everything an
 // operator needs, nothing they don't.
-func banner(cfg config.Config, gameLn, webLn net.Listener, createdConfig bool, configPath string, deps *game.Deps) {
+func banner(cfg config.Config, gameLn, webLn net.Listener, createdConfig bool, configPath string, deps *game.Deps, dataLoc gamedata.Location) {
 	fmt.Println()
 	fmt.Printf("  DofusArena 2.70 server %s\n", version.Short())
 	fmt.Println()
@@ -160,17 +164,71 @@ func banner(cfg config.Config, gameLn, webLn net.Listener, createdConfig bool, c
 	if createdConfig {
 		fmt.Printf("  Settings written to %s - edit it and restart to change anything.\n", configPath)
 	}
-	if deps.Cards == nil {
-		fmt.Printf("  No game data in %q, so fights are unavailable.\n", cfg.DataDir)
-		fmt.Println("  Copy the client's contents/bdata folder there to enable them.")
-	} else {
-		fmt.Printf("  Game data     %d cards, %d spells, %d arenas\n",
-			cardsLen(deps.Cards), spellsLen(deps.Spells), arenaCount(deps))
-	}
+	gameDataStatus(cfg, deps, dataLoc)
 	if webLn != nil && cfg.Web.RegistrationEnabled {
 		fmt.Println("  Players create their accounts on the web portal, then log in with the game client.")
 	}
 	fmt.Println("  Press Ctrl+C to stop.")
+	fmt.Println()
+}
+
+// gameDataStatus reports what game data was found and, when something is
+// missing, exactly how to fix it.
+//
+// The data is the retail client's copyrighted content, so it cannot ship with
+// the server; the next best thing is to find the operator's own copy for them
+// and, failing that, to make the fix a single obvious step instead of a
+// folder-merging puzzle.
+func gameDataStatus(cfg config.Config, deps *game.Deps, loc gamedata.Location) {
+	haveCards := deps.Cards != nil
+	haveArenas := deps.FightMaps != nil && deps.FightMaps.Len() > 0
+
+	if haveCards && haveArenas {
+		fmt.Printf("  Game data     %d cards, %d spells, %d arenas\n",
+			cardsLen(deps.Cards), spellsLen(deps.Spells), arenaCount(deps))
+		if loc.Root != "" {
+			fmt.Printf("                from %s\n", loc.Root)
+		}
+		return
+	}
+
+	fmt.Println()
+	switch {
+	case !haveCards && !haveArenas:
+		fmt.Println("  No game data found, so fights are unavailable.")
+	case haveCards && !haveArenas:
+		// Almost always means the operator pointed at contents/bdata, which
+		// holds the records but not the arenas. Say so, rather than making
+		// them guess which half is missing.
+		fmt.Println("  Found the cards and spells, but no arenas, so fights are unavailable.")
+		fmt.Println("  The arenas sit next to the records, not inside them - point one")
+		fmt.Println("  folder higher up.")
+	default:
+		fmt.Println("  Found the arenas, but no cards or spells, so fights are unavailable.")
+	}
+
+	fmt.Println()
+	fmt.Println("  The game data belongs to Ankama and cannot be shipped with this")
+	fmt.Println("  server, so point it at your own DofusArena installation:")
+	fmt.Println()
+	fmt.Println("      arena-server --data \"<your DofusArena folder>\"")
+	fmt.Println()
+	fmt.Println("  or set data_dir in your config file to the same path. Use the folder")
+	fmt.Println("  that holds DofusArena.exe - its game and game/contents folders work")
+	fmt.Println("  too.")
+
+	searched := gamedata.SearchedPaths(cfg.DataDir)
+	if len(searched) > 0 {
+		fmt.Println()
+		fmt.Println("  Looked in:")
+		for i, p := range searched {
+			if i >= 6 { // enough to be useful without burying the banner
+				fmt.Printf("      ... and %d more\n", len(searched)-i)
+				break
+			}
+			fmt.Printf("      %s\n", p)
+		}
+	}
 	fmt.Println()
 }
 
@@ -220,7 +278,7 @@ func requestedPort(addr string) int {
 // buildDeps loads the static game data and assembles the server dependencies.
 // Missing or unreadable data is survivable: the server starts, and only real
 // fights are unavailable.
-func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) *game.Deps {
+func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps, gamedata.Location) {
 	var (
 		cards         *gamedata.Cards
 		spells        *gamedata.Spells
@@ -233,20 +291,29 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) *game.Deps 
 		conditions    *gamedata.Conditions
 	)
 
+	// The client keeps the record store and the arenas in two different
+	// directories, so locate them independently rather than demanding a
+	// hand-merged folder.
+	loc := gamedata.Discover(cfg.DataDir)
+
 	// Fight arenas come from the client's own map files rather than the bdat
 	// store, so they load independently: a server without them still runs,
 	// falling back to the built-in world 5.
-	fightMaps, err := gamedata.LoadFightMaps(cfg.DataDir)
-	if err != nil {
-		log.Debug("fight maps not loaded; falling back to the built-in arena",
-			"dir", cfg.DataDir, "err", err)
-	} else {
-		log.Debug("fight maps loaded", "arenas", fightMaps.Len(),
-			"skipped", fightMaps.Skipped(), "unreachableSpecials", fightMaps.UnreachableSpecials())
+	var fightMaps *gamedata.FightMaps
+	if loc.MapsRoot != "" {
+		fm, err := gamedata.LoadFightMaps(loc.MapsRoot)
+		if err != nil {
+			log.Debug("fight maps not loaded; falling back to the built-in arena",
+				"dir", loc.MapsRoot, "err", err)
+		} else {
+			fightMaps = fm
+			log.Debug("fight maps loaded", "arenas", fm.Len(),
+				"skipped", fm.Skipped(), "unreachableSpecials", fm.UnreachableSpecials())
+		}
 	}
 
-	if gdStore, err := gamedata.Open(cfg.DataDir); err != nil {
-		log.Debug("game data not loaded", "dir", cfg.DataDir, "err", err)
+	if gdStore, err := gamedata.Open(loc.BdatDir); err != nil {
+		log.Debug("game data not loaded", "dir", loc.BdatDir, "err", err)
 	} else {
 		if cards, err = gdStore.LoadCards(); err != nil {
 			log.Warn("card load failed", "err", err)
@@ -302,7 +369,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) *game.Deps 
 		Sessions:      game.NewSessionRegistry(),
 		Tournaments:   game.NewTournamentManager(),
 		Log:           log,
-	}
+	}, loc
 }
 
 func parseLevel(s string) slog.Level {

@@ -52,25 +52,59 @@ Open the **web portal** address the server printed (usually
 > The **first account created becomes the administrator** of the server. If
 > that should be you, register before anyone else does.
 
-## 3. Add the game data
+## 3. Point it at your game data
 
-You need your own copy of the DofusArena 2.70 game client - it is not included
-here, and we cannot distribute it.
+Fights need the game's own card, spell and arena files. Those belong to Ankama,
+so they are **not** included here - you use the copy that came with your
+DofusArena client.
 
-Copy the client's `game/contents/bdata` folder next to `arena-server`, and
-rename it to **`data`**. You should end up with:
+**You do not need to copy anything.** Just tell the server where the game is
+installed:
+
+```
+# Windows
+arena-server.exe --data "C:\Program Files (x86)\Ankama\DofusArena"
+
+# Linux / macOS
+./arena-server --data "/path/to/DofusArena"
+```
+
+Use the folder that contains **`DofusArena.exe`**. To make it permanent, put the
+same path in `config.yaml`:
+
+```yaml
+data_dir: "C:/Program Files (x86)/Ankama/DofusArena"
+```
+
+The server checks the usual install locations by itself, so there is a good
+chance it already found everything and you can skip this entirely - the startup
+message tells you:
+
+```
+  Game data     907 cards, 203 spells, 47 arenas
+                from C:\Program Files (x86)\Ankama\DofusArena
+```
+
+<details>
+<summary><b>If you would rather keep a private copy of the data</b></summary>
+
+Make a `data` folder next to `arena-server` containing **both** halves:
 
 ```
 arena-server(.exe)
-config.yaml
 data/
-  data.bdat
-  indexes.bdat
-  maps/
+  data.bdat          <- from the client's game/contents/bdata/
+  indexes.bdat       <- from the client's game/contents/bdata/
+  maps/              <- from the client's game/contents/maps/
 ```
 
-Restart the server. The startup message will now report the cards and arenas it
-loaded. Without this folder the server still runs, but fights are unavailable.
+Note that `maps/` comes from a **different** client folder than the two `.bdat`
+files. Copying only `bdata` gives you cards and spells but no arenas, and fights
+stay unavailable.
+</details>
+
+Without the game data the server still runs - you can log in and move around -
+but fights are unavailable.
 
 ## 4. Connect with the game client
 
