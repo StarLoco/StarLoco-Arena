@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.2.0...v0.3.0) (2026-08-05)
+
+
+### Features
+
+* **release:** bundle the server data in every release and rename the archive ([39e9ae8](https://github.com/StarLoco/StarLoco-Arena/commit/39e9ae80eab15850cec099b75467f1855de2a144))
+
 ## [0.2.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.1.0...v0.2.0) (2026-08-05)
 
 
