@@ -52,59 +52,22 @@ Open the **web portal** address the server printed (usually
 > The **first account created becomes the administrator** of the server. If
 > that should be you, register before anyone else does.
 
-## 3. Point it at your game data
+## 3. The game data
 
-Fights need the game's own card, spell and arena files. Those belong to Ankama,
-so they are **not** included here - you use the copy that came with your
-DofusArena client.
-
-**You do not need to copy anything.** Just tell the server where the game is
-installed:
-
-```
-# Windows
-arena-server.exe --data "C:\Program Files (x86)\Ankama\DofusArena"
-
-# Linux / macOS
-./arena-server --data "/path/to/DofusArena"
-```
-
-Use the folder that contains **`DofusArena.exe`**. To make it permanent, put the
-same path in `config.yaml`:
-
-```yaml
-data_dir: "C:/Program Files (x86)/Ankama/DofusArena"
-```
-
-The server checks the usual install locations by itself, so there is a good
-chance it already found everything and you can skip this entirely - the startup
-message tells you:
+The card, spell and arena data fights need is already in the `data` folder next
+to `arena-server` - nothing to do here. The startup message confirms it:
 
 ```
   Game data     907 cards, 203 spells, 47 arenas
-                from C:\Program Files (x86)\Ankama\DofusArena
+                from /path/to/arena-server/data
 ```
 
-<details>
-<summary><b>If you would rather keep a private copy of the data</b></summary>
+Playing with your own instead (e.g. after a client update)? Point `--data` at
+your DofusArena folder (the one with `DofusArena.exe` in it), or set `data_dir`
+in `config.yaml` to the same path - either replaces the bundled copy.
 
-Make a `data` folder next to `arena-server` containing **both** halves:
-
-```
-arena-server(.exe)
-data/
-  data.bdat          <- from the client's game/contents/bdata/
-  indexes.bdat       <- from the client's game/contents/bdata/
-  maps/              <- from the client's game/contents/maps/
-```
-
-Note that `maps/` comes from a **different** client folder than the two `.bdat`
-files. Copying only `bdata` gives you cards and spells but no arenas, and fights
-stay unavailable.
-</details>
-
-Without the game data the server still runs - you can log in and move around -
-but fights are unavailable.
+Note that this is the **server's own data** (card/spell/arena records), not the
+playable game - see the next step for that.
 
 ## 4. Connect with the game client
 
@@ -135,7 +98,7 @@ the portal link and they can register and read it themselves.
 |---|---|
 | *"another program is already using that port"* | A server is still running from earlier - close it. Or change `addr` in `config.yaml`. |
 | The web portal will not open | Check the address the server printed; it does not always use port 80. |
-| *"No game data ... fights are unavailable"* | The `data` folder is missing or incomplete - see step 3. |
+| *"No game data ... fights are unavailable"* | The `data` folder next to `arena-server` got separated from it, or `--data`/`data_dir` points somewhere empty - see step 3. |
 | Client cannot connect | The server window must still be running. Allow it through the firewall when asked. |
 | Forgot who the admin is | The first account registered. To start over, stop the server and delete `arena.db` (this erases everything). |
 
@@ -159,7 +122,7 @@ Each release ships a `checksums.txt`.
 sha256sum -c checksums.txt
 
 # Windows PowerShell
-Get-FileHash .\dofusarena-server_v0.1.0_windows_amd64.zip -Algorithm SHA256
+Get-FileHash .\arena-server_v0.1.0_windows_amd64.zip -Algorithm SHA256
 ```
 
 Compare the result with the matching line in `checksums.txt`.

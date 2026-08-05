@@ -171,6 +171,7 @@ func candidateRoots(configured string) []string {
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
 		add(filepath.Join(exeDir, "data"))
+		add(filepath.Join(exeDir, "data-dist"))
 		add(exeDir)
 		// A release unzipped next to, or inside, the client.
 		add(filepath.Join(exeDir, "DofusArena"))
@@ -180,6 +181,11 @@ func candidateRoots(configured string) []string {
 	// 3. Relative to the working directory, including the source checkout
 	//    layout (running from server/, or from the repository root).
 	add("data")
+	// data-dist is the small subset committed to the repo so a source build
+	// works the same way a downloaded release does, without needing the full
+	// retail client just to run a fight.
+	add("data-dist")
+	add(filepath.Join("server", "data-dist"))
 	add(filepath.Join("..", "client", "compiled", "game"))
 	add(filepath.Join("client", "compiled", "game"))
 

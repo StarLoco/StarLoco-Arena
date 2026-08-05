@@ -9,7 +9,7 @@
   "prerelease": false,
   "packages": {
     ".": {
-      "package-name": "dofusarena-server",
+      "package-name": "arena-server",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0"
     }

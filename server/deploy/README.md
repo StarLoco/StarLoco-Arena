@@ -5,15 +5,19 @@ pure-Go static binary (CGO disabled), so images are tiny (~20 MB on alpine).
 
 ## Game data
 
-The server needs the client's static game data (`data.bdat` + `indexes.bdat`).
-Point `ARENA_DATA_DIR` at the host directory that contains them (the client's
-`contents/bdata`). It is mounted read-only at `/data`.
+The image bundles the small server-data subset it needs (`server/data-dist/`,
+~2.5 MB — see `AGENTS.md`/`DISCLAIMER.md`), so fights work with **no volume
+required**.
+
+To use your own copy instead (e.g. your own client's `contents/bdata` +
+`contents/maps`, merged into one folder), mount it over the default:
 
 ```powershell
-$env:ARENA_DATA_DIR = "E:\Projets\DofusArena2-06\client\compiled\game\contents\bdata"
+$env:ARENA_DATA_DIR = "E:\Projets\DofusArena2-06\client\compiled\game\contents"
 ```
 
-(The server still runs without game data — cards/spells just won't load.)
+and it takes priority — the container falls back to the bundled copy only when
+nothing is mounted at `/data`.
 
 ## Stacks
 

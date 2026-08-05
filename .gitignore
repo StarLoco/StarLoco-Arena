@@ -54,8 +54,11 @@ Thumbs.db
 *.log
 
 # ============================================================================
-#  Game data — copied out of the retail client, never committed.
-#  The server reads it from server/data/ (data.bdat / indexes.bdat + maps).
+#  Local game-data scratch copy — for pointing a dev build at your OWN client
+#  instead of the committed server/data-dist/. Never committed.
+#  (server/data-dist/ is NOT listed here on purpose: it is a small, deliberate
+#  redistribution of the server-side data subset — see AGENTS.md and
+#  DISCLAIMER.md before touching it.)
 # ============================================================================
 /server/data/
 

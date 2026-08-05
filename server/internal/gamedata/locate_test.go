@@ -197,6 +197,43 @@ func TestSearchedPathsAreAbsoluteAndNonEmpty(t *testing.T) {
 	}
 }
 
+// A source checkout ships server/data-dist committed in the repo, so `go run
+// ./cmd/server` from server/ must find it automatically, the same way a
+// downloaded release finds its bundled data/ folder.
+func TestDiscoverFindsCommittedDataDist(t *testing.T) {
+	base := t.TempDir()
+	dataDist := filepath.Join(base, "data-dist")
+	mkBdat(t, dataDist)
+	mkMaps(t, dataDist)
+	t.Chdir(base)
+
+	loc := Discover("data") // the default config value; no "data" dir exists here
+	if !loc.Complete() {
+		t.Fatalf("did not fall back to data-dist: %+v", loc)
+	}
+	if filepath.Clean(loc.BdatDir) != filepath.Clean(dataDist) {
+		t.Errorf("BdatDir = %q, want %q", loc.BdatDir, dataDist)
+	}
+}
+
+// An explicit data/ folder (a private copy, or a downloaded release's bundled
+// one) must win over the repo's own data-dist/, since it is what the operator
+// or the release archive deliberately provided.
+func TestDiscoverPrefersDataOverDataDist(t *testing.T) {
+	base := t.TempDir()
+	mkBdat(t, filepath.Join(base, "data"))
+	mkMaps(t, filepath.Join(base, "data"))
+	mkBdat(t, filepath.Join(base, "data-dist"))
+	mkMaps(t, filepath.Join(base, "data-dist"))
+	t.Chdir(base)
+
+	loc := Discover("data")
+	want := filepath.Join(base, "data")
+	if filepath.Clean(loc.BdatDir) != filepath.Clean(want) {
+		t.Errorf("BdatDir = %q, want the explicit data/ at %q", loc.BdatDir, want)
+	}
+}
+
 // Real client data, when present, must be detected by pointing at the client
 // install root — the thing an operator would naturally try. Skips when the
 // git-ignored client tree is absent.

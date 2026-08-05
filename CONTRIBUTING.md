@@ -18,12 +18,18 @@ The other directories are reference material:
 - `client/decompiled/` — decompiled (obfuscated) 2.70 client, read-only reference.
 - `client/analysis/` — protocol and data-format write-ups derived from it.
 - `client/arena-mcp/`, `client/control-agent/`, `client/deobf-lab/` — RE tooling.
-- `client/compiled/`, `server/data/` — the retail client and its game data.
-  **Not committed** (git-ignored); you supply them locally.
+- `client/compiled/` — the retail client. **Not committed** (git-ignored); you
+  supply it locally.
+- `server/data/` — a git-ignored scratch copy of your own client's data, for
+  local development.
+- `server/data-dist/` — the small, deliberately-curated data subset that *is*
+  committed and ships in releases (see `AGENTS.md` constraint 4). Changes to it
+  are a maintainer decision, not a routine contribution.
 
 Please **do not** add newly decompiled third-party code without a clear
 provenance note, and do not commit copyrighted assets that aren't already part
-of the preservation set.
+of the preservation set (`server/data-dist/` and `client/decompiled/` are the
+two deliberate exceptions, already covered by `DISCLAIMER.md`).
 
 ## Getting set up
 

@@ -30,7 +30,11 @@ COPY --from=build /out/arena-server /app/arena-server
 COPY --from=build /out/seedaccount /app/seedaccount
 COPY configs/ /app/configs/
 
-# Game data (data.bdat/indexes.bdat) is mounted at /data at runtime.
+# The small server-data subset ships in the image by default, so fights work
+# with zero mounts (see AGENTS.md / DISCLAIMER.md for what this is and isn't).
+# Mount your own copy over ARENA_DATA_DIR=/data to use different data instead.
+COPY --from=build /src/data-dist /app/data-dist
+
 # The DB (sqlite) or connection (postgres/mysql) is configured via config/env.
 USER arena
 

@@ -31,9 +31,10 @@ Available for **Windows**, **Linux** and **macOS** (Intel & Apple Silicon).
 Full walkthrough: [`docs/QUICKSTART.md`](./docs/QUICKSTART.md) (it is also
 included inside every download).
 
-> You still need your own copy of the retail **DofusArena 2.70 client** and its
-> game data — those are Ankama's and are not distributed here. See
-> [Step 2](#step-2--supply-the-client-and-its-game-data).
+> The download already includes the small set of card/spell/arena data the
+> *server* needs to run fights. You still need your own copy of the retail
+> **DofusArena 2.70 client** — the actual playable game — to connect and play;
+> that part is Ankama's and is not distributed here.
 
 The server tells you at startup when a newer version is available. That check is
 a single anonymous request to GitHub's public releases page — nothing about your
@@ -47,16 +48,22 @@ off with `update_check: enabled: false` in `config.yaml`.
 | Piece | What it is | Included here? |
 |---|---|---|
 | 🖥️ **Server** | The Go program the game client connects to. Accounts, chat, matchmaking, teams, full fights. | ✅ Yes — `server/` |
+| 🗃️ **Server game data** | `data.bdat` / `indexes.bdat` + maps: the card/spell/arena records the *server's own logic* needs to run a fight. | ✅ Yes — `server/data-dist/` (~2.5 MB) |
 | 📖 **Decompiled client** | The 2.70 client source used as the protocol reference, plus protocol/data write-ups. | ✅ Yes — `client/decompiled/`, `client/analysis/` |
 | 🧪 **RE tooling** | An MCP server + Java agent that boot the retail client and drive it for testing. | ✅ Yes — `client/arena-mcp/`, `client/control-agent/` |
-| 🎮 **Retail game client** | The actual playable game window (launcher, `core.jar`, assets, bundled JRE). | ❌ **No** — copyrighted, you supply it |
-| 🗃️ **Game data** | `data.bdat` / `indexes.bdat` + maps, read by the server at runtime. | ❌ **No** — copied out of the client |
+| 🎮 **Retail game client** | The actual playable game window (launcher, `core.jar`, assets, bundled JRE, ~436 MB). | ❌ **No** — you supply it, see [Step 2](#step-2--supply-the-client-and-its-game-data) |
 
-> ⚖️ **Why the client isn't here.** The retail client (~436 MB) and its game data
-> are **Ankama's copyrighted material** and are not ours to redistribute, so they
-> are excluded by [`.gitignore`](./.gitignore). Everything committed here is
-> source, documentation and small tooling assets — about 18 MB, so a plain
-> `git clone` is fast and **no Git LFS is required**.
+> ⚖️ **Server game data vs. the retail client.** `server/data-dist/` is a small,
+> deliberately curated subset of records — no art, audio, or executable code —
+> needed for the server's own fight logic, and StarLoco (the maintainer) has
+> chosen to include it so the server runs with zero setup. The full retail
+> client is a different matter entirely: it is the complete playable game plus
+> a bundled Oracle/Sun JRE, and stays out of this repository — you supply your
+> own copy to actually play. See [`DISCLAIMER.md`](./DISCLAIMER.md) for the
+> exact split and [`SECURITY.md`](./SECURITY.md) for takedown requests.
+>
+> Everything else committed here is source, documentation and small tooling
+> assets, so a plain `git clone` stays fast and **no Git LFS is required**.
 
 The **server** is the actively developed part.
 
@@ -104,17 +111,18 @@ git clone --branch v2.70 https://github.com/StarLoco/StarLoco-Arena.git
 No `git lfs` step is needed on this branch. Everything below is run from inside
 the **`server`** folder of the clone.
 
-### Step 2 — Supply the client and its game data
+### Step 2 — Supply the client (to actually play)
 
-You need your own copy of the **DofusArena 2.70** retail client. Put it at
-**`client/compiled/`**, so that `client/compiled/DofusArena.exe` and
-`client/compiled/game/core.jar` exist.
+The repo already includes the data the *server* needs
+(`server/data-dist/`), so fights work out of the box — `go run ./cmd/server`
+finds it automatically and nothing below is required just to start the server.
 
-That's it — the server reads the game data **straight out of the client**. It
-looks for `client/compiled/game` automatically from a source checkout, and also
-checks the usual install locations. Nothing needs copying.
+To actually **play**, though, you need your own copy of the **DofusArena 2.70**
+retail client — the game window itself. Put it at **`client/compiled/`**, so
+that `client/compiled/DofusArena.exe` and `client/compiled/game/core.jar` exist.
 
-To point it somewhere else, use any of:
+If you'd rather the server use your own client's data instead of the bundled
+copy (e.g. after a client update), point it there with any of:
 
 ```
 go run ./cmd/server --data "C:/Program Files (x86)/Ankama/DofusArena"
@@ -133,12 +141,10 @@ of these paths work — the client's own layout is understood:
 > live in `game/contents/**maps**/`. If you hand-copy a private `data/` folder,
 > take **both** — copying only `bdata` gives you cards and spells but no arenas.
 
-Both `client/compiled/` and `server/data/` are git-ignored, so neither is ever
-committed by accident.
-
-> The server still **starts** without game data — you can log in and move
-> around, but fights are unavailable. The startup message tells you exactly
-> what it found and where.
+`client/compiled/` and the dev-only `server/data/` (a scratch spot for your own
+client copy) are both git-ignored, so neither is ever committed by accident —
+unlike `server/data-dist/`, which is tracked deliberately (see the callout
+above).
 
 ### Step 3 — Start the server
 
@@ -212,7 +218,7 @@ server's IP, e.g. `192.168.1.20:5555,192.168.1.20:5555`.
 | Problem | Fix |
 |---|---|
 | `go` / `git` **is not recognized** (Windows) or **command not found** (macOS) | The tool isn't installed or isn't on your `PATH`. Reopen the terminal after installing. |
-| Server says **"No game data ... fights are unavailable"** | `server/data/` is missing or incomplete — see [Step 2](#step-2--supply-the-client-and-its-game-data). It must contain `data.bdat` and `indexes.bdat`. |
+| Server says **"No game data ... fights are unavailable"** | Shouldn't happen — data ships bundled. If `data/` got separated from `arena-server`, or `--data`/`data_dir` points somewhere empty, put it back next to the binary or drop the override. |
 | **"another program is already using that port"** | Another copy of the server is still running. Close the other terminal (`Ctrl + C`), or change `addr` in `config.yaml`. |
 | The **web portal** doesn't open | Read the address the server printed — port 80 usually needs admin rights, so it falls back to another port automatically. Set `web.addr` in `config.yaml` to pin one, or `web.enabled: false` to turn it off. |
 | The client **can't connect** | Make sure the Step 3 terminal is still running. On first launch your firewall may ask for permission — **allow** it. |
@@ -236,7 +242,8 @@ StarLoco-Arena/  (branch v2.70)
 │   ├── test/e2e/           End-to-end tests driving a real server over a real socket
 │   ├── docs/               STATUS.md (start here), BUGS.md, DATA-COVERAGE.md, …
 │   ├── COVERAGE.md         Per-opcode implemented / wire-audited / tested matrix
-│   └── data/               Game data read at runtime — NOT committed, you supply it
+│   ├── data-dist/          Server game data (~2.5 MB) — COMMITTED, ships in releases
+│   └── data/               Local scratch copy for your own client — NOT committed
 ├── client/
 │   ├── decompiled/         Decompiled 2.70 client source — the protocol reference
 │   ├── analysis/           PROTOCOL*.md, DATA-FORMAT.md, opcode_map.csv
@@ -248,9 +255,11 @@ StarLoco-Arena/  (branch v2.70)
 └── docs/                   Game wiki (rules, breeds, spells, mechanics) + console commands
 ```
 
-> **Why `data/` lives inside `server/`:** it is the server's runtime input.
+> **Why `data*/` lives inside `server/`:** it is the server's runtime input.
 > `server/configs/*.yaml` resolves it as `data_dir: "data"`, relative to the
-> `server/` working directory. Do **not** move it — see [`AGENTS.md`](./AGENTS.md).
+> `server/` working directory (falling back to the committed `data-dist/` — see
+> [`internal/gamedata/locate.go`](./server/internal/gamedata/locate.go)). Do
+> **not** move either — see [`AGENTS.md`](./AGENTS.md).
 
 For full server details and the design docs, see
 [`server/README.md`](./server/README.md), [`server/docs/`](./server/docs) and
@@ -280,10 +289,12 @@ the client automatically via `client/arena-mcp/`.
 
 ## Git
 
-This branch does **not** use Git LFS — a plain `git clone` gets everything.
-The heavy, copyrighted material (`client/compiled/`, `server/data/`) and
+This branch does **not** use Git LFS — a plain `git clone` gets everything,
+including the small (~2.5 MB) `server/data-dist/` the server needs to run
+fights. The *heavy* copyrighted material (`client/compiled/`, ~436 MB) and
 regenerable outputs (build artifacts, `node_modules/`, dev databases, logs) are
-excluded via [`.gitignore`](./.gitignore).
+excluded via [`.gitignore`](./.gitignore) — see [`DISCLAIMER.md`](./DISCLAIMER.md)
+for exactly what is and isn't redistributed here.
 
 ---
 

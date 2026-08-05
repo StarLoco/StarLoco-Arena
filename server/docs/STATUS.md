@@ -200,8 +200,8 @@ it no longer assumes a Go toolchain or a terminal-literate operator.
   `log_level` `debug` → **`info`** (quiet console).
 
 **Game-data discovery** (`internal/gamedata/locate.go`) — added after the first
-release. The data is Ankama's and **must never be bundled into a release**; instead the
-server now finds the operator's own copy.
+release, then revised days later (see the dated entry below — this paragraph
+describes the discovery mechanism only, not the current bundling policy).
 
 - The client stores the two halves in **different** directories:
   `game/contents/bdata/` (data.bdat + indexes.bdat) and `game/contents/maps/`
@@ -209,12 +209,30 @@ server now finds the operator's own copy.
   **wrong** — it silently produced a server with cards but **zero arenas**.
 - `Resolve(root)` accepts any of: a merged `data/` dir, the client's `contents/`,
   its `game/`, or the install root holding `DofusArena.exe`. `Discover(configured)`
-  walks the configured path, then exe-relative, cwd-relative (incl. the source-checkout
-  `client/compiled/game`), then the usual per-OS install locations — and will combine
-  halves found in **different** roots (records in `data/`, arenas still in the client).
-- New `--data` flag overrides `data_dir` for one run.
-- The failure message now names which half is missing and how to fix it, and lists
-  where it looked. `Location.Complete()` distinguishes "no data" from "half the data".
+  walks the configured path, then exe-relative, cwd-relative (incl. the committed
+  `server/data-dist/` and the source-checkout `client/compiled/game`), then the usual
+  per-OS install locations — and will combine halves found in **different** roots
+  (e.g. records in `data/`, arenas still in the client).
+- `--data` flag overrides `data_dir` for one run.
+- The failure message (now rare — see below) names which half is missing, how to fix
+  it, and where it looked. `Location.Complete()` distinguishes "no data" from "half".
+
+**2026-08-05, later the same day — reversed the "never bundle" call above.** The
+maintainer (StarLoco) explicitly decided the small server-data subset (records only,
+~2.5 MB — `data.bdat`, `indexes.bdat`, `maps/`) should ship in the box: it is now
+committed at `server/data-dist/` (a deliberate exception alongside the still-gitignored
+`server/data/` scratch dir — see `AGENTS.md` constraint 4) and copied into every release
+archive and the Docker image, landing next to the binary at `data/`. `Discover`'s
+existing candidate list already checked a cwd-relative `data`, so this needed **zero
+gamedata code changes** beyond adding `data-dist` itself as a fallback candidate (so a
+source checkout behaves the same as a downloaded release). The 436 MB retail client
+remains fully excluded, unbundled, unchanged. `DISCLAIMER.md`, `NOTICE`, `LICENSE`,
+`AGENTS.md`, `CONTRIBUTING.md`, `CLAUDE.md`, the root `README.md`, `.gitignore`,
+`.gitattributes` and the Dockerfile were all updated in the same pass so no doc is left
+claiming this data is excluded when it no longer is. Verified with the real
+`goreleaser` snapshot output: extracted a bare zip with nothing else present, ran it
+with zero flags — 907 cards / 203 spells / 47 arenas, no setup. Archives also renamed
+`dofusarena-server_*` → `arena-server_*` in the same change.
 
 **Web portal** (`internal/web`) — single embedded page, no JS, no external assets.
 Players self-register; **the first account created becomes admin** (a release archive has

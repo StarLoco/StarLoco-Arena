@@ -117,7 +117,7 @@ func (c *Checker) Latest(ctx context.Context) (Release, error) {
 		return rel, err
 	}
 	// GitHub rejects requests without a User-Agent outright.
-	req.Header.Set("User-Agent", "dofusarena-server/"+version.Short())
+	req.Header.Set("User-Agent", "arena-server/"+version.Short())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 

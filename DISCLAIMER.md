@@ -15,18 +15,27 @@ respective owners.
 
 ## What is original vs. third-party
 
-- **Original work (MIT-licensed):** the Go server under `server/`, the utilities
-  under `tools/`, the RE tooling under `client/arena-mcp/`,
-  `client/control-agent/` and `client/deobf-lab/scripts/`, and this project's
-  documentation.
-- **Third-party / copyrighted material (NOT licensed by this project):**
+- **Original work (MIT-licensed):** the Go server under `server/` (excluding
+  the data described below), the utilities under `tools/`, the RE tooling
+  under `client/arena-mcp/`, `client/control-agent/` and
+  `client/deobf-lab/scripts/`, and this project's documentation.
+- **Third-party / copyrighted material reproduced here (NOT licensed by this
+  project — © Ankama Games):**
   - `client/decompiled/` — decompiled client code, reproduced only as an
     interoperability and study reference, together with the mappings and
     analysis derived from it (`client/deobf-lab/mappings/`, `client/analysis/`).
-- **Not distributed here at all** (git-ignored — you supply your own copy):
-  - `client/compiled/` — the retail game client and its bundled Oracle/Sun JRE.
-  - `server/data/` (`data.bdat`, `indexes.bdat`, `maps/`) — original game data,
-    copied out of that client.
+  - `server/data-dist/` (`data.bdat`, `indexes.bdat`, `maps/`) — the card,
+    spell and arena **records** the server's own logic needs to run a fight
+    (no art, audio, or executable code). This is a small (~2.5 MB), deliberate
+    subset the maintainer has chosen to include so the server runs without
+    requiring every operator to separately source a client. It ships in every
+    downloadable release and in `git clone`.
+- **Not distributed here at all** (git-ignored — you supply your own copy to
+  actually play):
+  - `client/compiled/` — the full retail game client (launcher, `core.jar`,
+    art, audio, ~436 MB) and its bundled Oracle/Sun JRE.
+  - `server/data/` — a git-ignored scratch folder for pointing a local build
+    at your own client copy instead of the bundled `server/data-dist/`.
 
 See [`NOTICE`](./NOTICE) for third-party attributions and [`LICENSE`](./LICENSE)
 for the scope of the MIT license.
@@ -49,3 +58,6 @@ use.
 If you are a rights holder and believe material in this repository should not be
 distributed, please open a confidential report (see [`SECURITY.md`](./SECURITY.md))
 or contact the maintainer, and the material in question will be removed promptly.
+
+This applies to `server/data-dist/` and any release built from it as much as to
+anything else here.

@@ -27,7 +27,8 @@ every opcode, field order and data layout.
 | `server/` | **The Go 1.26 server — the primary active project.** Module `github.com/StarLoco/arena-2.70` | Yes — primary work happens here |
 | `server/docs/` | **Start at `STATUS.md`** (current state, open items, invariants), then `DATA-COVERAGE.md` / `BUGS.md` | Yes, keep in sync with code |
 | `server/COVERAGE.md` | Per-opcode implemented / wire-audited / tested matrix | Yes, keep current |
-| `server/data/` | Game data (`data.bdat` + `indexes.bdat`, maps) copied out of the client at runtime | No — **git-ignored**, local input only |
+| `server/data-dist/` | The redistributable server-data subset (`data.bdat` + `indexes.bdat`, maps) — ships in git and in releases | Occasionally, deliberately (see constraint 4) |
+| `server/data/` | Local scratch copy for pointing a dev build at your own client instead | No — **git-ignored**, local input only |
 | `client/decompiled/` | Decompiled (obfuscated) 2.70 client source — the protocol reference | No — read for provenance |
 | `client/analysis/` | Protocol + data-format write-ups (`PROTOCOL*.md`, `DATA-FORMAT.md`, `opcode_map.csv`) | Yes, when you learn something new |
 | `client/compiled/` | The runnable retail client (launcher, `core.jar`, assets, bundled JRE) | No — **git-ignored**, ~436 MB, local only |
@@ -42,9 +43,9 @@ every opcode, field order and data layout.
 
 1. **Do not move `server/data/`.** The server resolves it from
    `server/configs/*.yaml` (`data_dir: "data"`, relative to the `server/`
-   working directory). It is **git-ignored** — it is copied out of the retail
-   client (`client/compiled/game/contents/bdata`) and is not ours to
-   redistribute. Tests that need it must **skip**, not fail, when it is absent.
+   working directory). It is **git-ignored** — a local scratch copy for
+   pointing a dev build at your own client. Tests that need it must **skip**,
+   not fail, when it is absent.
 2. **The Go module path is `github.com/StarLoco/arena-2.70`** (in
    `server/go.mod`) even though the folder is just `server/`. This is
    intentional — do **not** rewrite imports to match the folder name.
@@ -56,6 +57,13 @@ every opcode, field order and data layout.
    small tooling assets. The heavy, copyrighted material (`client/compiled/`,
    `server/data/`) is excluded by `.gitignore` and must stay that way — never
    `git add -f` it.
+   **`server/data-dist/` is the one deliberate exception**: a small (~2.5 MB)
+   maintainer-curated subset of card/spell/arena *records* (no art, audio, or
+   executable code), committed on purpose so the server and its releases work
+   without every operator sourcing a client first. It is edited only via an
+   explicit maintainer decision (StarLoco), not by force-adding whatever
+   happens to be in a local `server/data/`. Keep `DISCLAIMER.md` and `NOTICE`
+   in sync with whatever it contains.
 5. **The wire protocol is sacred.** The retail client cannot be changed, so
    server output must match the decompiled reference in `client/decompiled/` and
    the specs in `client/analysis/`. Never "improve" the wire format.
@@ -68,14 +76,15 @@ go build ./...                                   # must pass; studio needs front
 go vet ./...
 go test ./...                                    # full suite, no CGO
 go test -race ./...                              # needs a C toolchain
-go run ./cmd/server                              # listens on 127.0.0.1:5555
+go run ./cmd/server                              # listens on 0.0.0.0:5555
 go run ./cmd/server --config configs/config.sqlite.yaml
 go run ./cmd/seedaccount --login test --password test123
 ```
 
 - First run creates `config.yaml` (from the embedded, fully commented
   `internal/config/config.template.yaml`) and `arena.db` (SQLite, WAL) in
-  `server/` — both git-ignored.
+  `server/` — both git-ignored. It also finds the committed
+  `server/data-dist/` automatically, so fights work with no further setup.
 - The retail client already ships pointed at `127.0.0.1:5555`
   (`client/compiled/game/config.properties` → `proxyAddresses_1`), so it
   connects with no change.
