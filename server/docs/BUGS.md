@@ -22,9 +22,6 @@ decompiled client, no runtime).
   and the drop table, so ~30 of the 78 card-set effects remain inert.
 - **Fighter conditions (type 902) are unmodelled** — wounds never accrue between fights.
   Fully decodable (0 unknown fields); needs the roller `bf_1.b` ported.
-- **Three challenge records (29/30/31) still stop short**: each carries a type-12
-  parameter whose trailing `Ht` effect is inline and unlength-prefixed, so it cannot be
-  skipped without a full effect parser. Everything else in that record decodes (B-071).
 - **Most `np_1` rule types are decoded but not ENFORCED.** Turn duration, sudden death
   and the bonus-cell multiplier are wired (B-072); budget (incl. type 1000 "no budget
   limit"), roster limits, banned/allowed spells and equipment, class limits and prices,
@@ -40,6 +37,56 @@ decompiled client, no runtime).
 ---
 
 ## Fixed
+
+### B-073 · Challenges 29/30/31 stopped short on an inline, unlength-prefixed effect
+B-071 left three challenge records deliberately unfinished: each carries an `np_1`
+type-12 parameter ("Lance un effet sur tous les combattants à la création du combat")
+whose trailing `Ht` effect is **inline with no length prefix**. Every other effect on
+this format is length-prefixed — `decodeEffectList` slices the blob first — so the
+existing decoder could stop reading early with no consequence. An inline effect can
+only be passed by parsing it **exactly**: a byte too few or too many desynchronises
+every field after it.
+
+**The fix was one field short of free.** `decodeEffectBlob` already read through field
+19 (the i64 target masks); the full `Ht` record is just **two trailing flag bytes**
+longer (`beL`/`beM`, getters `Tj`/`Tk`, which the client hands straight to its runtime
+effect constructor and whose meaning is not established). Reading those two makes the
+decoder self-delimiting, so it was split into `decodeEffectCursor` (consumes a
+caller-owned cursor exactly) with `decodeEffectBlob` as a thin wrapper. Nothing about
+the length-prefixed path changes.
+
+**All 39 challenge records now decode to zero residual bytes** (was 36).
+
+**The decoded values are the real evidence this is byte-exact.** All three effects come
+out as:
+
+```
+container "FIGHT_PARAMETER"   action 122   params [40]   duration [63 0]
+```
+
+Every one of those is independently meaningful: `FIGHT_PARAMETER` is a container type
+we had not seen, and it is exactly what a rule applied at fight creation should say;
+action **122** is the dodge-GAIN action from the same `mh_2` table as the tackle stats
+(B-063); `[63 0]` is the same infinite-duration marker the `FIGHTER_CONDITION` rows
+use. A misaligned read does not land on four coherent values at once. So challenges
+29/30/31 each grant **+40% dodge to every fighter for the whole fight**.
+
+**The guard test did its job.** `TestChallengeTailReal` pinned those three ids with a
+message saying "an inline-Ht parser must have landed; move it out of the blocked set" —
+and that is exactly how the change announced itself, failing loudly on all three the
+moment the parser worked. The blocked set is gone and the decoded effect values are now
+asserted in its place.
+
+**Still NOT applied.** The effect is decoded and carried, not executed: rule type 12
+would need the fight-start application path, and its target mask (`[1024]`) needs the
+client's `aLc` evaluator, which is a separate open item. Half-wiring it against a mask
+I cannot evaluate would be worse than leaving it inert and documented.
+
+**Verified:** `unit` — 39/39 challenges consumed exactly; the three inline effects
+asserted field by field; a synthetic well-formed inline effect consumed to the byte
+(a sentinel placed immediately after it must still read back, which is the assertion
+that actually proves exactness); and a truncated inline effect failing the decode
+rather than returning junk.
 
 ### B-072 · The turn clock and sudden-death turn were hardcoded — and package-global
 Two fight rules the data actually specifies were invented constants in this server:

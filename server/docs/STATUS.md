@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-073 | Challenges 39/39: inline unlength-prefixed effects now parsed exactly |
 | B-072 | Turn clock + sudden-death turn now per-fight, from data (were hardcoded globals) |
 | B-071 | Decoded `np_1`: coach cards 26/26 (zero residual x907), challenges 36/39 |
 | B-070 | Evolution fighters could not be created (et_2 type byte was decoded and dropped) |

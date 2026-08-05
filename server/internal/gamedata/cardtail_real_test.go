@@ -1,6 +1,7 @@
 package gamedata
 
 import (
+	"math"
 	"os"
 	"testing"
 )
@@ -135,26 +136,95 @@ func TestParameterLayoutSizing(t *testing.T) {
 	}
 }
 
-// TestParameterInlineEffectStops pins the guard: an element that declares a
-// trailing effect must stop the decode rather than run on into bytes it cannot
-// interpret.
-func TestParameterInlineEffectStops(t *testing.T) {
+// buildHt assembles a complete, well-formed Ht effect blob — every field through
+// to the two trailing flags. Used to prove decodeEffectCursor consumes an inline
+// effect EXACTLY, which is what makes an np_1 carrying one skippable at all.
+func buildHt(effectID, actionID int32, params []float32) []byte {
+	var b []byte
+	put32 := func(v int32) { b = append(b, byte(v>>24), byte(v>>16), byte(v>>8), byte(v)) }
+	putArr := func(n int32) { put32(n) } // empty array = just a zero count
+	put32(effectID)
+	put32(actionID)
+	put32(0) // parentId
+	put32(4) // parentType length
+	b = append(b, "SPEL"...)
+	put32(1)                     // areaShape
+	b = append(b, 0, 0)          // areaOrdering (i16)
+	b = append(b, 0, 0, 0, 0, 1) // 5 bools; the last is isCritical
+	put32(int32(len(params)))
+	for _, f := range params {
+		bits := math.Float32bits(f)
+		b = append(b, byte(bits>>24), byte(bits>>16), byte(bits>>8), byte(bits))
+	}
+	for i := 0; i < 6; i++ { // triggersBefore/After/end/vestigial/areaSize/duration
+		putArr(0)
+	}
+	putArr(0)           // targets (i64 array)
+	b = append(b, 0, 1) // the two trailing flags
+	return b
+}
+
+// TestParameterInlineEffect pins the case that used to stop the decoder dead:
+// an np_1 whose trailing Ht is INLINE and carries no length prefix. The only way
+// past it is to parse it exactly, so this asserts both the decode AND the cursor
+// position — a byte out either way desynchronises the enclosing record.
+func TestParameterInlineEffect(t *testing.T) {
+	ht := buildHt(555, 42, []float32{7, 8})
+
 	w := []byte{1}
 	put32 := func(v int32) { w = append(w, byte(v>>24), byte(v>>16), byte(v>>8), byte(v)) }
-	put32(900)
-	put32(1)
-	put32(0)
+	put32(12)           // type 12: "cast an effect on all fighters at fight creation"
+	put32(1)            // id
+	put32(0)            // parentId
 	w = append(w, 0)    // no params
-	w = append(w, 0, 1) // effectVersion = 1  -> inline Ht follows
+	w = append(w, 0, 1) // effectVersion = 1 -> an inline Ht follows
 	put32(555)          // effect id
-	w = append(w, 0xDE, 0xAD, 0xBE, 0xEF)
+	w = append(w, ht...)
+	w = append(w, 0xAB) // sentinel: must survive untouched
 
 	c := &cur{b: w}
 	got, ok := decodeParameters(c)
-	if ok {
-		t.Error("decodeParameters accepted an element with an inline effect; it cannot skip one")
+	if !ok {
+		t.Fatal("decodeParameters failed on a well-formed inline effect")
 	}
-	if len(got) != 1 || !got[0].HasEffect() || got[0].EffectID != 555 {
-		t.Errorf("got %+v, want one element flagged with effect id 555", got)
+	if len(got) != 1 {
+		t.Fatalf("decoded %d parameters, want 1", len(got))
+	}
+	p := got[0]
+	if !p.HasEffect() || p.Effect == nil {
+		t.Fatal("the inline effect was not captured")
+	}
+	if p.Effect.EffectID != 555 || p.Effect.ActionID != 42 {
+		t.Errorf("effect = id %d action %d, want 555/42", p.Effect.EffectID, p.Effect.ActionID)
+	}
+	if len(p.Effect.Params) != 2 || p.Effect.Params[0] != 7 || p.Effect.Params[1] != 8 {
+		t.Errorf("effect params = %v, want [7 8]", p.Effect.Params)
+	}
+	// THE ASSERTION THAT MATTERS: the cursor must sit exactly on the sentinel.
+	if c.pos != len(w)-1 {
+		t.Fatalf("consumed %d bytes, want %d — an inline effect must be consumed exactly",
+			c.pos, len(w)-1)
+	}
+	if tail := c.u8(); tail != 0xAB {
+		t.Errorf("sentinel = %#x, want 0xAB — the enclosing record is desynced", tail)
+	}
+}
+
+// TestParameterTruncatedInlineEffect: a malformed/short inline effect must fail
+// the decode rather than return junk, since we cannot know where it ended.
+func TestParameterTruncatedInlineEffect(t *testing.T) {
+	w := []byte{1}
+	put32 := func(v int32) { w = append(w, byte(v>>24), byte(v>>16), byte(v>>8), byte(v)) }
+	put32(12)
+	put32(1)
+	put32(0)
+	w = append(w, 0)
+	w = append(w, 0, 1)
+	put32(555)
+	w = append(w, 0xDE, 0xAD) // nowhere near a complete Ht
+
+	c := &cur{b: w}
+	if _, ok := decodeParameters(c); ok {
+		t.Error("a truncated inline effect was accepted; it must fail the decode")
 	}
 }

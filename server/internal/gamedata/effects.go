@@ -178,7 +178,19 @@ func decodeEffectList(c *cur) []Effect {
 //	i32 effectId, i32 actionId, i32 parentId, str parentType, i32 areaShape,
 //	i16 areaOrdering, 5×bool, f32[] params, …(unread tail)
 func decodeEffectBlob(b []byte) Effect {
-	c := &cur{b: b}
+	return decodeEffectCursor(&cur{b: b})
+}
+
+// decodeEffectCursor decodes one Ht effect from a caller-owned cursor, consuming
+// it EXACTLY — every field through to the two trailing flags.
+//
+// That exactness is the whole point. Most effects on this format arrive
+// length-prefixed (`decodeEffectList` slices the blob first), so stopping early
+// is harmless there. But an `np_1` parameter carries its effect INLINE with no
+// length prefix (see parameters.go), so the only way past it is to parse it
+// completely. Reading one byte too few or too many desynchronises the remainder
+// of the enclosing record.
+func decodeEffectCursor(c *cur) Effect {
 	e := Effect{}
 	e.EffectID = c.i32() // field 1 effectId (also carried as the wrapper innerId)
 	e.ActionID = c.i32() // field 2 actionId
@@ -215,5 +227,11 @@ func decodeEffectBlob(b []byte) Effect {
 	e.AreaSize = c.i32Array() // 17 areaSize (Tg/beI) — zone radius/size fed to zg_1.a
 	e.Duration = c.i32Array() // 18 duration (Th/beJ)
 	e.Targets = c.i64Array()  // 19 target-condition bitmasks (Ti/beK)
+	// 20-21: two trailing flags (beL/beM, getters Tj/Tk). The client hands them
+	// straight to the runtime effect constructor (abw_2 -> xj_0) and their meaning
+	// is not established, but they MUST be consumed: they are the last two bytes
+	// of the record, and an inline effect is only skippable if we read it whole.
+	_ = c.u8() // 20 beL
+	_ = c.u8() // 21 beM
 	return e
 }

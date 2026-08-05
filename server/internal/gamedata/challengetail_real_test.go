@@ -5,13 +5,14 @@ import (
 	"testing"
 )
 
-// TestChallengeTailReal locks the challenge record now that `np_1` is decodable.
+// TestChallengeTailReal locks the challenge record.
 //
-// 36 of the 39 records are consumed EXACTLY. The three that are not are
-// characterised rather than hand-waved: challenges 29/30/31 each carry a type-12
-// parameter ("Lance un effet sur tous les combattants à la création du combat")
-// whose trailing `Ht` effect is inline and has no length prefix, so it cannot be
-// skipped without a full effect parser. decodeParameters stops there by design.
+// ALL 39 records are now consumed EXACTLY. Challenges 29/30/31 used to stop
+// short: each carries a type-12 parameter ("Lance un effet sur tous les
+// combattants à la création du combat") whose trailing `Ht` effect is inline
+// with no length prefix, so passing it needs a parser that consumes the effect
+// exactly rather than one that relies on a length. `decodeEffectCursor` does
+// that, so the record is whole.
 func TestChallengeTailReal(t *testing.T) {
 	if _, err := os.Stat(clientBdataDir + `\data.bdat`); err != nil {
 		t.Skip("no client data")
@@ -21,9 +22,8 @@ func TestChallengeTailReal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blockedByInlineEffect := map[int32]bool{29: true, 30: true, 31: true}
 	var total, exact int
-	var withVictory, withBonuses int
+	var withVictory, withBonuses, withInlineEffect int
 	for _, e := range st.EntriesOf(TypeChallengeDef) {
 		rec, err := st.ReadRecord(e.Position)
 		if err != nil {
@@ -37,13 +37,6 @@ func TestChallengeTailReal(t *testing.T) {
 			continue
 		}
 		resid := len(rec.Data) - c.pos
-		if blockedByInlineEffect[ch.ID] {
-			if resid == 0 {
-				t.Errorf("challenge %d now decodes fully — an inline-Ht parser must have "+
-					"landed; move it out of the blocked set", ch.ID)
-			}
-			continue
-		}
 		if c.err {
 			t.Errorf("challenge %d: short read", ch.ID)
 			continue
@@ -57,6 +50,9 @@ func TestChallengeTailReal(t *testing.T) {
 			if p.Type == ParamTypeVictoryCondition {
 				withVictory++
 			}
+			if p.Effect != nil {
+				withInlineEffect++
+			}
 		}
 		if len(ch.Bonuses) > 0 {
 			withBonuses++
@@ -66,8 +62,58 @@ func TestChallengeTailReal(t *testing.T) {
 	if total != 39 {
 		t.Errorf("read %d challenges, want 39", total)
 	}
-	if want := total - len(blockedByInlineEffect); exact != want {
-		t.Errorf("%d/%d challenges consumed exactly, want %d", exact, total, want)
+	if exact != total {
+		t.Errorf("%d/%d challenges consumed exactly, want all of them", exact, total)
+	}
+
+	// The three type-12 parameters that used to block the decode. Each carries an
+	// inline, unlength-prefixed Ht that only a byte-exact effect parser can pass.
+	if withInlineEffect != 3 {
+		t.Errorf("%d parameters carry an inline effect, want 3 (challenges 29/30/31)", withInlineEffect)
+	}
+
+	// Lock what those effects ARE. This is the real evidence the inline parse is
+	// byte-exact: the decoded values are all independently meaningful — container
+	// "FIGHT_PARAMETER" (a rule applied at fight creation), action 122 (the
+	// dodge-GAIN action from the same mh_2 table as the tackle stats), a sane
+	// +40 magnitude, and the [63 0] infinite-duration marker used by the
+	// FIGHTER_CONDITION rows. A misaligned read would not land on all four.
+	chs, err := st.LoadChallenges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int32{29, 30, 31} {
+		ch := chs.Get(id)
+		if ch == nil {
+			t.Errorf("challenge %d missing", id)
+			continue
+		}
+		var found bool
+		for _, p := range ch.Bonuses {
+			if p.Effect == nil {
+				continue
+			}
+			found = true
+			e := p.Effect
+			if p.Type != 12 {
+				t.Errorf("challenge %d: inline effect on np_1 type %d, want 12", id, p.Type)
+			}
+			if e.ContainerType != "FIGHT_PARAMETER" {
+				t.Errorf("challenge %d: container %q, want FIGHT_PARAMETER", id, e.ContainerType)
+			}
+			if e.ActionID != 122 {
+				t.Errorf("challenge %d: action %d, want 122 (dodge gain)", id, e.ActionID)
+			}
+			if len(e.Params) != 1 || e.Params[0] != 40 {
+				t.Errorf("challenge %d: params %v, want [40]", id, e.Params)
+			}
+			if len(e.Duration) != 2 || e.Duration[0] != 63 {
+				t.Errorf("challenge %d: duration %v, want the [63 0] infinite marker", id, e.Duration)
+			}
+		}
+		if !found {
+			t.Errorf("challenge %d carries no inline effect", id)
+		}
 	}
 
 	// The type-14 "Condition de victoire" elements are the reason this record

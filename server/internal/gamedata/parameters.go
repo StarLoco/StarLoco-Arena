@@ -70,6 +70,10 @@ type Parameter struct {
 	// Victory is set only for ParamTypeVictoryCondition, whose element layout is
 	// different (see that constant).
 	Victory *VictoryCondition
+	// Effect is the trailing inline `Ht` effect, present iff EffectVersion != 0.
+	// Rule type 12 ("Lance un effet sur tous les combattants a la creation du
+	// combat") is the shipped user.
+	Effect *Effect
 }
 
 // HasEffect reports whether this element carries a trailing inline `Ht` effect.
@@ -77,11 +81,9 @@ func (p *Parameter) HasEffect() bool { return p.EffectVersion != 0 }
 
 // decodeParameters reads `[u8 count]` followed by that many `np_1` elements.
 //
-// Returns ok=false if any element carries a trailing effect, because that effect
-// is inline and unlength-prefixed: we cannot skip past it, so continuing would
-// mis-read every field after this array. The caller must treat that as "stop
-// decoding this record" rather than press on. No shipped record hits this path
-// (asserted by TestCoachCardTailReal), so it is a guard, not dead weight.
+// Returns ok=false only on a malformed count or a truncated read. A trailing
+// inline effect is handled (decodeEffectCursor consumes it exactly), so an
+// element carrying one no longer stops the decode.
 func decodeParameters(c *cur) (out []Parameter, ok bool) {
 	n := int(c.u8())
 	if n < 0 || n > 64 {
@@ -112,9 +114,13 @@ func decodeParameters(c *cur) (out []Parameter, ok bool) {
 		p.EffectVersion = c.i16()
 		if p.EffectVersion != 0 {
 			p.EffectID = c.i32()
-			// Inline, unlength-prefixed Ht from here. Stop rather than desync.
-			out = append(out, p)
-			return out, false
+			// The effect is INLINE with no length prefix, so it can only be
+			// passed by parsing it in full — decodeEffectCursor consumes it
+			// exactly. Reading a byte too few or too many here desynchronises
+			// everything after this array.
+			ef := decodeEffectCursor(c)
+			ef.EffectID = p.EffectID // the wrapper id is authoritative
+			p.Effect = &ef
 		}
 		out = append(out, p)
 	}

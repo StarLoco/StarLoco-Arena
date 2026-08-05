@@ -107,7 +107,7 @@ each is blocked on its own unimplemented mechanic, not on the data.
 
 Field numbers are the record's binary order. "consumer" = who reads it in the client.
 
-### Type 220 — Spells (`co_1`) — 19 of 23 fields
+### Type 220 - Spells (`co_1`) - 23 of 23 fields decoded (2 not yet evaluated)
 | # | field | our name | status |
 |---|---|---|---|
 | 1,2,3 | id, breedId, value | `ID/BreedID/Value` | ✅ |
@@ -144,7 +144,7 @@ a client animation script id (**not** a crit rate, an earlier hypothesis — now
 ### Type 230 — Event cards (`ama_1`) — 4 of 4 fields ✅ complete
 Field 2 is dead in the client too (no callers).
 
-### Type 100 — Coach cards (`aPp`) — 18 of 26 fields
+### Type 100 - Coach cards (`aPp`) - 26 of 26 fields (zero residual x907; B-071)
 Was 8 of 26 (and `Rank` was permanently 0). Now decoded in one pass through field 18:
 id, type, set, value, price map, required level, firework type + colour, `isUnique`,
 obtainable-in-draw + drop %, **bound**, **undestructible**, has-usable-action, the effect
@@ -171,7 +171,7 @@ carried, 18 are stabilised and 15 intransposable — none of which we honoured.
 (B-063). `DeadFlag` is dead
 in the client too; `NoPositionalBonus` is inert because 2.70 dropped directional damage.
 
-### Type 400 — Challenges (`GE`) — 5 of 17 fields
+### Type 400 - Challenges (`GE`) - 17 of 17 fields (39/39 records exact; B-071, B-073)
 Decoded: id, six raw ints, reward cards, time-challenge. Of the rest, most have **no
 callers in the client either**; the meaningful unread ones are the linked achievement id,
 the XP reward and the XP cap.
@@ -189,7 +189,7 @@ the delayed re-trigger timer.
 |---|---|---|
 | Breed HP/AP/MP/init/element/value | `game/breed.go` | client enum `xq` — **compiled into the client, not in .bdat**; hardcoded of necessity, now pinned to `xq` by tests |
 | Close-combat 5 AP / 5 dmg / 7 crit | `game/breed.go` | same (`xq.DO/DP/DQ`) |
-| Fighter states (`stateByAction`) | `game/states.go` | **type 902** — should be read |
+| Fighter states (`stateByAction`) | `game/states.go` | NOT type 902 - that is the persistent condition layer (B-066). These map `mh_2` action ids and are compiled into the client. |
 | Tournaments | `game/tournaments.go` | **type 1000/1001** |
 | Interactive elements | `game/elements.go` | `maps/env/*.jar` + **type 360** |
 | Zaap destinations | `game/zaap.go` | `maps/env` descriptors |
@@ -231,7 +231,7 @@ system — the mechanism a challenge or tournament uses to customise a match:
 | 4-9 | spell/equipment allow + ban lists (incl. "ban everything") | |
 | **10** | **per-fighter turn duration (ms) — a DELTA** | ✅ wired (B-072); only challenge 46 uses it: +3 600 000 ms |
 | **11** | **sudden-death turn — a DELTA (±turns)** | ✅ wired (B-072); unused by challenges, expected tournament-side |
-| 12 | cast an effect on all fighters at fight creation | carries an inline `Ht` |
+| 12 | cast an effect on all fighters at fight creation | decoded (B-073): 3 challenges, each +40% dodge for the fight; carried, not applied |
 | 13 | multiply bonus-cell effects (absolute) | ✅ wired (B-072); 5 challenges (x2, x2, x5, x10) |
 | **14** | **victory condition** | the ONE type with its own layout (`wi_0` + `mp_2`); 9 challenges |
 | 15-25 | class limits, class bans, fighter/spell/equipment prices | |
@@ -249,6 +249,7 @@ system — the mechanism a challenge or tournament uses to customise a match:
 
 | Date | Change |
 |---|---|
+| 2026-08-05 | Inline unlength-prefixed Ht effects parsed exactly; challenges now 39/39 with zero residual (B-073). |
 | 2026-08-04 | np_1 rule 13 (bonus-cell multiplier) applied to the beneficial tiles; timing rules 10/11 corrected to DELTAS per content.54.* (B-072). |
 | 2026-08-04 | Wired np_1 rule types 10/11: the turn clock and sudden-death turn are per-fight and read from data instead of hardcoded package globals (B-072). |
 | 2026-08-04 | Decoded the `np_1` element (B-071): coach cards now 26/26 fields with zero residual across all 907 records; challenges 36/39 exact; the ajr_2 type enum documented as a fight-ruleset system. |
