@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.3.0...v0.4.0) (2026-08-05)
+
+
+### Features
+
+* **web:** link the retail client from the portal, README and release notes ([445ddc2](https://github.com/StarLoco/StarLoco-Arena/commit/445ddc24fd96ba263e0c2fdbde57d6f87587acaa))
+
 ## [0.3.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.2.0...v0.3.0) (2026-08-05)
 
 
