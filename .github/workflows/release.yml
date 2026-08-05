@@ -59,14 +59,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Check out the tag release-please just created, not the branch head.
           ref: ${{ needs.release-please.outputs.tag }}
           # GoReleaser needs the full history and tags to resolve the version.
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum

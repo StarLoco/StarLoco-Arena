@@ -29,9 +29,9 @@ jobs:
         shell: bash # available on the Windows runners too, so one script fits both
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           # Single source of truth: the toolchain version lives in go.mod.
           go-version-file: server/go.mod
@@ -66,10 +66,16 @@ jobs:
       - name: Build, vet and test (Linux, excluding the desktop Studio tool)
         if: runner.os == 'Linux'
         run: |
-          pkgs=$(go list ./... | grep -v '/cmd/studio')
-          go build $pkgs
-          go vet $pkgs
-          go test $pkgs
+          # `go build ./...` silently skips packages that contain only _test.go
+          # files, but naming packages explicitly (which is how studio is
+          # excluded) makes the same case a hard error. test/e2e is exactly
+          # that, so the build list is filtered on .GoFiles - non-empty only
+          # for packages with buildable non-test sources.
+          build_pkgs=$(go list -f '{{if .GoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v '/cmd/studio')
+          all_pkgs=$(go list ./... | grep -v '/cmd/studio')
+          go build $build_pkgs
+          go vet $all_pkgs
+          go test $all_pkgs
 
       - name: Build, vet and test (Windows, everything)
         if: runner.os == 'Windows'
