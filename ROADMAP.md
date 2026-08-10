@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-080 (AoE shapes completed) — **Tier 0 complete**
+· **Latest work:** B-081 (spell target masks enforced) — **Tier 0 complete**
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 275 Go files · 482 test functions (72 of them end-to-end
+**Scale reference.** 276 Go files · 486 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -445,10 +445,13 @@ Expanded targets are re-filtered by each effect's own target conditions.
   `canCastWhenInjured` (≤99 %), `canCastWhenDrunk`, the three Masqueraider mask
   gates (positive + negative), `canCastWhenCarryAlly/Ennemy`. Unknown tokens are
   permissive, matching the client.
-- **Spell-level `TargetMasks`** — 🔷 decoded on 202/203 spells, **not evaluated**.
-  Needs the client's fuller evaluator (state-based bits: intransposable,
-  stabilised, cannot-be-carried, rooted, petrified). The client only enforces it
-  on 3 spells, so the payoff is small.
+- **Spell-level `TargetMasks`** ✅ (B-081) — decoded on 202/203 spells, but the
+  client only APPLIES them when `EnforceTargetMasks` (field 19) is set, which is
+  true for exactly 3: spell 468 (ally), spell 83 (ally **and** summoned), and
+  spell 449 (`1<<62` = the target is a ground **effect area**). The first two are
+  plain per-effect bits the existing evaluator already decides. The third is a
+  targeting *mode* this server does not model, so a mask carrying any bit we
+  cannot represent is skipped whole rather than half-enforced.
 
 ### 8.9 Cast frequency ✅
 
@@ -1004,8 +1007,12 @@ is a signing certificate or SignPath); no published Docker image.
     shape-8 row occur in shipped data, so the cross work is forward safety —
     but it replaces an approximation that would have been silently wrong.
 16. **Matchmaking rating band + queue timeout.**
-17. **Spell `TargetMasks` + `MaxActive`** — decoded, not evaluated. Small payoff
-    (3 and 6 spells) but closes the spell record completely.
+17. 🟡 **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is still
+    decoded-not-enforced: 6 spells carry it (8, 15, 46, 141, 167, 173 — buff
+    spells, not summons), and the blocker is its SCOPE — whether the cap counts
+    live instances per caster, per target or across the fight. The client side is
+    a runtime counter `apS` passes into `yp_2`, not something the record states,
+    so enforcing it against a guessed scope would change which casts are legal.
 
 ### Tier 2 — real features
 

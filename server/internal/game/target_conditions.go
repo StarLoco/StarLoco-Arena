@@ -55,6 +55,16 @@ const (
 	breedIsMask    int64 = 0x3FFF0000     // bits 16..29 — target's breed IS k+1
 	breedIsNotMask int64 = 0x3FFF00000000 // bits 32..45 — target's breed is NOT k+1
 	breedSlots           = 14
+
+	// evaluableTargetBits is every bit targetConditionPasses can actually decide.
+	// A condition carrying anything outside this set is one this server cannot
+	// represent — notably `aLc`'s bit 62 ("the target is a ground effect area"),
+	// which belongs to a targeting mode we do not model. Callers that gate a
+	// whole CAST on a mask check this first and stay permissive rather than
+	// rejecting a spell they cannot judge; see spellTargetMaskAllows.
+	evaluableTargetBits = condIsCaster | condIsAlly | condIsEnemy | condIsHuman |
+		condIsSummoned | condIsEffectArea | condIsAllyNotSelf | condIsNotCaster |
+		condBreedIsZero | condBreedIsNotZero | breedIsMask | breedIsNotMask | 1
 )
 
 // effectTargetAllowed reports whether `target` satisfies any of the effect's

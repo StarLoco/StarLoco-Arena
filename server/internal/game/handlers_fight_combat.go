@@ -287,7 +287,47 @@ func (f *Fight) spellTargetValid(caster *FightFighter, sp *gamedata.Spell, targe
 	if sp.TestLoS && !f.Arena().hasLineOfSight(caster.Pos, target) {
 		return false
 	}
+	if !f.spellTargetMaskAllows(caster, sp, target) {
+		return false
+	}
 	return true
+}
+
+// spellTargetMaskAllows evaluates a spell's CAST-level target conditions
+// (`TargetMasks`, field 22) — distinct from the per-effect conditions, which
+// filter an area's expanded targets.
+//
+// The client only runs this check when the spell's `EnforceTargetMasks` flag
+// (field 19, `eF()`) is set, and exactly THREE of the 203 shipped spells set it:
+//
+//	spell 468  mask 4  = bit 2         -> the target must be an ALLY
+//	spell 83   mask 36 = bits 2 and 5  -> an ally AND summoned, i.e. an allied summon
+//	spell 449  mask 1<<62              -> the target must be a ground EFFECT AREA
+//
+// The first two are plain per-effect condition bits, so the existing evaluator
+// decides them unchanged. The third is not: bit 62 lives in `aLc.n(ack_1)`,
+// which asks whether the target is a live trap/glyph rather than a fighter — a
+// targeting MODE this server does not model (casts aim at a cell or the fighter
+// on it, never at a ground area). Enforcing it with the fighter evaluator would
+// reject every cast of spell 449, which is worse than not enforcing it, so a
+// mask carrying bits this evaluator cannot represent is deliberately left
+// permissive and the spell keeps working.
+func (f *Fight) spellTargetMaskAllows(caster *FightFighter, sp *gamedata.Spell, target Pos) bool {
+	if sp == nil || !sp.EnforceTargetMasks || len(sp.TargetMasks) == 0 {
+		return true
+	}
+	for _, m := range sp.TargetMasks {
+		if m&^evaluableTargetBits != 0 {
+			return true // carries a bit we cannot represent — do not guess
+		}
+	}
+	victim := f.fighterAtCell(target)
+	if victim == nil {
+		// No fighter on the aimed cell. Every enforced mask in the shipped data
+		// names a property OF A FIGHTER, so there is nothing to satisfy.
+		return false
+	}
+	return effectTargetAllowed(caster, victim, sp.TargetMasks)
 }
 
 // manhattanDist returns |dx|+|dy| between two cells, ignoring altitude — the

@@ -38,6 +38,56 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-081 - Spell-level target masks were decoded and never evaluated
+
+`TargetMasks` (field 22) are CAST-level target conditions, distinct from the
+per-effect conditions that filter an area's expanded targets. 202 of the 203
+shipped spells carry one, but the client only APPLIES the check when the spell's
+`EnforceTargetMasks` flag (field 19, `eF()`) is set - and exactly three
+spells set it:
+
+| spell | mask | meaning |
+|---:|---|---|
+| 468 | `4` (bit 2) | the target must be an **ally** |
+| 83 | `36` (bits 2+5) | an ally **and** summoned - an allied summon |
+| 449 | `1<<62` | the target must be a ground **effect area** |
+
+The first two are plain per-effect condition bits, so the existing evaluator
+decides them with no new machinery. The third is not: bit 62 lives in
+`aLc.n(ack_1)`, which asks whether the target is a live trap/glyph rather than
+a fighter - a targeting MODE this server does not model, since casts here aim at
+a cell or the fighter standing on it, never at a ground area.
+
+**A mask carrying any bit this evaluator cannot represent is skipped whole.**
+Judging spell 449 with the fighter evaluator would reject every cast of it,
+which is a worse outcome than not enforcing a rule at all, and half-enforcing a
+mixed mask is not the rule either.
+
+**The mutation test caught a worthless assertion here.** The first version of
+the "unrepresentable bit" test used spell 449's own mask, and it passed with the
+escape hatch REMOVED - because `targetConditionPasses` already ignores bits it
+does not know, so a pure-unknown mask is permissive either way. The test proved
+nothing. The case that actually exercises the escape is a MIXED mask (one
+decidable bit plus one that is not), where partial enforcement and skipping
+diverge; the test now asserts on that and fails when the escape is disabled.
+
+**MaxActive is deliberately still not enforced.** Six spells carry it (8, 15,
+46, 141, 167, 173 - buff spells, not summons: poison, AP boosts, all-element
+damage%). The field's SCOPE is the unknown - whether the cap counts live
+instances per caster, per target, or across the whole fight - and the client
+side of it is a runtime counter that `apS` passes into `yp_2` rather than
+anything readable from the record. Implementing a cap against a guessed scope
+would change which casts are legal, so it stays decoded and documented.
+
+**Verification.** Ally-only and ally+summoned masks (accepting the right target
+and refusing the wrong one), the `EnforceTargetMasks` flag acting as the gate,
+the mixed-mask escape, and a real-data canary pinning the three enforced spells
+and their exact masks so a future data set that enforces more of them fails
+loudly. Mutation-checked by removing the enforcement call and by disabling the
+escape.
+
+---
+
 ### B-080 - AoE shape 8 was unimplemented and the cross ignored two of its three arities
 
 **Shape 8 (`acg_0`, "forme a base de points")** fell through to a single cell.
