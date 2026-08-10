@@ -1,6 +1,9 @@
 package game
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // searcher is a coach waiting in the matchmaking queue.
 type searcher struct {
@@ -8,6 +11,11 @@ type searcher struct {
 	mode    int16   // fA game mode / fight type
 	subMode int16   // fO
 	teamIDs []int64 // selected fighter ids
+	// strength is the coach's ladder rating, snapshotted on queueing so the
+	// pairing decision cannot be perturbed by a concurrent post-fight update.
+	strength int32
+	// since is when this searcher started waiting; it widens its own band.
+	since time.Time
 }
 
 // pendingMatch is a found pair awaiting both coaches' acceptance.
@@ -26,11 +34,69 @@ type Matchmaker struct {
 	pending map[int64]*pendingMatch
 	byCoach map[uint]int64 // coach id -> pending match id
 	nextID  int64
+	// band is the strength gap two coaches may have when they first queue, and
+	// bandGrowth is how much it widens per second of waiting. band <= 0 disables
+	// the check. See withinBand.
+	band       int32
+	bandGrowth int32
+	// now is the clock, swappable in tests so a widening band can be exercised
+	// without sleeping.
+	now func() time.Time
 }
 
-// NewMatchmaker creates an empty matchmaker.
+// NewMatchmaker creates an empty matchmaker that pairs any two coaches,
+// regardless of rating.
 func NewMatchmaker() *Matchmaker {
-	return &Matchmaker{pending: make(map[int64]*pendingMatch), byCoach: make(map[uint]int64), nextID: 1}
+	return &Matchmaker{
+		pending: make(map[int64]*pendingMatch), byCoach: make(map[uint]int64), nextID: 1,
+		now: time.Now,
+	}
+}
+
+// SetRatingBand configures fair pairing: two coaches are matched only while
+// their ladder-strength gap is within the band, which widens by `growth` for
+// every second EITHER has been waiting. A band of 0 or less pairs anyone with
+// anyone.
+//
+// The widening is what makes this safe to enable on a small server, and it is
+// the reason there is no separate "queue timeout": rather than giving up after
+// N seconds, the requirement relaxes until somebody qualifies, so a lone
+// high-rated coach ends up matched instead of dropped.
+//
+// THESE NUMBERS ARE OURS. The client has no say in matchmaking — it sends a
+// search and is told about a match — so nothing here is recoverable from the
+// retail data, exactly like the post-fight constants flagged as honest limits.
+func (m *Matchmaker) SetRatingBand(band, growth int32) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.band, m.bandGrowth = band, growth
+}
+
+// withinBand reports whether two searchers may be paired right now. Caller holds
+// the lock.
+//
+// The band grows with the LONGER of the two waits, not the shorter: the point is
+// that waiting earns you a wider net, and taking the shorter wait would let a
+// freshly-queued coach veto a match for someone who has been waiting for
+// minutes.
+func (m *Matchmaker) withinBand(a, b *searcher) bool {
+	if m.band <= 0 {
+		return true
+	}
+	gap := a.strength - b.strength
+	if gap < 0 {
+		gap = -gap
+	}
+	now := m.clock()
+	waited := now.Sub(a.since)
+	if w := now.Sub(b.since); w > waited {
+		waited = w
+	}
+	allowed := m.band
+	if m.bandGrowth > 0 && waited > 0 {
+		allowed += int32(waited.Seconds()) * m.bandGrowth
+	}
+	return gap <= allowed
 }
 
 // Search enqueues a searcher and returns a found match if a compatible opponent
@@ -39,9 +105,14 @@ func (m *Matchmaker) Search(s *Session, mode, subMode int16, teamIDs []int64) *p
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	sr := &searcher{session: s, mode: mode, subMode: subMode, teamIDs: teamIDs}
+	var strength int32
+	if s.Coach != nil {
+		strength = s.Coach.Strength
+	}
+	sr := &searcher{session: s, mode: mode, subMode: subMode, teamIDs: teamIDs,
+		strength: strength, since: m.clock()}
 	for i, other := range m.queue {
-		if other.mode == mode && other.session.Coach.ID != s.Coach.ID {
+		if other.mode == mode && other.session.Coach.ID != s.Coach.ID && m.withinBand(other, sr) {
 			// Match! remove the waiting opponent and create a pending match.
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 			pm := &pendingMatch{id: m.nextID, a: other, b: sr}
@@ -157,4 +228,12 @@ func (pm *pendingMatch) other(coachID uint) *searcher {
 		return pm.b
 	}
 	return pm.a
+}
+
+// clock returns the matchmaker's time source (swappable in tests).
+func (m *Matchmaker) clock() time.Time {
+	if m.now == nil {
+		return time.Now()
+	}
+	return m.now()
 }

@@ -349,6 +349,11 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 			"conditions", conditions.Len())
 	}
 
+	// Fair pairing: coaches are matched within a strength band that widens the
+	// longer they wait (0 disables it). See WorldConfig.MatchBand.
+	mm := game.NewMatchmaker()
+	mm.SetRatingBand(int32(cfg.World.MatchBand), int32(cfg.World.MatchBandGrowth))
+
 	return &game.Deps{
 		Store:         st,
 		World:         game.NewRegistry(cfg.World.AoIRadius),
@@ -363,7 +368,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		CardSets:      cardSets,
 		Conditions:    conditions,
 		StaticEffects: staticEffects,
-		Matchmaker:    game.NewMatchmaker(),
+		Matchmaker:    mm,
 		Challenges:    game.NewChallengeManager(),
 		Fights:        game.NewFightManager(),
 		Sessions:      game.NewSessionRegistry(),

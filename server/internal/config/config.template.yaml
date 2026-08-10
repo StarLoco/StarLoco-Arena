@@ -133,6 +133,19 @@ world:
   # 0 means no limit - every event reaches every player.
   aoi_radius: 75
 
+  # Matchmaking fairness. Two coaches are paired only if their ladder strength
+  # is within "match_band" of each other. The band WIDENS by
+  # "match_band_growth" for every second a player has been waiting, so a quiet
+  # server still finds fights instead of leaving someone queued forever.
+  #
+  # With the defaults below, two coaches 1500 points apart are matched after
+  # about 8 seconds of waiting.
+  #
+  # Set match_band to 0 to turn the check off and pair anyone with anyone -
+  # usually what you want on a small private server.
+  match_band: 300
+  match_band_growth: 150
+
 
 # -----------------------------------------------------------------------------
 #  Logging & diagnostics

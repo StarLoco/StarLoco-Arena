@@ -95,6 +95,15 @@ type WorldConfig struct {
 	// a message never fans out to the whole map. 0 disables scoping (broadcast
 	// to everyone — not recommended at scale).
 	AoIRadius int `yaml:"aoi_radius"`
+	// MatchBand is the strength gap two coaches may have and still be paired by
+	// the matchmaker when they FIRST queue. It widens by MatchBandGrowth for
+	// every second a searcher has waited, so nobody is stuck for lack of a
+	// same-rated opponent. 0 disables the check entirely, which is the sensible
+	// setting for a small private server where any opponent beats no opponent.
+	MatchBand int `yaml:"match_band"`
+	// MatchBandGrowth is how much MatchBand widens per second of waiting. 0
+	// makes the band fixed, which on a quiet server can mean never matching.
+	MatchBandGrowth int `yaml:"match_band_growth"`
 }
 
 // DBConfig selects and configures the database backend.
@@ -136,6 +145,11 @@ func Default() Config {
 		},
 		World: WorldConfig{
 			AoIRadius: 75, // cells; overworld events reach only nearby coaches
+			// A 300-point opening band widening by 150/s means two coaches 1500
+			// apart still meet after 8 seconds, so fairness never becomes a
+			// deadlock on a server with few players online.
+			MatchBand:       300,
+			MatchBandGrowth: 150,
 		},
 	}
 }

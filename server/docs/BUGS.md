@@ -38,6 +38,54 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-082 - Matchmaking paired anyone with anyone
+
+The queue took the first waiting coach in the same mode, so a 3000-strength
+coach was matched against a 1000 instantly. There was no rating band and no
+queue timeout.
+
+Coaches are now paired only while their ladder-strength gap fits inside a band
+that WIDENS with waiting - 300 points to start, +150 for each second either side
+has been queued, both configurable (`world.match_band` /
+`world.match_band_growth`, 0 disables the check entirely).
+
+**The widening is why there is no separate queue timeout.** A fixed band on a
+server with a handful of players online is a deadlock: the lone high-rated coach
+waits forever and a timeout would only turn that into a failed search. Relaxing
+the requirement instead means the search always terminates in a match rather than
+in a giving-up. With the defaults, two coaches 1500 points apart meet after about
+8 seconds, and two similarly-rated ones still pair instantly - fairness must not
+add latency to the common case.
+
+The band grows with the LONGER of the two waits, not the shorter: waiting earns
+a wider net, and using the shorter wait would let a freshly-queued coach veto a
+match for someone who had been waiting for minutes.
+
+**These numbers are ours.** The client has no say in matchmaking - it sends a
+search and is told about a match - so nothing here is recoverable from retail
+data, exactly like the post-fight constants already flagged as honest limits.
+Said so at the definition rather than leaving it to be assumed.
+
+Default for existing embedders is unchanged: `NewMatchmaker` starts with the
+band disabled and only `cmd/server` applies the configured values, so the e2e
+harness (which builds Deps directly) pairs instantly as before.
+
+**A flawed test caught itself.** The first version probed the same matchmaker
+repeatedly as the clock advanced - but a failed Search ENQUEUES its searcher, so
+the second and third probes paired with each other instead of with the waiting
+coach, and the assertion failed for a reason that had nothing to do with the
+band. Each probe now runs against a fresh queue. A second bug in the same test
+was plain arithmetic: 11 x 150 is 1650, not 1800, so the "should now pair" case
+was asserted one second too early. Both were mistakes in the test, and both were
+worth fixing rather than loosening.
+
+**Verification.** The exact boundary either side of the qualifying second,
+instant pairing for close ratings, band 0 pairing anyone, the longer-wait rule,
+and the pre-existing mode filter still refusing cross-mode pairs.
+Mutation-checked by dropping the band check and by taking the shorter wait.
+
+---
+
 ### B-081 - Spell-level target masks were decoded and never evaluated
 
 `TargetMasks` (field 22) are CAST-level target conditions, distinct from the

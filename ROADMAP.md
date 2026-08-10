@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-081 (spell target masks enforced) — **Tier 0 complete**
+· **Latest work:** B-082 (matchmaking rating band) — **Tier 0 complete**
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 276 Go files · 486 test functions (72 of them end-to-end
+**Scale reference.** 277 Go files · 491 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -887,9 +887,13 @@ back as classic — B-070).
 ### Matchmaking 🟡
 
 FIFO queue keyed on mode. Search / cancel / accept, plus the "Combattre" ready-room
-path that bypasses the accept handshake. **No rating band and no queue timeout** —
-a 3000-strength coach pairs with a 1000 instantly. The accept message's roster,
-mode, opponent id and bet are decoded and discarded.
+path that bypasses the accept handshake. **Rating band** ✅ (B-082): coaches pair
+only within a strength gap that widens the longer either has waited
+(`world.match_band` 300, `match_band_growth` 150/s, 0 disables). The widening is
+what replaces a queue timeout — the requirement relaxes until somebody qualifies,
+so a lone high-rated coach ends up matched instead of dropped. The numbers are
+ours; matchmaking is invisible to the client. The accept message's roster, mode,
+opponent id and bet are still decoded and discarded.
 
 ### Direct challenges 🟡
 
@@ -1006,7 +1010,11 @@ is a signing certificate or SignPath); no published Docker image.
     and is *not* directional (`fi()` true). Only the 1-param cross and one
     shape-8 row occur in shipped data, so the cross work is forward safety —
     but it replaces an approximation that would have been silently wrong.
-16. **Matchmaking rating band + queue timeout.**
+16. ~~**Matchmaking rating band + queue timeout.**~~ — **done (B-082)**. A band
+    that widens with waiting (`world.match_band` / `match_band_growth`, 0
+    disables). The widening *replaces* the timeout: relaxing the requirement
+    ends the search in a match rather than in a give-up, which matters on a
+    server with few players online.
 17. 🟡 **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is still
     decoded-not-enforced: 6 spells carry it (8, 15, 46, 141, 167, 173 — buff
     spells, not summons), and the blocker is its SCOPE — whether the cap counts
