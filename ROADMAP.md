@@ -178,8 +178,10 @@ lists.
    already the right size, so no wire layout changed).
 2. **`TimeInFightSecs` / `TotalPlaySecs` are never incremented** — the 2400
    statistics panel permanently shows 0 for both.
-3. **`CardLocked` is read in three places and set nowhere** — because the 5203
-   destructive/lock inventory ops are a re-push stub.
+3. **`CardLocked` is read in three places and set nowhere.** This used to blame
+   the 5203 stub, but 5203 is a *removal* notice with no lock semantics at all
+   (see backlog item 14), so it was never going to write this flag. Whatever
+   sets it is still unidentified — that is the open question, not 5203.
 
 ---
 
@@ -231,7 +233,7 @@ decompiled client.
 
 | Item | State | Detail |
 |---|:---:|---|
-| Card inventory (5200 / 5203 / 5201) | 🟡 | Equip works (14 slots); **5203 destructive/lock ops are a stub** that just re-pushes |
+| Card inventory (5200 / 5203 / 5201) | 🟡 | Equip works (14 slots); **5203 card removal is unactionable** — its uids are client-generated, so the server cannot tell which card row they mean (see §13 item 14) |
 | Multi-slot token wallet (4001) | ✅ | Byte type → i32, full sync push |
 | Card Master shop (201 → 5401) | ✅ | Prices from real card data (845/907 cards priced); stock from the element's card list |
 | Token purchase (5450 → 5403/5200) | ✅ | Transactional debit + grant |
@@ -1015,8 +1017,18 @@ is a signing certificate or SignPath); no published Docker image.
     premise is false.** No shipped spell uses action 76/77 (0 of 533 effect
     rows), the client's timeline interface has no comparator or sort, and no
     wire message reorders it. See §8.2. Gear initiative already works.
-14. **5203 destructive/lock inventory ops** — currently a re-push stub; would also
-    give `CardLocked` its first writer.
+14. ⛔ **5203 destructive/lock inventory ops** — **blocked by the wire, and the
+    premise was wrong twice.** 5203 is not "remove/lock": `sj_1.yG` builds it
+    from the cards missing from the client's current inventory view, so it is a
+    **removal** notice with no action discriminator — it would never have given
+    `CardLocked` a writer. And its uids are **unusable**: the client's card
+    object reads only the i32 reference-card id off the wire and then assigns its
+    own id from `uq_1.ahR()`, a client-local counter, so the server has never
+    seen the number and cannot map it to a `CoachCard` row. Acting on it would
+    mean guessing which card to destroy, against an inventory containing bound
+    and undestructible cards. The real prerequisite is giving inventory cards a
+    server-assigned identity in the 5200 push (section 3 currently carries only
+    `{i32 templateId, u16 quantity}`) — a wire-format change, not a handler fix.
 15. ~~**AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.~~ —
     **done (B-080)**. Shape 8 is directional (the client's symmetry flag `fi()`
     is false for it, as for the T shapes); the cross accepts 1/2/4 arm lengths

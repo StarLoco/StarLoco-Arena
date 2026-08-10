@@ -65,8 +65,31 @@ func (s *Session) pushInventory(coach *domain.Coach) error {
 }
 
 // handleInventoryRequest processes CoachInventoryUpdateRequest(5203):
-// [u16 count] + count×i64 uid. The client asks to remove/lock cards; for now we
-// just re-push the current inventory (no destructive ops implemented yet).
+// [u16 count] + count×i64 uid, and answers by re-pushing the inventory.
+//
+// It does NOT act on the uids, and that is a protocol limit rather than an
+// unfinished feature — worth stating, because "implement the destructive ops"
+// looks like a small task until you ask what the uids identify.
+//
+// What the message means: `sj_1.yG` builds it from the cards that were in the
+// client's reference set but are no longer in its current inventory view, and
+// sends it right after the 5201 equipment layout. So 5203 is "these cards are
+// gone from my inventory" — a REMOVAL notice, not a lock. (Our opcode comment
+// used to say "remove/lock"; there is no lock here and no action discriminator
+// in the payload at all.)
+//
+// Why the uids are unusable: the client's card object gets its unique id in
+// `eb_1.b(ByteBuffer)`, which reads ONLY the i32 reference-card id off the wire
+// and then assigns `this.aFL = uq_1.ahR()` — a client-local monotonic counter
+// (`bRK + (bRI & 0xFFFFFF)`, incrementing). The server never sends a per-card
+// identity and never sees that number, so an incoming uid cannot be resolved to
+// a CoachCard row. Deleting "the card the player probably meant" would be
+// guessing at destructive removals against bound and undestructible cards.
+//
+// Making this work means giving inventory cards a server-assigned identity on
+// the wire first (section 3 of the 5200 push currently carries only
+// {i32 templateId, u16 quantity}), which is a wire-format change, not a handler
+// change.
 func handleInventoryRequest(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
