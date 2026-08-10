@@ -1,0 +1,1056 @@
+# ROADMAP — DofusArena 2.70
+
+Feature-by-feature state of the **from-scratch Go server** (`server/`) that is
+wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909),
+plus the reverse-engineering tooling around it.
+
+**Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
+· **Latest work:** B-074 (np_1 types 12 + 14 wired)
+
+This document answers two questions: *what actually works*, and *what is left*.
+It is deliberately granular — "the fight system" is not one line item, it is
+about forty. For the cold-start narrative see
+[`server/docs/STATUS.md`](./server/docs/STATUS.md); for the opcode matrix see
+[`server/COVERAGE.md`](./server/COVERAGE.md) and
+[`server/docs/OPCODE-INVENTORY.md`](./server/docs/OPCODE-INVENTORY.md); for the
+per-record data audit see
+[`server/docs/DATA-COVERAGE.md`](./server/docs/DATA-COVERAGE.md).
+
+---
+
+## Legend
+
+| Mark | Meaning |
+|:---:|---|
+| ✅ | **Done** — implemented, wire-audited against the decompiled client, and tested |
+| 🟢 | **Done, unverified live** — implemented + unit-tested, never confirmed against the retail GUI |
+| 🟡 | **Partial** — works, but a named part is approximated, hardcoded or hand-authored |
+| 🔷 | **Data decoded, mechanic inert** — the record is parsed correctly; nothing consumes it yet |
+| ⬜ | **Not started** |
+| ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
+
+**Scale reference.** 270 Go files · 458 test functions (71 of them end-to-end
+over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
+opcode constants · 9 of 24 populated client record types decoded.
+
+---
+
+## 1. At a glance
+
+| System | State | One-line summary |
+|---|:---:|---|
+| Wire protocol & framing | ✅ | Both directions, cp1252 text, 82 C2S handlers / 96 S2C frames |
+| Client data layer (`.bdat`) | 🟡 | 9 of 24 populated record types decoded; the big ones are byte-exact |
+| Accounts, login, persistence | ✅ | 3 SQL drivers, bcrypt, reconnect, dup-login kick |
+| Overworld (movement, AoI, elements) | 🟡 | Full AoI + a hand-transcribed interactive-element table |
+| Chat & social | 🟡 | Vicinity/private/channel + friends/ignore; channels have no real scoping |
+| Economy (shop, barter, fusion, trade, mail) | 🟡 | All flows work; fusion recipes are approximated |
+| Fighters, teams, rosters | ✅ | Create/delete/equip/preset/assign, budget enforced from real data |
+| **Fight system** | **🟡** | **Whole 1v1 loop is server-authoritative; see §8 for the 40-item breakdown** |
+| Progression / META layer | 🟡 | XP, morale, fatigue, wounds, death rolls — client-exact formulas |
+| Evolution mode & graveyard | ✅ | State machine, capacities, resurrection gamble, persistent deaths |
+| PvE challenges | 🟡 | 39/39 records decoded; win conditions + fight-start rules now enforced; opponent rosters are invented |
+| Tournaments | 🟡 | Registration + calendar + list; no brackets, no matches |
+| Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
+| Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
+| Achievements | ⬜ | 350 records, zero code |
+| Guilds / clans, 2v2 | ⬜ | Structurally blocked (see §8.16) |
+| Ops: config, releases, Docker, web portal | ✅ | Self-configuring, auto-released, one-page sign-up portal |
+| RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
+
+---
+
+## 2. Foundation — protocol & transport ✅
+
+| Item | State | Detail |
+|---|:---:|---|
+| C2S framing | ✅ | `[u16 len][u8 arch][u16 opcode][payload]`, arch 0/1/2/3, short-frame rejection |
+| S2C framing | ✅ | `[u16 len][u16 opcode][payload]`, 64 KiB cap |
+| Big-endian buffer helpers | 🟡 | `Reader` lacks `F32`/`U32`/`StringU16` (the `Writer` has them) |
+| Text encoding | ✅ | **windows-1252 both directions** (B-068); JRE default charset confirmed at runtime |
+| Opcode constants | ✅ | 187 `Op*` + 20 result/flag codes, each with the client class + wire layout inline |
+| Router | ✅ | Unknown opcodes logged and dropped; the server never dies on an unknown frame |
+| Async write queue + backpressure | ✅ | Race-tested |
+| Graceful shutdown | ✅ | No goroutine leaks |
+| Encryption | ⛔ | Game login is plaintext in 2.70; the RSA machinery belongs to an admin channel this client never uses |
+
+**Coverage vs the client universe:** ~330 unique client opcodes. **82 handled**,
+**96 emitted**, **8 defined-but-intentionally-dark** (each with a written reason —
+e.g. 22002 `StatisticData` would wholesale-replace the coach's criteria), **172
+with no server code** (mostly unidentified subsystems, admin channels and the
+tournament live-match family).
+
+**Known hazard, unguarded:** `Writer.StringU8` documents that several 2.70
+decoders read its length as a *signed* byte, so a >127-byte string crashes the
+client — but nothing enforces the limit.
+
+---
+
+## 3. Client data layer (`data.bdat` / `indexes.bdat`) 🟡
+
+The project rule is **the client's data files are the single source of truth** —
+no hardcoded values, no values ported from the v2.04b beta. Every v2.04b-inherited
+value checked so far turned out wrong in 2.70.
+
+### Decoded — 9 of 24 populated record types
+
+| Type | Records | What | Fields | State |
+|---:|---:|---|---|:---:|
+| 100 | 907 | Coach cards | **26/26**, zero residual bytes across all 907 | ✅ |
+| 101 | 138 | Card sets ("panoplies") | 2/2 | ✅ |
+| 210 | 16 | Traps / special zones | 8/13 | 🟡 |
+| 220 | 203 | Spells | **23/23** (2 decoded-not-evaluated) | ✅ |
+| 230 | 51 | Per-round event cards | 4/4 | ✅ |
+| 250 | 75 | Fighter equipment / weapons | 15/15 | ✅ |
+| 300 | 53 | Summons | 17/17 | ✅ |
+| 400 | 39 | PvE challenges | 17/17, 39/39 records exact | ✅ |
+| 902 | 111 | Fighter conditions (wounds/blessings) | 5/5 | ✅ |
+| — | — | Type 200 `Ht` effect rows (embedded in 6 types) | full | ✅ |
+| — | — | `np_1` fight-ruleset elements | full | ✅ |
+| — | 47 | Arenas from `maps/fight/*.jar` + `maps/tplg/*.jar` | — | ✅ |
+
+### Not decoded — 15 populated types
+
+| Type | Records | What | Why it matters |
+|---:|---:|---|---|
+| **901 / 900** | **17 527 / 15** | Sphere Board nodes + headers | The largest unimplemented system in the game |
+| 800/801/802 | 332/5/13 | Achievements + categories | A whole client tab |
+| 1500 | 148 | NPC dialog replies | Needed for dialog trees |
+| 360 | 42 | Interactive-element rendering | We hand-author elements instead |
+| 1100 | 30 | Fusion-laboratory definitions | We approximate fusion with a flat 60 % roll |
+| 1600 | 29 | Per-map metadata (music/background) | Cosmetic |
+| 1000/1001 | 22/4 | Tournament definitions + level list | We hand-build 3 tournaments |
+| 251 | 11 | Equipment pools from Sphere Board nodes | Blocked on 901 |
+| 700 | 7 | Calendar events (7 subtypes) | We hand-build the calendar |
+| 1400 | 2 | Pro League definitions | Served empty |
+| 1 | 1 | Standard fight parameters (singleton) | Unknown impact |
+
+### Decoded but with **no consumer** (🔷)
+
+`CoachCard`: `RequiredLevel`, `FireworkType/Colour`, `IsUnique`, `ObtainableInDraw`,
+`DropPercent`, `Rank`, `Parameters`, `FusionPower`, `FusionQuality`, `PetModelID`,
+`ColourSlot/Index` · `Spell`: `MaxActive`, `TargetMasks` (202/203 spells),
+`CooldownUnlockDelay` · `Summoning`: `DeadFlag`, `NoPositionalBonus`, `Radius` ·
+`StaticEffect`: `AppCondition`, `UnappTriggers`, `Type`, `Label` ·
+`Challenge`: `Fields[6]`, `TimeChallenge` · `Parameter`: everything except np_1
+types 10/11/12/13/14 — the remaining rule families (budget, roster limits,
+spell/equipment/class bans, prices, arena choice, event lists) and, inside type
+14, victory subtypes 1/2/3 and the `victory_points` / `is_necessary` scalars.
+
+### Open data issues
+
+- **`gamedata` strings are still read as UTF-8.** Every field read today is ASCII
+  (`"FIGHTER_CONDITION"`, `"FIGHTER_CARD_USE"`), so nothing is broken — but the
+  first name or description field decoded will need `protocol.DecodeText`.
+- `maps/env/*.jar` is not read; element layouts are hand-authored.
+- i18n `.properties` are deliberately not read (strings are correctly client-side).
+
+---
+
+## 4. Accounts, sessions, persistence ✅
+
+| Item | State | Detail |
+|---|:---:|---|
+| Auth (opcodes 7 / 1025 / 1024 / 8) | ✅ | Version gate emits `InvalidClientVersion`; client self-disconnects |
+| Password hashing | ✅ | bcrypt at default cost |
+| Coach creation (2048/2049/2050/2052) | ✅ | Hair/skin order + colour order both fixed vs the client |
+| Duplicate login / session kick | ✅ | E2E-tested |
+| Reconnect (coach + in-progress fight) | ✅ | 60 s grace, 26333/26334 resume question |
+| Crash recovery | ✅ | `ResetConnectedFlags()` on startup |
+| Ping keepalive (107 → **108**) | ✅ | Reply must be 108, not 107 — verified live |
+| SQL drivers | ✅ | SQLite (WAL, pure-Go), PostgreSQL (pgx), MySQL/MariaDB |
+| Transactions | ✅ | 13 explicit transaction sites, with rollback tests on the exchange path |
+| **Schema migrations** | 🟡 | **GORM `AutoMigrate` only** — no version table, no down-migrations, no destructive-change path |
+
+**15 persisted tables:** accounts, coaches, coach_cards, coach_friends,
+coach_ignored, coach_currencies, coach_stats, fighters, fighter_spells,
+fighter_objects, fighter_conditions, teams, team_fighters, mails, mail_cards.
+
+**In-memory only (lost on restart):** live fights, matchmaking queue, direct
+challenges, card exchanges, tournament registrations, AoI registry, spectator
+lists.
+
+**Three persistence defects worth fixing:**
+
+1. **`Coach.Standing` is never written to the DB** — `CoachRepo.Save`'s field map
+   omits the column, so the whole coach-evolution level resets on relog. It is
+   also hardcoded to `0` on the wire in both `handshake/coach.go` and
+   `game/packets.go`.
+2. **`TimeInFightSecs` / `TotalPlaySecs` are never incremented** — the 2400
+   statistics panel permanently shows 0 for both.
+3. **`CardLocked` is read in three places and set nowhere** — because the 5203
+   destructive/lock inventory ops are a re-push stub.
+
+---
+
+## 5. Overworld 🟡
+
+| Item | State | Detail |
+|---|:---:|---|
+| World entry (4600 + 4516 + 200) | ✅ | The three-frame sequence; 4516 is mandatory or movement stays locked |
+| Coach movement (4501 → 4500) | ✅ | |
+| Area-of-interest scoping | ✅ | Bilateral `known` sets, spawn/despawn on boundary crossing, configurable radius |
+| Actor spawn/despawn (4096 / 4098) | ✅ | 16 missing bytes fixed during the audit |
+| Interactive elements (201) | 🟡 | **132 elements across 15 kinds, hand-transcribed** from the env jars (record type 360 not decoded) |
+| Zaap network (4512) | 🟡 | 12 destinations **hand-mapped**; clan-island card unrouted (`TODO(clan)`); 6 unreleased placeholder cards deliberately unrouted |
+| Fireworks (22095 → 22094) | ✅ | Echoed to launcher + nearby sessions |
+| Direction change (4521 → 4522) | ✅ | Cosmetic only — 2.70 dropped directional damage |
+| Intro cutscene / Lua scenario system | ⬜ | The client expects a scenario message the server does not implement |
+| NPC dialog trees | ⬜ | Record type 1500 (148 records) not decoded |
+| Zone triggers | ⬜ | env type 8 |
+
+Element kinds spawned: DemonTotem 24, Zaap 21, CardMaster 13, Mailbox 12,
+BreedMaster 12, DemonChallenge 11, ZoneTrigger 9, NPC 6, FusionLab 6, Graveyard 6,
+Firework 5, TournamentTotem 2, Challenge 2, DemonI 1, DemonIII 1.
+
+---
+
+## 6. Chat, social & presence 🟡
+
+| Item | State | Detail |
+|---|:---:|---|
+| Vicinity chat (3153 → 3152) | ✅ | AoI-scoped, no self-echo |
+| Private message (3155 → 3154 / 3204) | ✅ | |
+| Channel chat (3151 → 3140) | 🟡 | **One global audience.** The channel key is preserved so the client routes to the right tab, but there is no membership model |
+| Channel membership family | ⬜ | 3128 flags, 3130/32 join/leave, 3134/36/38 member ops, 3202 not-found |
+| Friends add/remove + list | ✅ | All four ack layouts differ per opcode and are individually verified |
+| Ignore add/remove + list | ✅ | |
+| Presence notifications | ✅ | 3148/3150/3164/3166 |
+| GM commands | ✅ | `/HELP /WHERE /TP /WORLD /WHO /STRENGTH /FSTATE /ENDFIGHT /EVOFIGHT /SUDDENDEATH /MAPDESTRUCT` |
+| Guild / team-scoped routing | ⬜ | Blocked on guilds existing |
+
+**Open cosmetic bug:** the *client* mangles accented names it receives — proven
+with two controlled experiments (every server-provided name gains exactly one
+UTF-8→cp1252 hop, and pre-compensating makes it worse). Our encoding is correct
+and must not be changed. The remaining work is locating the offending call in the
+decompiled client.
+
+---
+
+## 7. Economy & items 🟡
+
+| Item | State | Detail |
+|---|:---:|---|
+| Card inventory (5200 / 5203 / 5201) | 🟡 | Equip works (14 slots); **5203 destructive/lock ops are a stub** that just re-pushes |
+| Multi-slot token wallet (4001) | ✅ | Byte type → i32, full sync push |
+| Card Master shop (201 → 5401) | ✅ | Prices from real card data (845/907 cards priced); stock from the element's card list |
+| Token purchase (5450 → 5403/5200) | ✅ | Transactional debit + grant |
+| Card-for-card barter (5400) | ✅ | Enforces the client's own rule `Σ(given.value × qty) ≥ wanted.value` |
+| Fusion Lab (5490 → 5491) | 🟡 | **Approximated:** the ~100 real recipes are in undecoded type 1100. We roll a flat 60 % on ≥2 cards of one set |
+| Card exchange / trading (5101–5112) | ✅ | Dupe-safe: staging resets both ready flags, commit re-validates every card, full rollback |
+| Bound / undestructible enforcement | ✅ | 171 + 65 of the 907 cards cannot be traded |
+| Mail (539, 15000–15007, 15506/15507) | ✅ | List, send, delete, attachments, capacity 20, 10 attachments, rune-safe truncation, online toast |
+| System mails | ⬜ | Parsed, never generated |
+| Faucets | 🟡 | Starter tokens (1000) + starter cards + fight-win reward (50) — **all three magnitudes are invented** |
+| Daily login / other faucets | ⬜ | |
+| Demon II affiliation (5470) | ⬜ | |
+
+---
+
+## 8. THE FIGHT SYSTEM 🟡
+
+The whole single-coach-vs-single-coach loop is **server-authoritative**: the
+client renders what the server decides. Each fight is a single goroutine actor
+with a 64-slot mailbox, so no fight state is ever touched under a lock.
+
+### 8.1 Fight lifecycle & phases ✅
+
+| Item | State | Detail |
+|---|:---:|---|
+| 5 phases | ✅ | Presentation → Placement → Observation → Action → Ended |
+| Phase transitions | ✅ | Idempotent compare-and-swap, so "both ready" and a clock firing cannot double-advance |
+| Ready gates (8011/8023/8031 → 8012/8024/8032) | ✅ | Session-less teams pre-marked ready so solo/PvE fights advance |
+| Phase clocks | ✅ | Presentation 20 s, placement 30 s, observation 10 s, turn 30 s, AI turn 1.2 s, disconnect grace 60 s |
+| Per-fight turn clock | ✅ | Read from np_1 rule 10 as a **delta**, not a global (B-072) |
+| Fight creation (8000) | ✅ | Presentation blob, grid tail, coach deck, special-cell list |
+| Observation phase | 🟡 | Exists as a 10 s cue pair with **no mechanic between the cues** |
+| **Placement (8021 → 8022)** | **⚠️** | **No phase guard and no cell validation** — accepts any (x,y,z) at any time from the owning coach. Biggest validation hole in the loop |
+
+### 8.2 Turn order, timeline & the turn loop ✅
+
+- **Initiative:** all fighters of both teams sorted by initiative descending,
+  stable-sorted so ties keep team-A-before-team-B. The client plays exactly this
+  order — its own comparator is a no-op. All 12 breed initiatives were corrected
+  from the v2.04b figures (B-058).
+- **Turn begin:** refill AP/MP → reset cast history → broadcast 8104 → fire
+  turn-start effect areas → fire turn-start special cells → death check → arm the
+  right clock (skip-turn / petrified / absent team / AI / human).
+- **Turn end:** broadcast 8106 → revert one-turn special-cell buffs → advance to
+  the next *living* fighter → on wrap into a new round: tick buffs, states,
+  damage transfers, effect areas, poisons, draw the round event card, maybe
+  advance sudden death.
+- **Gap:** initiative buffs (actions 76/77) are tracked but **never re-sort the
+  timeline**.
+- **Gap:** `refillFighter` restores MP on a rooted fighter (movement is still
+  correctly blocked, but the client's MP gauge diverges).
+
+### 8.3 Movement, tackle & pathfinding 🟡
+
+| Item | State | Detail |
+|---|:---:|---|
+| In-fight movement (4503 → 4524) | ✅ | Origin-excluded step list, 1 MP/cell, Chebyshev adjacency (diagonals legal) |
+| Move validation | ✅ | Rooted, MP budget, walkable, not destroyed, adjacency, not held by another fighter |
+| Stop-on-contact | ✅ | Path truncated when entering an enemy's zone of control |
+| **Tackle** (→ 4506) | 🟡 | Each adjacent enemy holder is evaded **independently, all must succeed**; failure ends the turn. Formula `dodge − block` clamped 0..100 — **the endpoints are client-verified, the curve between them is a server choice** |
+| Block / dodge values | ✅ | From the breed table + summon templates + timed buffs, stored unclamped so reverts are exact |
+| Altitude (z) validation | ⛔ | Deliberately unvalidated — (x,y) is the unit of movement, the client owns per-cell altitude |
+| Pathfinding | 🟡 | **BFS flood fill, MP-bounded, 4-directional only.** Used by the AI only — so the AI moves strictly worse than a human client can |
+
+### 8.4 Casting, close combat & weapon use 🟡
+
+| Path | Opcodes | State | Detail |
+|---|---|:---:|---|
+| Spell cast | 8109 → 8110 | 🟡 | AP cost → target validity → cast criteria → frequency limits → fumble roll → crit roll → debit AP → resolve effects → flush → end check |
+| Close combat ("corps-à-corps") | 8111 → 8112 | ✅ | Uniform 5 AP / 5 dmg (7 crit) of the breed's element, verified against the client's `xq` table. Weapon-independent, always available |
+| Weapon / equipment use | 8107 → 8108 | ✅ | Ownership check, usable-while-carried flag, same targeting rules as spells (B-055) |
+| Coach action-card play in fight | — | ⬜ | **The deck is serialized into 8000 so the client renders it, but there is no opcode to play it** |
+
+**Targeting validation:** walkable + not destroyed, Manhattan range window, Range
+stat boost only when base `RangeMax > 1` and the spell is not
+`RangeNotBoostable` (5 spells), `OnlyLine`, `NeedFreeCell`, `TestLoS`.
+
+**⚠️ Anti-cheat hole:** `castSpellByFighter` **never checks that the caster knows
+the spell**. A forged 8109 can cast any spell id in the table. (The weapon path
+*does* check ownership.)
+
+### 8.5 Spell effect coverage — measured 🟡
+
+Measured against the shipped data (`server/data-dist`, 203 spells / 533 effect rows):
+
+| Metric | Value |
+|---|---|
+| Spells with **every** effect row modelled | **177 / 203 (87 %)** |
+| Spells with *some* rows modelled | 23 |
+| Spells with no modelled row (or no rows at all) | 3 |
+| **Effect rows resolved** | **502 / 533 (94.2 %)** |
+| Fighter-card (weapon) effect rows resolved | **72 / 72 (100 %)** |
+| Distinct mechanic kinds implemented | **31** (over ~143 mapped `mh_2` action ids) |
+
+**The 31 modelled kinds:** flat elemental damage (direct + "par sort"), HP leech,
+heal, %-of-max-HP damage, poison (a real per-round DoT with re-roll), damage
+scaled by remaining AP, damage scaled by remaining MP, instant death, AP loss,
+MP loss, AP steal, MP steal, AP gain, MP gain, teleport, swap, push, pull,
+summon, state, buff, trap, dispel, visual-only, carry, throw, aura, zone MP loss,
+line damage, damage transfer, remove-effect-by-id.
+
+**The 31 unresolved rows — 12 distinct action ids, all documented no-ops** (the
+cast still animates and its other rows still resolve):
+
+| Action | Client label | Rows |
+|---:|---|---:|
+| 140 | Diminution du cooldown d'un sort | 12 |
+| 84 | Révéler l'invisible | 6 |
+| 88 | Renvoi de sort | 2 |
+| 170 | Aucun effet | 2 |
+| 153 | Est repoussé de sa cible | 2 |
+| 169 | Perte de points d'action triggerée en zone | 1 |
+| 166 | Perte de PV eau triggerée en zone | 1 |
+| 165 | Perte de PV feu triggerée en zone | 1 |
+| 68 | Tourne le regard vers la cellule ciblée | 1 |
+| 150 | Inverse les effets des cases bonus | 1 |
+| 171 | Devenir évanescent | 1 |
+| 172 | Bouger vers la cible adverse la plus proche | 1 |
+
+Ids 165/166/169 are near-free (the zone-effect machinery already exists for 177);
+170 and 68 are cosmetic; 140, 88, 150, 171, 153, 172 need bespoke RE.
+
+### 8.6 Damage model & combat statistics ✅
+
+```
+damage = base + caster.flatDmg[elem] − max(0, target.flatRes[elem])
+       → × (1 + dmgPctAll + dmgPct[elem] − resPctAll − resPct[elem])
+       → floored at 0, integer truncation
+```
+Neutral (element 0) bypasses the whole formula. Stats are stored **unclamped** and
+bounded at read time, so a timed buff reverts exactly.
+
+| Stat family | Action ids | State |
+|---|---|:---:|
+| Flat elemental resistance | 21–28 | ✅ |
+| Elemental resistance % | 29–36 | ✅ |
+| Flat elemental damage | 40–47 | ✅ |
+| Elemental damage % | 48–55 | ✅ |
+| All-element res % / dmg % | 80/81, 82/83 | ✅ |
+| AP / MP loss resistance | 86/87 | ✅ |
+| Damage rebound % | 89 | ✅ clamped 0–99, single hop, reduces what the victim takes |
+| Heal power % | 78/79 | ✅ |
+| Damage transfer | 129 | 🟡 direction/percentage are derived, not client-verified |
+| Positional / flanking bonus | — | ⛔ 2.70 dropped directional damage |
+| Armour / shield points | — | ⬜ |
+
+**Critical hits & fumbles:** base rates are **0/0** — crit in 2.70 is entirely
+earned (some spells grant +100, a guaranteed crit, which only works from a base of
+0). Fumble is rolled first and precludes a crit; a fumble spends the AP, resolves
+zero effects, and still counts against frequency limits. A crit does not multiply
+damage — it selects the effect rows the data authored as critical.
+
+### 8.7 Areas of effect ✅
+
+| Shape | State |
+|---|:---:|
+| Point (1) | ✅ |
+| Circle — Manhattan diamond (2) | ✅ |
+| Cross (3) | 🟡 symmetric arms; rare 2-/4-param asymmetric variants approximate with `size[0]` |
+| Directional T (4) | ✅ orients by the cardinal step from source to centre |
+| Ring / annulus (5) | ✅ |
+| Square / rect (6) | ✅ |
+| Inverted T (9) | ✅ |
+| "All" (32767) | ✅ |
+| Point-list (8) | ⬜ falls through to a single cell |
+
+Friendly fire is authentic: an area lands on allies, enemies **and the caster**.
+Expanded targets are re-filtered by each effect's own target conditions.
+
+### 8.8 Target conditions & cast criteria ✅
+
+- **Target conditions** — full port of the client's `aLc.a`. OR across the
+  condition list, AND within one condition. Bits: caster, ally, enemy, human,
+  summoned, effect-area, ally-except-caster, not-caster, **breed-is-zero (512) /
+  breed-is-not-zero (1024)**, plus **14 positive and 14 negative breed bits**.
+  Summons satisfy no positive breed bit. Only `CONDITION_IN_AOE` (bit 1) is a
+  no-op.
+  512/1024 test the target against `xq.axE` (breed id 0, the stat-less
+  pseudo-breed) rather than a numbered slot, and were added in B-074 because the
+  type-12 fight-start effects use 1024 to exclude summons — **an unimplemented
+  condition bit is silently permissive**, so the buff would otherwise have landed
+  on every summon. The file used to credit `aap.a`, which is a genuinely
+  different validator (is/is-not pairs low down, count thresholds at 512+); that
+  misattribution is what made B-073 believe a second evaluator was needed.
+- **Cast criteria** — all 15 tokens implemented: `canSummon`,
+  `can/cantCastWhenCarrying`, `cantCastWhenCarried`, `canCastWhenDying` (≤25 % HP),
+  `canCastWhenInjured` (≤99 %), `canCastWhenDrunk`, the three Masqueraider mask
+  gates (positive + negative), `canCastWhenCarryAlly/Ennemy`. Unknown tokens are
+  permissive, matching the client.
+- **Spell-level `TargetMasks`** — 🔷 decoded on 202/203 spells, **not evaluated**.
+  Needs the client's fuller evaluator (state-based bits: intransposable,
+  stabilised, cannot-be-carried, rooted, petrified). The client only enforces it
+  on 3 spells, so the payoff is small.
+
+### 8.9 Cast frequency ✅
+
+Per-fighter, per-spell: **cooldown** in table-turns (**63 = once per fight** —
+this field was read from the wrong offset until B-059, which left 97 of 203 spells
+with no cooldown at all, 28 of them once-per-fight), **max casts per turn**,
+**max casts per target** (per-target counters cleared on the caster's own turn).
+`ParentID` makes 5 spells share their parent's limits. `MaxActive` (max live
+instances) is 🔷 decoded, not enforced — it needs a live-instance counter.
+
+### 8.10 Line of sight 🟡
+
+Altitude-based ray cast matching the client's algorithm: both endpoints raised by
+an eye offset, the ray **oversampled 8× the Chebyshev step count**, per crossed
+cell the ray's minimum altitude kept, terrain blocks iff `alt > rayMin` (grazing
+equality is visible). Two tries: eye→eye, then eye→feet. Void is never blocking;
+scenery always blocks.
+
+**Deliberate limit:** implemented **terrain-only**. The client also blocks on
+obstacle/creature occluders; we omit that, making our blocking a strict *subset* —
+we can miss a block (an accepted anti-cheat gap) but never invent one. **Fighters
+do not block line of sight.**
+
+### 8.11 Fighter states ✅
+
+12 states from 14 action ids. Applying a state **extends, never shortens**;
+duration 63 is infinite; the source effect id is recorded so action 149 can strip
+one specific state.
+
+| State | Action(s) | What it enforces |
+|---|---|---|
+| Rooted | 65 | Cannot walk (also zeroes MP on apply). The only state that stops self-movement |
+| Petrified | 96 | Turn is skipped |
+| Stabilized | 94 | Blocks push (37) and pull (38) only |
+| Anchored | 127 | Blocks being carried (58) only |
+| Intransposable | 128 | Blocks swap (64) only |
+| Invisible | 57 | AI ignores the fighter when picking targets |
+| Immune | 95, 124 | Takes no damage; heals still land |
+| Skip turn | 56, 111 | Next turn(s) passed, one charge consumed per skip |
+| Drunk | 126 | Gate for `canCastWhenDrunk` |
+| Mask: class / coward / berzerk | 173 / 174 / 175 | Gates for the Masqueraider cast criteria |
+
+Note B-053: 127 and 128 used to be folded into root/stabilise, which froze the
+whole arena on round 1 (event card 14 is 94+127+128). They are distinct now.
+
+**Absent:** sleep/charm/confuse, states that modify damage taken/dealt, and
+`statePetrified` does not zero AP/MP the way the client does.
+
+### 8.12 Buffs, debuffs, poison & dispel 🟡
+
+- **Three resolution classes:** *resource* buffs (HP/AP/MP/Range/Summons/
+  crit/fumble/block/dodge — applied mechanically, `affectsMax` moves the ceiling),
+  *combat-stat* buffs (the elemental and scalar families, reverted exactly by
+  applying the negated delta), and *render-only* buffs (tracked with delta 0 so
+  the buff count and targeted removal still match the client).
+- **Duration:** read from the effect record, any slot ≥ 63 is infinite, ticked
+  once per **table turn** (round-based, matching the client's own counter),
+  reverted on expiry. The duration rides the wire so the client shows the icon
+  and timer.
+- **Poison (61)** is a real DoT: immediate first tick, then a fresh roll every
+  round from the stored dice params, infinite-capable, stopped on death.
+- **Dispel (62)** reverts and drops every *finite* buff (infinite enchantments
+  survive) and clears states.
+- **Remove-effect (149)** strips buffs, states and auras matched by source effect
+  id, capped by a param — used by the Masqueraider mask-switch spells, which each
+  bundle ~15 of these.
+
+**Gaps:**
+- **No stacking rules.** Casting the same buff twice appends two independent
+  entries with two independent deltas — nothing merges, refreshes or caps.
+- **Dispel deletes infinite states too**, permanently stripping a summon's innate
+  rooted/anchored/stabilised/intransposable properties.
+- Dispel does not touch poisons, damage-transfer links or auras.
+- **Buff/debuff icons are not restored on reconnect or spectate** — the server
+  keeps the buffs and they keep working; only the client-side icons are missing
+  until they expire.
+
+### 8.13 Static & special cells ✅
+
+Trigger policy is **turn-start only** — per the manual, walking over a special
+cell does nothing; the fighter must *start* its turn on it. Buffs last exactly one
+turn and are reverted at turn end (the AP revert correctly drops the ceiling and
+only clamps the current value, so a fighter that already spent the bonus AP is not
+charged twice).
+
+| Template | Tile | Effect | Scaled by the bonus-cell multiplier? |
+|---:|---|---|:---:|
+| 1002 | Killer | HP → 0, no save, no resist | no |
+| 1003 | Trap | −10 HP | no (deliberate — it is a malus) |
+| 1004 | Eagle Eye | +1 Range | yes |
+| 1005 | Shield | +10 % all resistance | yes |
+| 1006 | Panacea | +10 % heal power | yes |
+| 1007 | Enthusiasm | +10 % damage dealt | yes |
+| 1008 | Motivation | +1 AP (raises max too) | yes |
+| 1009 | Healing Heart | +5 HP, only if below max | yes |
+
+Cells are streamed to the client in 8000 (without that list the tiles are inert
+decoration — B-048) and each firing broadcasts a tile animation plus the
+characteristic-boost line. The **bonus-cell multiplier** (np_1 rule 13, up to ×10
+on shipped challenges) is applied.
+
+🟡 The magnitudes come from the game manual, not from client data.
+
+### 8.14 Traps, glyphs & auras 🟡
+
+Placed by action 66 (trap, from a type-210 template) and action 176 (aura).
+
+- **Two trigger policies**, read from the template: **turn-start** (glyphs) and
+  **walk-on** (classic traps). An aura always and only fires on turn-start, and
+  never on its own caster.
+- **Lifetime:** traps count down `maxExec` (≥63 or <0 = unlimited); auras age per
+  round and die when their caster dies.
+- Auras **follow the caster's live cell**.
+- Firing replays the template's inner effects through the normal resolver, with a
+  **re-entrancy guard** so a trap inside a trap cannot loop, and a slice snapshot
+  so a self-removing area cannot corrupt iteration.
+- Walk-on traps are checked **per movement step**, not just at the destination.
+
+**⚠️ Gap: forced displacement does not trigger traps.** Push, pull, teleport, swap
+and throw all reposition fighters without any trap check — the move-time check has
+exactly one caller.
+
+**Not read from the template:** re-trigger policy (once per team / per target /
+always), the two trigger bitmasks, the delayed re-trigger timer.
+
+### 8.15 Displacement — carry/throw, push/pull, teleport, swap 🟡
+
+| Mechanic | Actions | State | Detail |
+|---|---|:---:|---|
+| Carry | 58 | ✅ | Bidirectional links; refused if either party is already linked or the target is anchored. The carried fighter stacks on the carrier's cell, is dragged on every move, is **not independently targetable**, does not hold ground, and cannot tackle. Broken on death |
+| Throw | 59 | 🟡 | Requires a walkable, unoccupied destination. **No landing damage** (matching the reference implementation) |
+| Push / Pull | 37 / 38 | 🟢 | Blocked by *stabilized*. Direction quantised to 4 cardinals. Ray-traced cell by cell. **Cannot be shoved up a step taller than 2.** Collision damage = `cellsLeft × 6` into void/edge, `× 3` into a fighter — **and the blocking fighter takes the same damage**. Not live-verifiable (no practice spell pushes) |
+| Teleport | 39 | ✅ | Moves the *caster* to the aimed cell |
+| Swap / Transposition | 64 | ✅ | Blocked by *intransposable* |
+
+Collision damage deliberately does not broadcast its own HP-loss line (the client
+spawns its own display) — which means immunity, resistance, rebound and transfer
+are all bypassed for collision damage specifically.
+
+### 8.16 Summons & AI 🟡
+
+**Summons** (actions 67 creature / 75 double / 97 mirror) ✅
+
+- Stats from the type-300 template; requires a walkable, unoccupied cell.
+- **Inserted into the timeline immediately after the summoner** (and after any
+  summons it already owns), matching the client so both timelines stay in lock-step.
+- **Innate properties applied at spawn** (B-060): of the 53 shipped creatures,
+  **22 are rooted, 21 cannot be carried, 18 are stabilised, 15 intransposable**;
+  29 carry a block % and 36 a dodge %, both feeding the tackle roll.
+- **Summon cap** = `1 + NB_SUMMONS`, raised by action-74 buffs (stored unclamped
+  so a summon-steal can drive the cap to 0) and enforced as a cast criterion.
+
+**AI** 🟡 — four archetypes *derived* from the fighter's single spell, because
+there is no behaviour data anywhere in the game files:
+
+| Behaviour | Trigger | Turn plan |
+|---|---|---|
+| Blocker | no spell / no spell data | walk adjacent to nearest enemy, body-block |
+| Aggressive | damaging spell, MP < 4 | close into range, cast until dry |
+| Kite | damaging spell with MP ≥ 4, or a debuff spell | close, cast, retreat |
+| Self-buff | buff on a self-range spell | cast on self, then block |
+
+Target selection: nearest by Manhattan distance → tie-break higher initiative →
+tie-break real fighter over enemy summon (the manual's "summon intelligence"
+rule). Invisible enemies are skipped. Movement scoring is fully deterministic
+despite Go's random map order.
+
+**What the AI cannot do:** use close combat or weapons; use more than one spell;
+heal or buff allies; summon; place traps; focus-fire cooperatively; consider AoE
+friendly fire, traps, special cells or sudden-death safety; move diagonally. There
+are no difficulty tiers. **This is the single biggest gameplay-quality lever left.**
+
+### 8.17 Map destruction / sudden death ✅
+
+One of the most faithful parts of the codebase, and verified live.
+
+- Driven by action **117** over the ordinary running-effect opcode (8120) — the
+  sibling 8121 only *attaches* an effect and never executes one, which is why an
+  earlier attempt did nothing (B-050).
+- The **spiral walker reproduces the client's generator byte-for-byte** and is
+  pinned by a unit test. The destroy order is the *reverse* of generation
+  (outermost → centre) because the client prepends. The server sends only a
+  cumulative count; both sides derive the identical cell list independently.
+- **Pacing:** a step is cut every 12 walkable cells, so the collapse advances
+  evenly regardless of how much void the outer band contains; steps that would
+  remove no new walkable cell are skipped. The final step is always 299 cells
+  (everything outside the 5×5 core).
+- **Trigger turn 15 by default**, overridable per fight from np_1 rule 11 as a delta.
+- **Kill rule:** a fighter dies only if standing on a cell removed by *that* step.
+- Destroyed cells are **per-fight** (the arena value is shared and never mutated)
+  and block movement, spell targeting, teleport and card targeting.
+- Verified live on 2026-08-04: `/SUDDENDEATH` produced `step=1 r=104`, then
+  `step=2 r=119 killed=2`; the client rendered the collapse and both fighters
+  standing on removed cells died.
+
+### 8.18 Per-round event cards ✅
+
+The client only *displays* the drawn card, so the server applies the effects
+itself. Deck is ids 1–27 (the 43+ range is PvE/creature-scoped and the 48–59 "god
+set" would dominate), Fisher-Yates shuffled per fight, reshuffled on exhaustion.
+**Round 1 always draws event 14 "Cloué au lit"** (actions 94+127+128), placed at
+the deck top so it cannot recur in the cycle. Each effect is applied once per
+living fighter with that fighter as both caster and target — self-casting is what
+makes "+30 % damage" scale off each fighter's own stats — and every effect is
+still gated by its own target conditions, which is how the 12 breed-god cards
+restrict themselves.
+
+Verified live: round 1 drew event 14 server-side and the client displayed **"Cloué
+au lit"**, whose own effect text independently confirms the 94+127+128 mapping.
+
+🟡 8000 sends an event count of 0, so the client gets no pre-declared event list.
+
+### 8.19 Arenas ✅
+
+All **47 shipped fight maps** decode from `maps/fight/*.jar` + `maps/tplg/*.jar`
+(**46 of them playable** arenas in the registry; hardcoded to world 5 until
+B-052). Three cell classes: floor, void (unwalkable,
+LoS passes), scenery (unwalkable **and** blocks LoS). Per-arena start cells per
+side (8 each), coach pedestal cells, special cells, camera centre. The exact grid
+the server validates against is streamed to the client, so a genuine client path
+always passes. A hand-decoded world-5 fallback keeps unit tests and bare checkouts
+working.
+
+🟡 Arena selection is uniform random — np_1 rule 29 ("choose the arena") is not
+consumed.
+
+### 8.20 Fight rulesets (np_1) 🟡
+
+Per-fight (never package-global, deliberately — a rule set by one fight must not
+leak into another). **5 of ~25 rule types are wired:**
+
+| Type | Rule | State |
+|---:|---|:---:|
+| 10 | Per-fighter turn duration (**delta**) | ✅ |
+| 11 | Sudden-death turn (**delta**) | ✅ |
+| 12 | Cast an effect on all fighters at fight creation | ✅ 3 challenges, +40 % dodge for the fight, summons excluded by mask 1024 |
+| 13 | Bonus-cell multiplier (absolute) | ✅ |
+| **14** | **Victory conditions** (9 challenges) | ✅ subtype 4 ("reach turn N") wired; 1/2/3 decoded, unused by any shipped record |
+| 1–9 | Budget, min/max fighters, spell & equipment allow/ban lists | 🔷 |
+| 15–32 | Class limits/bans/prices, event lists, coach spell, max classes, **arena choice**, max league, hide opponent stats | 🔷 |
+| 900–930, 1000 | Class/spell/equipment/budget parameters, "no limit on this fight" | 🔷 |
+
+Unknown rule types are inert, not fatal.
+
+**Read `content.54.<type>` before implementing any rule** — it is the authoritative
+semantics table and it is what proved 10/11 are deltas. It is a *display* table
+though, and incomplete: no entry for 29, and 900–913 all render "Erreur dans
+l'AGT". `ajr_2` says what a type IS; the i18n line says how to read its parameters.
+
+**Victory conditions are arbitrated by us, not by the client.** The four `mp_2`
+subclasses carry real one-line evaluators, so the *conditions* are recovered — but
+`mv_1.b(mp_2)` is an **empty method**, the 3-arg evaluator has no call site
+anywhere, `is_necessary`/`victory_points`/`affected_team` have no callers, and
+`content.55` has no label for subtype 4. Retail decided these server-side. All
+nine shipped conditions are subtype 4 with param 20 or 30 and `affected_team` 0,
+held by challenge 14 and the "Défi du temps" set — survive to the turn and win.
+`checkFightEnd` gained a decided-winner path so a fight can end with **both teams
+standing**, and deliberately kills nobody to express that (evolution deaths key
+off HP, so downing the loser would destroy fighters permanently).
+
+### 8.21 End of fight ✅
+
+| Item | State |
+|---|:---:|
+| Victory by elimination / forfeit (8151) | ✅ |
+| Victory by ruleset condition (np_1 type 14) | ✅ ends the fight with both teams alive; nobody is killed to express it |
+| Give-up, disconnect grace, both-absent teardown | ✅ |
+| End-fight panel (8300) with 2.70 strength-map counts | ✅ |
+| Ladder strength delta (±25) | 🟡 fixed delta, not full ELO |
+| Token reward + live wallet push | ✅ |
+| Challenge reward cards in the won-cards blob | ✅ |
+| Per-fighter post-fight report (40-byte blob ×N) | ✅ |
+| Evolution deaths persisted | 🟡 all downed fighters die; the retail per-fighter death *chance* is not modelled |
+| **Card staking / bets** | ⬜ fights carry a bet field, nothing is wagered; the lost-cards blob is hardcoded empty |
+
+### 8.22 Spectating & reconnect ✅
+
+Spectate query (2260/2261) and join (26331) attach to the fight actor, remove the
+spectator from the overworld, and replay the snapshot with the spectator flag.
+Reconnect asks the resume question (26333/26334) and either re-attaches or
+forfeits. 🟡 Buff icons are not restored in either path.
+
+### 8.23 Multi-fighter & 2v2
+
+**Multiple fighters per team already works** — team building iterates the whole
+roster, challenges field up to 4 opponents, and the timeline, end-check, AoE,
+target conditions and post-fight reports are all N-fighter clean.
+
+**2v2 / multi-coach is structurally blocked** (deferred by the maintainer):
+`Teams` is a fixed array of 2, the ready gate hardcodes "2 coaches", each team
+holds exactly one session, the fight index is one-coach-to-one-fight, and 8000
+hardcodes a two-coach loop.
+
+---
+
+## 9. Progression & the META layer 🟡
+
+Post-fight, per fighter, in this order — every formula transcribed from the
+client's own code:
+
+| Step | State | Detail |
+|---|:---:|---|
+| XP | ✅ | `base × (100 + morale) / 100`, +50 % if idle > 12 h. Morale *is* the bonus percentage |
+| Gear & card-set XP modifiers | ✅ | % and flat, plus the fighter's own conditions |
+| Reputation → XP conversion | ✅ | |
+| Morale drift | ✅ | Including the damping toward its convergence point |
+| Fatigue recovery + fight cost | ✅ | Keeps the client's integer division before the square root |
+| **Wound roll** | ✅ | Upgrade on 3 light wounds / all 5 body parts / a d100 check; **3 serious wounds = permanent death** |
+| **Death roll** | ✅ | injury % = totalXP/1000, death % = injury²/100 |
+| Condition ageing | ✅ | Runs last so a wound taken this fight is not immediately aged |
+| Banking + persistence | ✅ | 50 000 XP spend guard, morale/fatigue clamped, `LastFightAt` stamped |
+| Gating | ✅ | Evolution fights always feed progression; practice and PvE challenges never do |
+
+**Persistent conditions (wounds / blessings, type 902)** ✅ — 111 records decoded,
+applied in-fight (last, after breed + equipment, with floors), applied to the
+post-fight report, persisted, sent on the wire so wounds show on the portrait,
+healed by consumables, and mutually exclusive per type (except the two types the
+client exempts).
+
+**Consumable coach cards (22099)** ✅ — 6 actions: heal light wounds, heal serious
+wounds, change fatigue, change morale, permanent XP, apply a condition. The card
+is consumed **only if something changed**, so a healing potion on a healthy
+fighter is refused and kept. Resurrection is a separate gamble: the card is spent
+whether or not the roll succeeds.
+
+**Card-set bonuses** ✅ — 9 of the 13 action families are wired (XP, wound, death,
+morale, fatigue, wound-cancel, reputation, resurrection, plus the "…for the
+opponent" variants applied to the other team).
+
+**The four "HONEST LIMIT" values** — deliberately named constants, each documented
+as *not recoverable from the client* because the real server computed them and the
+client only ever reads the result:
+
+| Value | Current | Why it is ours |
+|---|---|---|
+| `baseXPPerFight` | 100 | The client receives `baseXp` pre-computed |
+| Reputation per win / loss | 10 / 3 | Same — arrives pre-computed on the wire |
+| "Roll d100 against each, death first" | — | The chances are client-exact; how they are *spent* is our reading |
+| Condition expiry cadence | once per fight | No client code decrements the byte |
+
+**Not implemented:**
+
+- **Drop table (card-set actions 18–21)** ⛔ — the client exposes only the four
+  modifiers, each a pure accessor the client never consumes. The pool and base
+  rate are server-side and **not recoverable from the data**; building it means
+  inventing the core mechanic. What *is* evidenced and could be assembled if the
+  rule turns up: the draw pool is `ObtainableInDraw` weighted by `DropPercent`,
+  filtered by `RequiredLevel`, paid out through the (already implemented)
+  8300 won-cards blob.
+- **Sphere Board** ⬜ — 17 542 records. Emitted as empty lists on the wire.
+- **Achievements** ⬜ — 350 records. Only a raw keyed counter table exists.
+- **Coach standing persistence** ⚠️ — see §4.
+
+---
+
+## 10. Game modes & content 🟡
+
+### PvE challenges 🟡
+
+39/39 records decoded to zero residual bytes. Launch, victory recording
+(idempotent criteria, first-clear-only rewards), the aggregate criterion when all
+five minute demons are done, and reward cards in the end panel all work.
+
+**Hand-built, and honestly labelled:** the **opponent rosters**. The client's
+challenge table carries only presentation data (name, description, rewards, time
+limit) — its loader discards everything else, so there is *no* opponent roster
+anywhere in the client. Compositions were chosen to be legible (themed trios/pairs
+per demon, the largest team for the gated boss). The challenge→criterion mapping
+and the demon names were recovered by matching French label text; they exist
+nowhere in the data files.
+
+**Now enforced (B-074):** the nine victory conditions (np_1 type 14) — the seven
+"Défi du temps" demons, their finale and challenge 14 are won by surviving to
+turn 20/30 rather than by wiping the demon team — and the three type-12
+fight-start effects (challenges 29/30/31: +40 % dodge for the whole fight, not
+granted to summons).
+
+**Still inert:** the `TimeChallenge` field, and six raw ints whose semantics are
+explicitly unverified.
+
+### Tournaments 🟡
+
+Working: the calendar (17002/17003), the list (28601/28602), registration
+(4607/28608) and an empty bracket (28649/28650). Three **standing** tournaments,
+always open, referencing real client definition ids (chosen so registration always
+completes — a fake id would crash the client).
+
+Missing: record types 1000 (22 real definitions) and 1001 (4 level lists) are not
+decoded; there is no bracket, no scheduled match, no prize table, no tournament
+points; registrations are process-lived and reset on restart. The whole
+**live-match layer** (opponent search, scheduling, bracket progression, rewards)
+is deferred — it needs many coaches and wall-clock scheduling.
+
+### Ladder / ranking — 7 tabs 🟡
+
+| Tab | Opcodes | State |
+|---|---|:---:|
+| 1 vs 1 | 27500/27501 | ✅ real data, paged in windows of 20, sorted by strength |
+| Coach (reputation) | 27508/27509 | 🟡 valid but empty |
+| 2 vs 2 | 27504/27505 | 🟡 valid but empty (no 2v2 teams) |
+| Clan | 27502/27503 | 🟡 valid but empty (no guilds) |
+| Tournoi | 27506/27507 | 🟡 valid but empty (no tournament points) |
+| Ligue Pro | 27514/27515 | 🟡 valid but empty |
+| Démon (+ drill-down) | 27512/27513, 27510/27511 | 🟡 the 24-demon roster with zeroed reputation |
+
+All six empty boards are **well-formed** rather than stubbed — they render cleanly
+instead of hanging the client.
+
+### Evolution mode & graveyard ✅
+
+States 0–5 (titular / bench / dead / graveyard / legendary / legendary-bench),
+capacities enforced server-side to agree with the client's own refusals, one-way
+graveyard exit via the resurrection gamble, and a persisted `Evolution` flag kept
+**separate** from `State` (conflating them made every new evolution fighter come
+back as classic — B-070).
+
+### Matchmaking 🟡
+
+FIFO queue keyed on mode. Search / cancel / accept, plus the "Combattre" ready-room
+path that bypasses the accept handshake. **No rating band and no queue timeout** —
+a 3000-strength coach pairs with a 1000 instantly. The accept message's roster,
+mode, opponent id and bet are decoded and discarded.
+
+### Direct challenges 🟡
+
+1v1 training challenge works end to end (invite, accept, decline, cancel,
+withdraw, team-confirm). The **X-vs-X-with-allies variant (26313/26314) is not
+implemented**.
+
+---
+
+## 11. Operations, packaging & distribution ✅
+
+| Item | State | Detail |
+|---|:---:|---|
+| Self-writing config | ✅ | Fully commented template embedded and written on first run, race-safe, never overwrites operator edits |
+| Config documentation guard | ✅ | A reflection test **fails CI if a `Config` field has no key in the template** |
+| Env overrides | 🟡 | 14 keys; 3 fields have no override and that drift is unguarded |
+| Game-data discovery | ✅ | Walks configured → exe-relative → cwd → per-OS install locations, and will combine halves found in *different* roots |
+| Bundled server data | ✅ | `server/data-dist/` (~2.5 MB, records only) ships in git, every release archive and the Docker image — zero setup for fights |
+| Web portal | 🟡 | One embedded page, no JS, no external assets. Self-registration, **first account becomes admin**, per-IP rate limit, CSP + same-origin checks, port ladder 80→8080→8090→3000→5000→any. **No admin UI, no login/session, no TLS** |
+| Update check | ✅ | One anonymous GET at startup, notify-only, silent on every failure, skipped on dev builds |
+| CI | 🟡 | Build/vet/test on Linux **and** Windows, gofmt, `go mod tidy` check, 5-target cross-compile. **No `-race` job, no linter, no coverage, no vulnerability scan, no frontend build** |
+| Releases | ✅ | Conventional Commits → release-please → GoReleaser, 5 targets + checksums, data + docs bundled |
+| Docker | 🟡 | Multi-stage, non-root, 3 compose files (sqlite/postgres/mysql). **No image is published by CI**, no healthcheck |
+| Deployment guides | 🟡 | Compose + env table. No systemd unit, no Kubernetes, no TLS/reverse-proxy example, no backup guidance |
+| Load testing | ✅ | `cmd/loadtest` ramps N bots; ~2000 concurrent coaches on one instance (~170 MB) |
+
+**Open, non-blocking:** Windows SmartScreen warns on the unsigned `.exe` (real fix
+is a signing certificate or SignPath); no published Docker image.
+
+---
+
+## 12. RE tooling & documentation 🟡
+
+| Item | State | Detail |
+|---|:---:|---|
+| Live-client MCP harness | ✅ | 12 MCP tools boot server + retail client with a Java agent injected, drive synthetic input on the GLCanvas, screenshot off-screen, read client model state by reflection, tail both logs, inject raw frames |
+| Harness limits | 🟡 | Hard-coded paths, Windows-only, needs the 436 MB client tree, `/type` mangles non-ASCII before any protocol code runs, and **packet-injected fights render no HUD** (the client only arms it when *it* initiates) |
+| Protocol analysis | ✅ | Framing spec, variable-length message layouts, the self-describing part-table container, `.bdat` byte format, 348-row opcode map |
+| **Studio** (Wails desktop app) | 🟡 | **Read-only** by design (the 2.70 data layer has no encoder). 8 working views: data catalogs, jar/asset browsing, TGA decoding, map `.fmd` + topology parsing, composited map rendering with pan/zoom, bulk sprite export. 8 orphan nav strings inherited from the v2.04 tool. Excluded from Linux CI and from releases (needs CGO + GTK/WebKit) |
+| **Deobfuscation lab** | 🟡 | Class layer done (4911 classes remapped, **472 semantically named**), field layer done (**892 fields**). **Open: method renaming, real package structure, full recompile.** Only 137 of the names are fact-backed; the rest are descriptive guesses |
+| Game wiki | ✅ | 12 breeds × ~10 spells each, mechanics pages, rules pages |
+| Bug log | ✅ | Every fix with symptom, root cause (naming the client class that proves it), and verification |
+
+---
+
+## 13. What's left — prioritised backlog
+
+### Tier 0 — correctness & anti-cheat (cheap, high value)
+
+1. **Placement phase has no guard at all** — no phase check, no walkable/destroyed/
+   occupied check, no "must be one of your side's start cells". Any coordinate is
+   accepted at any time.
+2. **Spell casts do not check spell ownership** — a forged 8109 can cast any spell
+   in the table. (The weapon path already checks.)
+3. **Forced displacement does not trigger walk-on traps** — push, pull, teleport,
+   swap and throw all bypass the check.
+4. **Dispel strips infinite states**, permanently removing a summon's innate
+   properties.
+5. **`Coach.Standing` is never persisted or transmitted** — the coach evolution
+   level resets on every relog. One missing column in a field map.
+6. Rooted fighters get their MP gauge refilled client-side; petrified fighters do
+   not have AP/MP zeroed as the client does.
+7. `Writer.StringU8` does not enforce the 127-byte limit that would crash the client.
+
+### Tier 1 — cheap concrete wins
+
+8. **Zone-effect action ids 165 / 166 / 169** — the machinery already exists for 177.
+9. **Enforce the remaining np_1 rules.** Budget (incl. type 1000 "no limit"),
+   roster limits, banned/allowed spells and equipment, class limits and prices,
+   **arena choice**, event-list choice. Each is small now that the ruleset
+   plumbing exists. *Read `content.54.<type>` first* — it is the authoritative
+   semantics table, and it is what revealed the timing rules are deltas.
+   **Check the operand question first.** A dump of every `np_1` element in the
+   shipped data shows each of these rule types occurs **exactly once, on a coach
+   card, always with an EMPTY parameter array** (types 1, 2, 3, 4, 5, 11, 17, 19,
+   20, 24, 29, 31 — one instance each, zero params). They look like per-rule
+   template/declaration cards rather than configured rules. Everything actually
+   parameterised lives elsewhere: type 13 (5 challenges), type 10 (challenge 46),
+   and the whole 900–930 block, which is always populated (927 "arena id" alone
+   has 27 instances). So "enforce rule N" is not the hard part — finding where
+   its operand comes from is, and that must be answered before writing an
+   enforcer that would read `params[0]` off an empty slice.
+10. ~~**np_1 type 14 victory conditions**~~ — **done (B-074)**. Subtype 4
+    ("reach turn N") covers all 9 shipped conditions. Subtypes 1/2/3 remain
+    decoded-but-unimplemented: no shipped record uses them, so there would be
+    nothing to validate an implementation against.
+11. **Buff icons on reconnect/spectate** — fill the 8000 effects/conditions slots.
+12. **Buff stacking rules** — merge / refresh / cap instead of blind append.
+13. **Initiative buffs should re-sort the timeline.**
+14. **5203 destructive/lock inventory ops** — currently a re-push stub; would also
+    give `CardLocked` its first writer.
+15. **AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.
+16. **Matchmaking rating band + queue timeout.**
+17. **Spell `TargetMasks` + `MaxActive`** — decoded, not evaluated. Small payoff
+    (3 and 6 spells) but closes the spell record completely.
+
+### Tier 2 — real features
+
+18. **AI depth** — the single biggest gameplay-quality lever. Multiple spells per
+    fighter, close combat and weapons, healing/buffing allies, tactical
+    positioning, AoE friendly-fire awareness, trap and sudden-death awareness,
+    diagonal pathfinding, difficulty tiers.
+19. **Coach action cards in fight** — the deck is already rendered by the client
+    and is completely unplayable.
+20. **Card staking / bets** on a fight.
+21. **Evolution per-fighter death chance** (currently: all downed fighters die).
+22. **Fusion recipe table** — decode record type 1100 and replace the flat 60 % roll.
+23. **Tournament definitions** — decode types 1000/1001 and replace the three
+    hand-built entries.
+24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and
+    retire the hand-transcribed table.
+25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)
+    and guild/team-scoped routing.
+26. **Achievements** — types 800/801/802, 350 records, one client tab.
+27. **NPC dialog trees** — type 1500, 148 records.
+28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke
+    client-state RE plus live verification for each.
+
+### Tier 3 — large systems
+
+29. **Sphere Board** — types 900/901, 17 542 records. The largest unimplemented
+    system in the game.
+30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
+    2-team array to become a slice, the ready gate to count teams, per-team
+    session lists, and the 8000 coach loop generalised.
+31. **Guilds / clans** — unblocks the clan ladder, clan-scoped chat, the clan-island
+    Zaap and the guild-tag column already reserved in the ladder rows.
+32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.
+33. **X-vs-X challenge with allies** (26313/26314).
+34. **Versioned schema migrations** — replace `AutoMigrate` before the first
+    destructive schema change.
+35. **Web admin panel** — auth, sessions, account management, TLS.
+
+### Deliberately out of scope ⛔
+
+- **The drop table** — the mechanic is not recoverable from the client; building
+  it means inventing it. Documented in full in case evidence ever turns up.
+- **Directional / positional damage** — 2.70 removed it.
+- **Chasing the client's accent mangling** — proven to be client-side; our
+  encoding is correct and must not be "fixed".
+- **Emitting opcode 22002** — its handler wholesale-replaces the coach's criteria.
+- The seven other intentionally-dark S2C opcodes, each with a written reason.
+
+---
+
+## 14. Documentation hygiene (found while compiling this)
+
+Stale claims that will actively mislead the next person. **Fixed rows are struck
+through** — the rest are still open.
+
+| Where | Says | Reality |
+|---|---|---|
+| ~~`server/COVERAGE.md` "Fight feature gaps"~~ | ~~"only single-target HP-loss resolves…"~~ | **Fixed 2026-08-10.** Every clause was false — 94 % of effect rows resolve |
+| ~~`server/COVERAGE.md`~~ | ~~"E2E suite: 44 top-level tests"~~ | **Fixed 2026-08-10** → 70 |
+| ~~`server/COVERAGE.md`~~ | ~~lists `4321 EndFightDone`~~ | **Fixed 2026-08-10** → 26321 |
+| ~~`server/docs/DATA-COVERAGE.md`~~ | ~~"8 of 24 populated types decoded"; type 902 ❌~~ | **Fixed** (B-073 pass) → 9 of 24 |
+| ~~`internal/game/fightrules.go`~~ | ~~bonus-cell multiplier "not consumed yet"~~ | **Fixed 2026-08-10** (B-074 pass) |
+| ~~`internal/game/target_conditions.go`~~ | ~~credits the validator to `aap.a`~~ | **Fixed (B-074)** — it ports `aLc.a`; `aap` is a different validator, and the misattribution cost real time |
+| `internal/game/postfight.go`, `postfight_apply.go` | wound/death rolls "deliberately NOT run yet" | They run |
+| `internal/game/cardsets.go` | "resurrection is the only one this server implements" | Nine set-bonus families are wired |
+| `internal/gamedata/effectkind.go` | poison "resolved as immediate damage for now" | It is a real per-round DoT |
+| `internal/gamedata/effectkind.go` | stat buffs "not consumed by the current flat-damage combat model" | Resistances, damage %, crit and dodge *are* consumed; only initiative and a few exotic ids remain render-only |
+| `internal/game/elements.go` | Challenge/DemonChallenge/BreedMaster/DemonTotem/TournamentTotem "deliberately NOT spawned yet"; mailbox "NOT implemented yet" | All are spawned; the mailbox is complete |
+| `internal/game/handlers_fight_combat.go` | "Combat defaults (used until real spell gamedata is wired in)" | Gamedata is wired in; these are an absent-data fallback |
+| `server/README.md` | lists `internal/net`; default addr `127.0.0.1:5555`; an `--addr` flag | No such package; default is `0.0.0.0:5555`; no such flag |
+| `server/docs/STATUS.md` §7 vs `CLIENT-TESTING.md` | "clicks reach AWT/Swing dialogs only, not the GLCanvas" | `CLIENT-TESTING.md` explicitly retracts this as false |
+| `client/analysis/opcodes.md` | "little-endian" | Everything else — and the code — says big-endian |
+
+---
+
+## 15. Invariants — do not break
+
+- **`OPCODE-INVENTORY.md` H count must equal the `r.Register(protocol.` count in
+  `internal/game`.** Currently **82 = 82**. Check after adding a handler.
+- **Never send opcode 22002.** Criteria reach the client only via the 2052 blob.
+- **The wire protocol is sacred.** The client cannot be changed; server output
+  must match the decompiled reference byte for byte.
+- **Data over v2.04b.** The 2.04b branch is a useful *unobfuscated structural*
+  reference, but its values are beta-era and differ. Every one checked so far was
+  wrong in 2.70.
+- **Real-data tests skip, never fail, when `server/data` is absent.**
+- `data/maps/` and `data/` must not move — tests read them by relative path.
+- **`gofmt -l internal cmd test` must be EMPTY.** This used to read "do not fix
+  pre-existing gofmt drift in `handlers_team.go`, `packets_test.go`,
+  `summon_test.go`, `target_conditions.go`, `team_codec.go`" — that drift no
+  longer exists (verified 2026-08-10 against a pristine checkout of `HEAD`: zero
+  files listed). The old wording was actively harmful, because it trained the
+  habit of filtering those names out of `gofmt -l`, which would hide real drift
+  in them. Do not re-add the exemption; just keep the tree clean.
+
+---
+
+## 16. The method that keeps finding real bugs
+
+For each client record type: read the deserializer for the exact field **order** →
+find each obfuscated field's **getter** → grep the getter's **callers** for meaning
+(no callers = dead in the client too, safe to skip) → then **dump the real
+distribution** across all records. A mis-assigned field shows up instantly as an
+implausible histogram — the spell cooldown was 97/203 populated on the correct
+field versus 6 on the wrong one. Finish with a real-data canary test asserting the
+population size, so a future field-order slip fails loudly instead of silently
+zeroing a mechanic.
+
+A corollary worth repeating: **verify a claim of absence against the code before
+acting on it.** "Tackle is not implemented" headed the open-items list twice and
+was wrong both times — tackle existed, it just used a hardcoded 67 % instead of
+the real stats.
