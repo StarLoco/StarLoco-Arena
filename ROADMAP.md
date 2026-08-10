@@ -976,7 +976,7 @@ is a signing certificate or SignPath); no published Docker image.
 
 **Tier 0 is complete.**
 
-### Tier 1 — cheap concrete wins
+### Tier 1 — cheap concrete wins (7 of 10 resolved: B-079…B-083, one withdrawn)
 
 8. ~~**Zone-effect action ids 165 / 166 / 169**~~ — **done (B-079)**, plus 167 and
    168, which the roadmap had missed: `mh_2` shows the family is six members of
@@ -1146,3 +1146,44 @@ A corollary worth repeating: **verify a claim of absence against the code before
 acting on it.** "Tackle is not implemented" headed the open-items list twice and
 was wrong both times — tackle existed, it just used a hardcoded 67 % instead of
 the real stats.
+
+### What the B-074…B-083 run added to the method
+
+**Verify the claim, not just its absence — including claims in THIS file.** Three
+backlog items turned out to rest on false premises, and checking cost minutes
+where implementing would have cost hours and shipped a wrong mechanic:
+
+- *"Initiative buffs should re-sort the timeline"* — no shipped spell uses
+  action 76/77 at all, the client's timeline interface has no comparator, and no
+  message reorders it. **Withdrawn** rather than built.
+- *"Fill the 8000 effects slot with buff icons"* — that slot is the **sphere
+  board**, and the client re-applies the node's effects. Filling it as planned
+  would have applied unrelated effects instead of drawing an icon.
+- *"Asymmetric 2-/4-param crosses"* — no shipped record has one. Still
+  implemented, because the client's own body was right there and the old code
+  would have been silently *wrong* rather than absent, but scoped honestly as
+  forward safety rather than sold as a fix.
+
+**Dump the data distribution before scoping the work.** It repeatedly changed
+what "the work" was: the zone-effect family was 6 members, not the 3 listed; the
+enforced target masks were 3 of 202 carriers; the np_1 enforcement rules all ship
+with EMPTY parameter arrays, which turns "enforce rule N" into "find where its
+operand lives" — a different and much harder question.
+
+**Mutation-test every new assertion.** Two tests in this run passed for the wrong
+reason and would have entered the suite as decoration:
+
+- the target-mask escape test used a mask that was permissive either way, so it
+  passed with the feature removed;
+- a matchmaker test probed the same queue repeatedly, and its own probes paired
+  with each other rather than with the fixture.
+
+Both were only exposed by deliberately breaking the code and demanding the test
+notice. A test that cannot fail is worse than no test, because it looks like
+coverage.
+
+**A silent no-op is the failure mode to design against.** An unimplemented
+effect action, an unhandled AoE shape and an unknown target-condition bit all
+default to "do nothing" or "allow", which is invisible in play. That is why
+167/168 were implemented despite having no shipped rows, and why a target mask
+carrying a bit we cannot represent is skipped *whole* rather than half-enforced.
