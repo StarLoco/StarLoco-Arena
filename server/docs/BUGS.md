@@ -38,6 +38,53 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-078 - Effective AP/MP were never derived, and StringU8 could crash every client
+
+The last two Tier 0 items.
+
+**1. Rooted/petrified fighters reported and SPENT resources they do not have.**
+The client has two characteristic getters: `gn_0.c` returns the raw stored
+value, `gn_0.d` returns the EFFECTIVE one, and `d` zeroes it:
+
+    d(Lr.bqz /*MP*/): 0 if the fighter has avx_0.dew (petrified) OR dex (rooted)
+    d(Lr.bqy /*AP*/): 0 if the fighter has avx_0.dew (petrified)
+
+This server had no equivalent, which is not merely a cosmetic gauge issue as the
+roadmap assumed. "Dommages par PM possede" scales off exactly this value, so in
+the retail client a ROOTED caster's MP-scaled spell deals **nothing**, while we
+were reading the raw MP and hitting at full strength.
+
+`effectiveAP`/`effectiveMP` now mirror `gn_0.d` and are used by the
+scaled-damage effect and by the AP/MP deltas in CREATE_FIGHT (so a resume or
+spectate rebuilds the same gauges the client would derive). They are DERIVED,
+not stored - refillFighter deliberately still refills the raw value, exactly as
+the client keeps the raw characteristic, so a root that ends restores mobility
+with nothing to restore. Rooted deliberately does not zero AP: a rooted fighter
+can still cast.
+
+**2. `Writer.StringU8` documented a 127-byte limit and enforced nothing.**
+Several 2.70 decoders read that prefix as a SIGNED byte, so 128 bytes present a
+length of -128 and crash the client's reader. That made it a **remote
+client-crash vector**, not a style rule: the channel-chat path clamps the
+message it echoes, but NOT the channel NAME, and both come straight off the
+wire - so one client could crash every other client that received the message.
+
+The writer now truncates. Enforcing it at the single choke point makes every
+call site safe by construction, and the limit is applied to the ENCODED bytes
+because that is what the prefix counts (the wire charset is cp1252, single-byte,
+so cutting bytes cannot split a character). The existing call-site clamps are
+left in place as belt and braces.
+
+**Verification.** A table over 0/1/126/127/128/255/1000 bytes asserting the
+prefix never exceeds 127 and never reads negative when signed, plus an
+accented-text case proving the limit counts cp1252 bytes rather than the Go
+string's UTF-8 length. For the getters: a state table (rooted zeroes MP only,
+petrified zeroes both, unrelated states change nothing, raw values never
+mutated) and a behavioural test that a rooted caster's MP-scaled spell deals
+zero while an unrooted one deals damage. Both mutation-checked.
+
+---
+
 ### B-077 - Dispel stripped summons of what they ARE, and Standing was thrown away
 
 Two more Tier 0 items, unrelated except that both are one-line omissions with

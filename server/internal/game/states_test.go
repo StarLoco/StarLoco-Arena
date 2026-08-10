@@ -242,3 +242,67 @@ func TestDispelKeepsAnInfiniteStateOnARealFighter(t *testing.T) {
 		t.Error("dispel stripped an infinite (permanent) state from a real fighter")
 	}
 }
+
+// TestEffectiveAPMPMirrorsClientGetter pins the port of gn_0.d — the client's
+// EFFECTIVE-value getter, as opposed to gn_0.c which returns the raw value:
+//
+//	MP (Lr.bqz): 0 when petrified (avx_0.dew) OR rooted (dex)
+//	AP (Lr.bqy): 0 when petrified only
+//
+// Rooted deliberately does NOT zero AP: a rooted fighter can still cast.
+func TestEffectiveAPMPMirrorsClientGetter(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		states         []fighterState
+		wantAP, wantMP int32
+	}{
+		{"unaffected", nil, 6, 3},
+		{"rooted zeroes MP only", []fighterState{stateRooted}, 6, 0},
+		{"petrified zeroes both", []fighterState{statePetrified}, 0, 0},
+		{"both", []fighterState{stateRooted, statePetrified}, 0, 0},
+		{"an unrelated state changes nothing", []fighterState{stateInvisible}, 6, 3},
+	} {
+		ff := &FightFighter{AP: 6, MaxAP: 6, MP: 3, MaxMP: 3}
+		for _, s := range tc.states {
+			ff.addState(s, 5)
+		}
+		if got := ff.effectiveAP(); got != tc.wantAP {
+			t.Errorf("%s: effectiveAP = %d, want %d", tc.name, got, tc.wantAP)
+		}
+		if got := ff.effectiveMP(); got != tc.wantMP {
+			t.Errorf("%s: effectiveMP = %d, want %d", tc.name, got, tc.wantMP)
+		}
+		// The RAW values must be untouched: the client derives the zero, it does
+		// not store it, so a root that ends restores the resource with nothing
+		// to restore.
+		if ff.AP != 6 || ff.MP != 3 {
+			t.Errorf("%s: raw AP/MP mutated to %d/%d, want 6/3", tc.name, ff.AP, ff.MP)
+		}
+	}
+}
+
+// TestRootedCasterMPScaledSpellDealsNothing is why the derived getter is not
+// cosmetic: "dommages par PM possédé" scales off gn_0.d, so a rooted caster
+// contributes 0. Reading the raw MP would have it hit at full strength.
+func TestRootedCasterMPScaledSpellDealsNothing(t *testing.T) {
+	f, caster, enemy := stateTestFight()
+	caster.MP, caster.MaxMP = 3, 3
+
+	// Action 152 = neutral damage scaled by remaining MP, 10 per point.
+	before := enemy.HP
+	f.resolveEffect(caster, gamedata.Effect{ActionID: 152, Params: []float32{10}}, enemy.Pos)
+	if enemy.HP >= before {
+		t.Fatalf("setup: an unrooted MP-scaled cast dealt no damage (HP %d -> %d)", before, enemy.HP)
+	}
+
+	// Same cast from a ROOTED caster: effective MP is 0, so it deals nothing.
+	f2, caster2, enemy2 := stateTestFight()
+	caster2.MP, caster2.MaxMP = 3, 3
+	caster2.addState(stateRooted, 5)
+	before2 := enemy2.HP
+	f2.resolveEffect(caster2, gamedata.Effect{ActionID: 152, Params: []float32{10}}, enemy2.Pos)
+	if enemy2.HP != before2 {
+		t.Errorf("rooted caster's MP-scaled spell dealt damage (HP %d -> %d); effective MP is 0",
+			before2, enemy2.HP)
+	}
+}

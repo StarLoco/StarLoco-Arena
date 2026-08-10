@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-077 (dispel keeps innate states; Standing persisted + on the wire)
+· **Latest work:** B-078 — **Tier 0 complete**
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -914,7 +914,7 @@ is a signing certificate or SignPath); no published Docker image.
 
 ## 13. What's left — prioritised backlog
 
-### Tier 0 — correctness & anti-cheat (cheap, high value)
+### Tier 0 — correctness & anti-cheat ✅ COMPLETE (B-075 … B-078)
 
 1. ~~**Placement phase has no guard at all**~~ — **done (B-075)**. Gated to the
    placement phase, and the cell must be one of the fighter's own side's start
@@ -935,9 +935,15 @@ is a signing certificate or SignPath); no published Docker image.
    It was dropped in three places: `CoachRepo.Save`'s field map, the 2052
    descriptor and the 4096 actor record. No wire layout changed; both sites
    already wrote an i32 and simply wrote zero into it.
-6. Rooted fighters get their MP gauge refilled client-side; petrified fighters do
-   not have AP/MP zeroed as the client does.
-7. `Writer.StringU8` does not enforce the 127-byte limit that would crash the client.
+6. ~~Rooted fighters get their MP gauge refilled; petrified fighters do not have
+   AP/MP zeroed~~ — **done (B-078)**. `effectiveAP`/`effectiveMP` mirror the
+   client's `gn_0.d`. Not cosmetic: MP-scaled damage reads this value, so a
+   rooted caster's spell now correctly deals nothing.
+7. ~~`Writer.StringU8` does not enforce the 127-byte limit~~ — **done (B-078)**.
+   It was a remote client-crash vector, not a style rule: chat echoes an
+   attacker-supplied channel *name* through it.
+
+**Tier 0 is complete.**
 
 ### Tier 1 — cheap concrete wins
 

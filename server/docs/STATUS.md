@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-078 | **Tier 0 complete.** Effective AP/MP derived like the client's `gn_0.d`; `StringU8` enforces the 127-byte limit (a remote client-crash vector) |
 | B-077 | Dispel no longer strips summons' innate states; `Coach.Standing` persisted and put on the wire (2052 + 4096) |
 | B-076 | Forced displacement (push/pull/teleport/swap/throw) now arms traps; the full type-210 trigger enum recovered from `he_1.a` |
 | B-075 | Two anti-cheat holes closed: 8021 placement was a free teleport to any cell at any time; spell casts never checked the caster owned the spell |

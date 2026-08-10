@@ -198,3 +198,36 @@ func (f *Fight) tickStates() {
 		}
 	}
 }
+
+// effectiveAP / effectiveMP mirror the client's `gn_0.d(characteristic)` — the
+// EFFECTIVE-value getter, as opposed to `gn_0.c`, which returns the raw stored
+// value:
+//
+//	d(Lr.bqz /*MP*/): 0 if the fighter has avx_0.dew (petrified) OR dex (rooted)
+//	d(Lr.bqy /*AP*/): 0 if the fighter has avx_0.dew (petrified)
+//
+// The client DERIVES the zero rather than storing it, which matters in two ways.
+// It is not merely cosmetic: "damage par PA/PM possédé" scales off this value,
+// so a rooted caster's MP-scaled spell deals nothing in the retail client while
+// the raw reading would have it deal full damage. And because it is derived, a
+// root that ends restores the resource immediately, with nothing to restore —
+// which is why refillFighter deliberately still refills the RAW value.
+func (ff *FightFighter) effectiveAP() int32 {
+	if ff == nil {
+		return 0
+	}
+	if ff.hasState(statePetrified) {
+		return 0
+	}
+	return ff.AP
+}
+
+func (ff *FightFighter) effectiveMP() int32 {
+	if ff == nil {
+		return 0
+	}
+	if ff.hasState(statePetrified) || ff.hasState(stateRooted) {
+		return 0
+	}
+	return ff.MP
+}

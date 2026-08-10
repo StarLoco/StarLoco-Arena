@@ -158,11 +158,29 @@ func (w *Writer) F32(v float32) *Writer {
 	return w
 }
 
-// StringU8 appends a [u8 len][bytes] length-prefixed string. The caller must keep
-// s <= 127 bytes: several 2.70 decoders read this length as a signed byte, so a
-// longer string would present a negative length and crash the client.
+// MaxStringU8 is the largest payload a [u8 len] string may carry. Several 2.70
+// decoders read that length as a SIGNED byte, so anything past 127 presents a
+// negative length and crashes the client's reader.
+const MaxStringU8 = 127
+
+// StringU8 appends a [u8 len][bytes] length-prefixed string, TRUNCATED to
+// MaxStringU8 bytes.
+//
+// The limit used to be documented as the caller's responsibility and enforced
+// nowhere, which made it a remote client-crash vector rather than a style rule:
+// the channel-chat path clamped its message but not the channel NAME it echoes
+// back, and both come straight off the wire — so one client could crash every
+// other client that received the message.
+//
+// Truncating here makes every call site safe by construction. The cost is a
+// clipped string instead of a dropped connection, and it is measured on the
+// ENCODED bytes because that is what the length prefix counts; the wire charset
+// (cp1252) is single-byte, so cutting bytes cannot split a character.
 func (w *Writer) StringU8(s string) *Writer {
 	b := EncodeText(s)
+	if len(b) > MaxStringU8 {
+		b = b[:MaxStringU8]
+	}
 	w.buf = append(w.buf, byte(len(b)))
 	w.buf = append(w.buf, b...)
 	return w

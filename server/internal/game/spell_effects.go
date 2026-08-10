@@ -408,9 +408,12 @@ func (f *Fight) applyScaledDamage(caster *FightFighter, ef gamedata.Effect, targ
 		return
 	}
 	perPoint := ef.Roll(f.rngSource())
-	resource := caster.MP
+	// EFFECTIVE, not raw: the client scales this off gn_0.d, so a rooted caster
+	// reads 0 MP and a petrified one reads 0 of either. Reading the raw value
+	// would make a rooted fighter's MP-scaled spell hit at full strength.
+	resource := caster.effectiveMP()
 	if ap {
-		resource = caster.AP
+		resource = caster.effectiveAP()
 	}
 	val := perPoint * resource
 	if val <= 0 {
