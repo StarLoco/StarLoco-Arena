@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-082 (matchmaking rating band) — **Tier 0 complete**
+· **Latest work:** B-083 (fighter conditions on the fight wire) — **Tier 0 complete**
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 277 Go files · 491 test functions (72 of them end-to-end
+**Scale reference.** 278 Go files · 493 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -532,9 +532,12 @@ whole arena on round 1 (event card 14 is 94+127+128). They are distinct now.
   sources" — the same shortcut as the stacking gap above. That would also fix
   overlapping *finite* sources, which keeping-infinites does not.
 - Dispel does not touch poisons, damage-transfer links or auras.
-- **Buff/debuff icons are not restored on reconnect or spectate** — the server
-  keeps the buffs and they keep working; only the client-side icons are missing
-  until they expire.
+- **Timed buff/debuff icons are not restored on reconnect or spectate** — the
+  server keeps the buffs and they keep working; only the client-side icons are
+  missing until they expire. CREATE_FIGHT has no slot for them: its two id lists
+  are sphere-board nodes and persistent conditions (B-083), and the latter is
+  now sent, so *wounds* do survive. Restoring timed buffs needs the per-effect
+  message the client uses during normal play.
 
 ### 8.13 Static & special cells ✅
 
@@ -748,7 +751,8 @@ off HP, so downing the loser would destroy fighters permanently).
 Spectate query (2260/2261) and join (26331) attach to the fight actor, remove the
 spectator from the overworld, and replay the snapshot with the spectator flag.
 Reconnect asks the resume question (26333/26334) and either re-attaches or
-forfeits. 🟡 Buff icons are not restored in either path.
+forfeits. 🟡 Timed buff icons are not restored in either path; persistent
+conditions (wounds) now are (B-083).
 
 ### 8.23 Multi-fighter & 2v2
 
@@ -996,7 +1000,16 @@ is a signing certificate or SignPath); no published Docker image.
     ("reach turn N") covers all 9 shipped conditions. Subtypes 1/2/3 remain
     decoded-but-unimplemented: no shipped record uses them, so there would be
     nothing to validate an implementation against.
-11. **Buff icons on reconnect/spectate** — fill the 8000 effects/conditions slots.
+11. 🟡 **Buff icons on reconnect/spectate** — **partly done (B-083), and the
+    premise was half wrong.** The CREATE_FIGHT fighter blob's two id lists are
+    *not* both buff channels: the first resolves through `akp_1`, the **sphere
+    board** registry (`dq_1` → `contentLoader.sphereBoard`), and the client
+    **re-applies** the matching node's effects — so writing buff ids there would
+    apply unrelated sphere effects, not draw icons. It stays empty until the
+    Sphere Board exists. The second list *is* the persistent conditions (type
+    902) and is now sent, so wounds survive a reconnect or spectate. Timed spell
+    buffs still have no slot in this message; restoring those needs the
+    per-effect message the client uses during normal play.
 12. **Buff stacking rules** — merge / refresh / cap instead of blind append.
 13. ~~**Initiative buffs should re-sort the timeline.**~~ — **withdrawn: the
     premise is false.** No shipped spell uses action 76/77 (0 of 533 effect

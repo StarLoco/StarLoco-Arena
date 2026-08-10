@@ -38,6 +38,48 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-083 - Fighter conditions were missing from CREATE_FIGHT (and the "effects" slot is not what the roadmap thought)
+
+The fighter blob in CREATE_FIGHT ends with two id lists, and both were sent
+empty. The roadmap filed this as "buff icons on reconnect/spectate - fill the
+8000 effects/conditions slots". **The effects half of that is wrong**, and
+filling it as planned would have caused a real bug rather than a missing icon.
+
+**The effects list is the SPHERE BOARD.** `gn_0.b` reads
+`[i16 count][i32 x count]` into a `jg_0` and hands it to
+`gn_0.a(jg_0, vy_1, ib_2)`, which resolves each id through `akp_1` and then
+**re-applies every effect of the object it finds**. `akp_1` is filled by
+`dq_1`, whose `getName()` is `contentLoader.sphereBoard` - it is the
+sphere-board node registry (types 900/901, 17 542 records, the largest
+unimplemented system). Writing buff ids there would not draw an icon; the client
+would look them up among sphere nodes and apply whatever shared the id. The slot
+stays empty, now with that written next to it so the next person does not repeat
+the assumption.
+
+**The conditions list is real and is now filled.** It is
+`[i16 count][i16 x count]`, read into `gn_0.uk` - the same container the
+roster blob's evolution tail already fills through `et_2.uk` - and drawn on the
+fighter's portrait. Sending it in CREATE_FIGHT is what keeps an injured fighter
+looking injured after a reconnect or to a spectator, since both rebuild the fight
+from that message. The client adds each id at a fixed level of 1
+(`vy_1.b(id, (byte)1)`), so the remaining-fights counter has no slot here; it
+travels in the roster blob, which does have a duration byte.
+
+The count is capped at 255 for the same reason the roster writer caps it: a
+corrupt row must not wrap the length and desynchronise the rest of the blob.
+
+**Verification.** A fighter with two conditions puts both ids on the wire in
+order; a fighter with none still produces a well-formed blob; and the existing
+byte-exact layout test still passes, since the empty case is the same two bytes
+as before. Mutation-checked by restoring the hardcoded empty list.
+
+**Still open:** in-fight BUFF icons (the timed spell buffs) have no slot in this
+message at all - the two lists here are sphere nodes and persistent conditions.
+Restoring those on reconnect would need whatever per-effect message the client
+uses during normal play, which is a separate piece of RE.
+
+---
+
 ### B-082 - Matchmaking paired anyone with anyone
 
 The queue took the first waiting coach in the same mode, so a 3000-strength

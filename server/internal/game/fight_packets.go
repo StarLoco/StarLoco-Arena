@@ -246,10 +246,35 @@ func writeCombatFighterBlob(w *protocol.Writer, ff *FightFighter) {
 	w.U16(1)
 	w.U8(0)
 
-	// effects (empty)
+	// Effects list: [i16 count][i32 × count]. NOT buff icons — the client
+	// resolves each id through `akp_1`, which `dq_1` fills from the SPHERE BOARD
+	// content loader ("contentLoader.sphereBoard"), and then RE-APPLIES every
+	// effect of the node it finds (gn_0.a(jg_0, vy_1, ib_2)). So this is the
+	// fighter's unlocked sphere-board nodes, and it stays empty until that system
+	// exists (types 900/901, 17 542 records). Putting buff ids here would not
+	// draw an icon; it would look them up in the sphere registry and apply
+	// whatever happened to share the id.
 	w.U16(0)
-	// conditions (empty)
-	w.U16(0)
+
+	// Conditions list: [i16 count][i16 × count]. These ARE the persistent
+	// fighter conditions (gamedata type 902 — wounds and blessings). The client
+	// keys them into `gn_0.uk`, the same container the roster blob's evolution
+	// tail fills via `et_2.uk`, and draws them on the fighter's portrait. Sending
+	// them here is what makes an injured fighter still look injured after a
+	// reconnect or to a spectator, both of which rebuild the fight from
+	// CREATE_FIGHT.
+	//
+	// The client adds each id with a fixed level of 1 (`vy_1.b(id, (byte)1)`),
+	// so the remaining-fights counter has no slot in this list; it travels in the
+	// roster blob, which does have a duration byte.
+	conds := ff.Fighter.Conditions
+	if len(conds) > 255 {
+		conds = conds[:255] // never let a corrupt row wrap the i16 count
+	}
+	w.U16(uint16(len(conds)))
+	for _, c := range conds {
+		w.U16(uint16(c.ConditionID))
+	}
 
 	// hp damage taken / mp used / ap used — the client derives current HP/AP/MP as
 	// (max − delta). At a fresh fight start every fighter is full so all three are
