@@ -38,6 +38,65 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-076 - Forced displacement walked straight past every trap
+
+checkEffectAreasMove had exactly ONE caller - the voluntary walk path - so push,
+pull, teleport, swap and throw all repositioned fighters with no trap check at
+all. Shoving an enemy onto a glyph is a core tactic of this game, and its
+absence also made every trap trivially avoidable: any displacement crossed them
+for free.
+
+**The client settles it, and gives the full trigger model.** `he_1.a(fromX,
+fromY, fromZ, toX, toY, toZ, fighter)` partitions the live areas by whether
+they contain the FROM cell and the TO cell:
+
+| fires | when | meaning |
+|---:|---|---|
+| **10001** | in TO, not in FROM | **entered** the area |
+| **10008** | in TO and in FROM | **stayed inside** it |
+| **10002** | in FROM, not in TO | **left** it |
+
+It is a pure position-change notification - nothing in it cares HOW the fighter
+moved - and **eight distinct effect classes call it**, including `go`
+(teleport, the class our applyTeleport comment already cited) and `aox_1`
+(swap, the class our applySwap comment already cited, which calls it ONCE PER
+SWAPPED FIGHTER).
+
+The fix was correspondingly small, because checkEffectAreasMove already
+implements the 10001 half of that partition exactly - `contains(arrival) &&
+!contains(start)` - and its own doc comment already claimed it was "called per
+step by applyFighterMove (and any server-driven reposition)". The repositions
+were simply never wired. Teleport, swap (both fighters), push/pull and throw now
+call it. Carry is deliberately excluded: a carried fighter is stacked on its
+carrier and explicitly holds no ground in this server's model.
+
+The push path checks HP after collision damage, so a fighter the impact already
+killed does not also spring the trap it landed on.
+
+**Trigger ids this server still ignores** (dumped from all 16 shipped type-210
+templates): **10008** stayed-inside, **10002** left, **10003** (the ONLY trigger
+on template 1016 "mauvaisOeil", so that trap can never fire here), and **10006**
+(templates 2 and 1015). Three templates - 1017, 1018, 1019 - carry an EMPTY
+trigger array and so fire from nothing. Their meanings are now recorded in
+DATA-COVERAGE rather than left as a blank.
+
+**A latent panic fell out of this.** The new "a shove springs a lethal trap"
+test was the first trap test able to reach endFight - previously only a
+voluntary walk could spring a trap, and the walker was never the last enemy in
+those fixtures. endFight dereferences `deps.Log` unguarded, so a fixture
+without a logger panicked the fight actor. Production always sets Log, so this
+was reachable only from tests; the fixture now provides one rather than papering
+over it with nil checks that would hide the next fixture mistake.
+
+**Verification.** One test per displacement path (teleport, swap for both
+fighters, push, throw), each mutation-checked independently by removing that one
+hook. Plus the half of the partition that is easy to get wrong: a fighter shoved
+from one cell to another INSIDE the same area has not entered it, so nothing
+fires - that is the client's 10008 case, which this server does not implement,
+and the wrong reading would have re-fired the walk-on effect.
+
+---
+
 ### B-075 - Two anti-cheat holes: placement was a free teleport, casts skipped spell ownership
 
 Both were Tier 0 items on the roadmap. Both were exploitable by a forged packet

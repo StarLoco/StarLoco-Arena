@@ -181,6 +181,29 @@ Decoded: id, type string, AoE shape+params, max triggers, effects. **Not read**:
 re-trigger policy (once per team / per target / always), the two trigger bitmasks, and
 the delayed re-trigger timer.
 
+**The trigger enum, recovered in full (B-076).** The client turns `appTriggers` /
+`unappTriggers` into two `BitSet`s keyed by trigger id (`aeb_0`), and fires them from
+`he_1.a(fromX,fromY,fromZ, toX,toY,toZ, fighter)`, which partitions the live areas by
+whether they contain the FROM cell and the TO cell:
+
+| id | fires when | server |
+|---:|---|---|
+| 10000 | the fighter STARTS its turn on the footprint | ✅ |
+| 10001 | **entered** — in TO, not in FROM | ✅ (walk **and**, since B-076, every forced displacement) |
+| 10002 | **left** — in FROM, not in TO | ⬜ |
+| 10003 | unknown — the ONLY trigger on template 1016 `mauvaisOeil`, which therefore **never fires here** | ⬜ |
+| 10006 | unknown — templates 2 and 1015 | ⬜ |
+| 10008 | **stayed inside** — in TO and in FROM | ⬜ |
+
+`he_1.a` is a pure position-change notification and **eight** effect classes call it,
+including `go` (teleport) and `aox_1` (swap, once per swapped fighter) — which is the
+evidence that forced displacement triggers areas, not just walking.
+
+Shipped trigger sets across the 16 templates: the 8 `SPECIAL` tiles are all `[10000]`;
+traps 1 and 1020 are `[10001]`; template 2 is `[10008 10000 10006 10001]` with
+`unapp=[10002]`; 1015 is `[10000 10001 10008 10006]`; 1016 is `[10003]`; and **1017,
+1018, 1019 carry an EMPTY trigger array**, so nothing fires them at all.
+
 ---
 
 ## 4. Values still hardcoded that SHOULD come from data
@@ -278,6 +301,7 @@ server-side; the condition is recovered, the arbitration is ours (see B-074).
 
 | Date | Change |
 |---|---|
+| 2026-08-10 | Recovered the full type-210 trigger enum from `he_1.a` / `aeb_0` and wired forced displacement into the enter trigger (B-076). 10002/10003/10006/10008 documented but still unimplemented; template 1016 can never fire here, and 1017/1018/1019 ship with empty trigger arrays. |
 | 2026-08-10 | Wired np_1 types 12 and 14 (B-074): fight-start effects and victory conditions now drive fights instead of being carried inert. Added target-condition bits 512/1024 (breed-is-zero), corrected the validator's provenance from `aap.a` to `aLc.a`, renamed the `mp_2` scalars to the client's own SQL column names, and documented the `qk_1` subtypes and the 913-930 parameter block. |
 | 2026-08-05 | Inline unlength-prefixed Ht effects parsed exactly; challenges now 39/39 with zero residual (B-073). |
 | 2026-08-04 | np_1 rule 13 (bonus-cell multiplier) applied to the beneficial tiles; timing rules 10/11 corrected to DELTAS per content.54.* (B-072). |

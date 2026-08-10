@@ -16,7 +16,11 @@ func trapTestFight(templates ...*gamedata.StaticEffect) (*Fight, *FightFighter, 
 			{ID: 0, Fighters: []*FightFighter{caster}},
 			{ID: 1, Fighters: []*FightFighter{enemy}},
 		},
-		deps: &Deps{StaticEffects: gamedata.NewStaticEffects(templates...), Fights: NewFightManager()},
+		// A logger is required, not optional: a trap that kills the last enemy
+		// reaches endFight, which logs unguarded. Before forced displacement
+		// armed traps, no trap test could ever end a fight, so this was never hit.
+		deps: &Deps{StaticEffects: gamedata.NewStaticEffects(templates...),
+			Fights: NewFightManager(), Log: testLogger()},
 	}
 	f.Timeline = []*FightFighter{enemy, caster}
 	f.turnIndex = 1 // caster's turn

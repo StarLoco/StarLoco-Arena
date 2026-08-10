@@ -784,12 +784,14 @@ func (f *Fight) applyTeleport(caster *FightFighter, ef gamedata.Effect, target P
 		return // sudden death removed this cell
 	}
 	dest := Pos{X: target.X, Y: target.Y, Z: f.Arena().altitudeAt(target.X, target.Y)}
+	from := caster.Pos
 	caster.Pos = dest
 	// Teleport moves the caster (part-1) to the cell in part-0; there is no target
 	// fighter (go.aI()==false), so part-2 mirrors the caster.
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
 		caster.WireID, caster.WireID, dest, 0, 0, false)
 	f.broadcast(eff)
+	f.checkEffectAreasMove(from, dest, caster)
 }
 
 // applySwap exchanges the caster's and target fighter's cells.
@@ -802,12 +804,17 @@ func (f *Fight) applySwap(caster *FightFighter, ef gamedata.Effect, target Pos) 
 		return // "Rendre intransposable" (128 → property deB) blocks aox_1 swaps
 	}
 	casterCell := caster.Pos
+	victimCell := victim.Pos
 	caster.Pos, victim.Pos = victim.Pos, casterCell
 	// The client's aox_1 computes both cells from the live fighter positions; it
 	// needs the compute path, so mustExecNow is set.
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
 		caster.WireID, victim.WireID, casterCell, 0, 0, true)
 	f.broadcast(eff)
+	// BOTH fighters changed cell, and the client notifies the area manager twice
+	// for exactly that reason (aox_1 calls gX().a(...) once per swapped fighter).
+	f.checkEffectAreasMove(casterCell, caster.Pos, caster)
+	f.checkEffectAreasMove(victimCell, victim.Pos, victim)
 }
 
 // applyPushPull shoves the target fighter along the caster→target axis (push) or
@@ -865,6 +872,7 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 		curX, curY, curAlt = nx, ny, f.Arena().altitudeAt(nx, ny)
 		moved++
 	}
+	shoveFrom := victim.Pos
 	if moved > 0 {
 		victim.Pos = Pos{X: curX, Y: curY, Z: curAlt}
 	}
@@ -890,6 +898,12 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 		if hitFighter != nil {
 			f.applyCollisionDamage(caster, hitFighter, collision)
 		}
+	}
+	// Being shoved onto a trap arms it, exactly as walking on would. Checked
+	// after the collision so a fighter the impact already killed does not also
+	// spring the trap.
+	if moved > 0 && victim.HP > 0 {
+		f.checkEffectAreasMove(shoveFrom, victim.Pos, victim)
 	}
 }
 

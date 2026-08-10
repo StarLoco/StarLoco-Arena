@@ -44,12 +44,17 @@ func (f *Fight) applyThrow(caster *FightFighter, ef gamedata.Effect, cell Pos) {
 	if !f.Arena().walkable(cell.X, cell.Y) || f.cellHeldByOther(cell, carried) {
 		return
 	}
+	from := carried.Pos
 	carried.Pos = Pos{X: cell.X, Y: cell.Y, Z: f.Arena().altitudeAt(cell.X, cell.Y)}
 	carried.CarriedByFighter = nil
 	caster.CarriedFighter = nil
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
 		caster.WireID, carried.WireID, carried.Pos, 0, 0, false)
 	f.broadcast(eff)
+	// Landing on a trap arms it. Throwing someone onto a glyph is a real tactic,
+	// and the thrown fighter genuinely arrives on the cell (unlike a CARRIED one,
+	// which is stacked on its carrier and holds no ground — see applyCarry).
+	f.checkEffectAreasMove(from, carried.Pos, carried)
 }
 
 // dismountIfCarried drops a carried fighter onto its carrier's cell and breaks

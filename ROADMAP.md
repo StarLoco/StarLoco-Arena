@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-075 (Tier 0 anti-cheat: placement guard, spell ownership)
+· **Latest work:** B-076 (forced displacement arms traps)
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 271 Go files · 461 test functions (72 of them end-to-end
+**Scale reference.** 272 Go files · 467 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -547,9 +547,18 @@ Placed by action 66 (trap, from a type-210 template) and action 176 (aura).
   so a self-removing area cannot corrupt iteration.
 - Walk-on traps are checked **per movement step**, not just at the destination.
 
-**⚠️ Gap: forced displacement does not trigger traps.** Push, pull, teleport, swap
-and throw all reposition fighters without any trap check — the move-time check has
-exactly one caller.
+**Forced displacement arms traps** ✅ (B-076) — push, pull, teleport, swap (both
+fighters) and throw all run the enter check. The client proves this is right:
+`he_1.a(from…, to…, fighter)` is a pure position-change notification called by
+**eight** effect classes, including `go` (teleport) and `aox_1` (swap, once per
+swapped fighter). Carry is deliberately excluded — a carried fighter is stacked
+on its carrier and holds no ground.
+
+**The trigger enum, recovered in full** (B-076): **10000** turn-start ✅,
+**10001** entered ✅, **10002** left ⬜, **10008** stayed-inside ⬜, plus **10003**
+and **10006** ⬜ whose meanings are still unknown. Consequences worth knowing:
+template 1016 `mauvaisOeil` fires only on 10003 and so **can never fire here**,
+and templates 1017/1018/1019 ship with an **empty** trigger array.
 
 **Not read from the template:** re-trigger policy (once per team / per target /
 always), the two trigger bitmasks, the delayed re-trigger timer.
@@ -907,8 +916,10 @@ is a signing certificate or SignPath); no published Docker image.
    caster must own the spell (`Fighter.Spells`) or be a server-driven fighter
    casting its `SummonSpellID` — the latter matters, because challenge demons
    carry an empty spell list and would otherwise have been muted.
-3. **Forced displacement does not trigger walk-on traps** — push, pull, teleport,
-   swap and throw all bypass the check.
+3. ~~**Forced displacement does not trigger walk-on traps**~~ — **done (B-076)**.
+   All five paths now run the enter check. It also recovered the full trigger
+   enum: 10002 (left), 10008 (stayed inside), 10003 and 10006 remain
+   unimplemented — see §8.14.
 4. **Dispel strips infinite states**, permanently removing a summon's innate
    properties.
 5. **`Coach.Standing` is never persisted or transmitted** — the coach evolution
