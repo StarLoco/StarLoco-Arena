@@ -38,6 +38,48 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-079 - The "triggeree en zone" effect family was 1 of 6 implemented
+
+Action 177 ("Perte de points de mouvement triggeree en zone") was implemented and
+its five siblings were logged as unresolved no-ops. The client's `mh_2` table
+shows they are ONE shape with six members:
+
+| id | class | label |
+|---:|---|---|
+| 165 | `aez_1(fv_1.bam)` | Perte de points de vie **feu** triggeree en zone |
+| 166 | `aez_1(fv_1.ban)` | ... **eau** |
+| 167 | `aez_1(fv_1.bao)` | ... **air** |
+| 168 | `aez_1(fv_1.bap)` | ... **terre** |
+| 169 | `MM()`            | Perte de points d'**action** triggeree en zone |
+| 177 | `vn_1()`          | Perte de points de **mouvement** triggeree en zone |
+
+All six are the spell's own zone centred on the CASTER with the caster excluded,
+so 169 is literally 177's body with AP substituted for MP (both now share
+`applyZoneResourceLoss`), and 165-168 differ only by the element
+`damageElement` returns.
+
+The roadmap listed 165/166/169 - the three with shipped rows - and missed 167 and
+168 entirely. They have no rows today, but they are the same class with a
+different element constant, so including them costs nothing and omitting them
+would leave the identical silent hole the moment data used them. An unimplemented
+action id is a silent no-op, which is the failure mode worth designing against.
+
+The elemental variants resolve through the ordinary pipeline
+(`computeElementalDamage` -> `applyDamageRebound` -> `applyHPDelta`) rather
+than subtracting HP, so resistance, rebound and damage transfer all apply, and
+the magnitude is rolled PER VICTIM to match every other multi-target path here.
+
+**Effect-row coverage: 502/533 -> 505/533 (94.2 % -> 94.7 %).** Remaining
+unresolved: 9 action ids over 28 rows, down from 12 over 31.
+
+**Verification.** Zone AP loss (drains in-zone enemies, spares out-of-zone ones
+and the caster, does not touch MP), its clamp at 0, all four elemental variants
+(footprint + the element `damageElement` returns), and a resistance case
+proving it goes through the damage pipeline. Mutation-checked by unmapping 169
+and by removing 165 from the fire branch.
+
+---
+
 ### B-078 - Effective AP/MP were never derived, and StringU8 could crash every client
 
 The last two Tier 0 items.

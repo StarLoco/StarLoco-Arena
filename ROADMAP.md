@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-078 — **Tier 0 complete**
+· **Latest work:** B-079 (zone-effect family completed) — **Tier 0 complete**
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 272 Go files · 471 test functions (72 of them end-to-end
+**Scale reference.** 274 Go files · 479 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -279,8 +279,19 @@ with a 64-slot mailbox, so no fight state is ever touched under a lock.
   the next *living* fighter → on wrap into a new round: tick buffs, states,
   damage transfers, effect areas, poisons, draw the round event card, maybe
   advance sudden death.
-- **Gap:** initiative buffs (actions 76/77) are tracked but **never re-sort the
-  timeline**.
+- **Not a gap — investigated and closed.** This used to read "initiative buffs
+  (actions 76/77) are tracked but never re-sort the timeline". Three independent
+  checks say there is nothing to fix:
+  **(a)** *no shipped spell uses action 76 or 77* — a dump of all 203 spells and
+  533 effect rows returns zero, so nothing can change initiative mid-fight;
+  **(b)** the client's timeline (`bg_1`) is an ordered list with insert / remove /
+  advance and **no comparator, no sort and no initiative reference at all**;
+  **(c)** there is no wire message that reorders it, so a server-side re-sort
+  would silently desync the client's turn-order widget.
+  Initiative from GEAR and conditions is applied pre-fight in
+  `computeFighterStats` and *is* what `buildTimeline` sorts on, which is the only
+  place 76/77 legitimately appear. Implementing a re-sort would be inventing a
+  mechanic no data triggers.
 - **Gap:** `refillFighter` restores MP on a rooted fighter (movement is still
   correctly blocked, but the client's MP gauge diverges).
 
@@ -326,9 +337,9 @@ Measured against the shipped data (`server/data-dist`, 203 spells / 533 effect r
 | Spells with **every** effect row modelled | **177 / 203 (87 %)** |
 | Spells with *some* rows modelled | 23 |
 | Spells with no modelled row (or no rows at all) | 3 |
-| **Effect rows resolved** | **502 / 533 (94.2 %)** |
+| **Effect rows resolved** | **505 / 533 (94.7 %)** |
 | Fighter-card (weapon) effect rows resolved | **72 / 72 (100 %)** |
-| Distinct mechanic kinds implemented | **31** (over ~143 mapped `mh_2` action ids) |
+| Distinct mechanic kinds implemented | **33** (over ~143 mapped `mh_2` action ids) |
 
 **The 31 modelled kinds:** flat elemental damage (direct + "par sort"), HP leech,
 heal, %-of-max-HP damage, poison (a real per-round DoT with re-roll), damage
@@ -337,7 +348,7 @@ MP loss, AP steal, MP steal, AP gain, MP gain, teleport, swap, push, pull,
 summon, state, buff, trap, dispel, visual-only, carry, throw, aura, zone MP loss,
 line damage, damage transfer, remove-effect-by-id.
 
-**The 31 unresolved rows — 12 distinct action ids, all documented no-ops** (the
+**The 28 unresolved rows — 9 distinct action ids, all documented no-ops** (the
 cast still animates and its other rows still resolve):
 
 | Action | Client label | Rows |
@@ -347,16 +358,22 @@ cast still animates and its other rows still resolve):
 | 88 | Renvoi de sort | 2 |
 | 170 | Aucun effet | 2 |
 | 153 | Est repoussé de sa cible | 2 |
-| 169 | Perte de points d'action triggerée en zone | 1 |
-| 166 | Perte de PV eau triggerée en zone | 1 |
-| 165 | Perte de PV feu triggerée en zone | 1 |
 | 68 | Tourne le regard vers la cellule ciblée | 1 |
 | 150 | Inverse les effets des cases bonus | 1 |
 | 171 | Devenir évanescent | 1 |
 | 172 | Bouger vers la cible adverse la plus proche | 1 |
 
-Ids 165/166/169 are near-free (the zone-effect machinery already exists for 177);
 170 and 68 are cosmetic; 140, 88, 150, 171, 153, 172 need bespoke RE.
+
+**The "triggerée en zone" family is now complete** (was 165/166/169): the client's
+`mh_2` table shows it as one shape with six members — `165` fire, `166` water,
+`167` air, `168` earth (one `aez_1` class each), `169` AP (`MM`) and `177` MP
+(`vn_1`). All six are the spell's own zone centred on the CASTER with the caster
+excluded, so 169 reuses 177's body and 165–168 differ only by the element
+`damageElement` returns, resolving through the ordinary elemental pipeline so
+resistance, rebound and transfer apply. 167/168 have no shipped rows but cost
+nothing to include, and omitting them would leave the identical silent hole if
+data ever used them.
 
 ### 8.6 Damage model & combat statistics ✅
 
@@ -947,7 +964,9 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 1 — cheap concrete wins
 
-8. **Zone-effect action ids 165 / 166 / 169** — the machinery already exists for 177.
+8. ~~**Zone-effect action ids 165 / 166 / 169**~~ — **done (B-079)**, plus 167 and
+   168, which the roadmap had missed: `mh_2` shows the family is six members of
+   one shape. Effect-row coverage 502→505 of 533 (94.2 %→94.7 %).
 9. **Enforce the remaining np_1 rules.** Budget (incl. type 1000 "no limit"),
    roster limits, banned/allowed spells and equipment, class limits and prices,
    **arena choice**, event-list choice. Each is small now that the ruleset
@@ -969,7 +988,10 @@ is a signing certificate or SignPath); no published Docker image.
     nothing to validate an implementation against.
 11. **Buff icons on reconnect/spectate** — fill the 8000 effects/conditions slots.
 12. **Buff stacking rules** — merge / refresh / cap instead of blind append.
-13. **Initiative buffs should re-sort the timeline.**
+13. ~~**Initiative buffs should re-sort the timeline.**~~ — **withdrawn: the
+    premise is false.** No shipped spell uses action 76/77 (0 of 533 effect
+    rows), the client's timeline interface has no comparator or sort, and no
+    wire message reorders it. See §8.2. Gear initiative already works.
 14. **5203 destructive/lock inventory ops** — currently a re-push stub; would also
     give `CardLocked` its first writer.
 15. **AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.

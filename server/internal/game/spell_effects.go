@@ -102,6 +102,12 @@ func (f *Fight) resolveEffect(caster *FightFighter, ef gamedata.Effect, target P
 	case gamedata.KindZoneMPLoss:
 		f.applyZoneMPLoss(caster, ef, target)
 		return
+	case gamedata.KindZoneAPLoss:
+		f.applyZoneAPLoss(caster, ef, target)
+		return
+	case gamedata.KindZoneDamage:
+		f.applyZoneDamage(caster, ef, target)
+		return
 	case gamedata.KindLineDamage:
 		f.applyLineDamage(caster, ef, target)
 		return
@@ -599,6 +605,20 @@ func (f *Fight) dealReboundDamage(from, to *FightFighter, amount int32) {
 // caster excluded). The MP debit is broadcast per victim as the silent MP-use so
 // the client's gauge follows the server value.
 func (f *Fight) applyZoneMPLoss(caster *FightFighter, ef gamedata.Effect, _ Pos) {
+	f.applyZoneResourceLoss(caster, ef, false)
+}
+
+// applyZoneAPLoss (169 "Perte de points d'action triggerée en zone") is the AP
+// twin of 177 — the same mh_2 family, the same shape.
+func (f *Fight) applyZoneAPLoss(caster *FightFighter, ef gamedata.Effect, _ Pos) {
+	f.applyZoneResourceLoss(caster, ef, true)
+}
+
+// applyZoneResourceLoss is the shared body of 169 (AP) and 177 (MP): drain the
+// rolled amount from every fighter in the spell's zone centred on the CASTER,
+// excluding the caster itself, clamped to what each victim actually has, and
+// broadcast the silent AP/MP-use per victim so the client's gauges follow.
+func (f *Fight) applyZoneResourceLoss(caster *FightFighter, ef gamedata.Effect, ap bool) {
 	if caster == nil {
 		return
 	}
@@ -610,17 +630,51 @@ func (f *Fight) applyZoneMPLoss(caster *FightFighter, ef gamedata.Effect, _ Pos)
 		if victim == caster {
 			continue
 		}
+		have, runEffect := victim.MP, int32(protocol.RunEffectMPUse)
+		if ap {
+			have, runEffect = victim.AP, int32(protocol.RunEffectAPUse)
+		}
 		drained := amount
-		if drained > victim.MP {
-			drained = victim.MP
+		if drained > have {
+			drained = have
 		}
 		if drained <= 0 {
 			continue
 		}
-		victim.MP -= drained
-		mp, _ := buildRunningEffect(f.nextActionUID(), protocol.RunEffectMPUse, 0,
+		if ap {
+			victim.AP -= drained
+		} else {
+			victim.MP -= drained
+		}
+		eff, _ := buildRunningEffect(f.nextActionUID(), runEffect, 0,
 			caster.WireID, victim.WireID, victim.Pos, drained, 0, true)
-		f.broadcast(mp)
+		f.broadcast(eff)
+	}
+}
+
+// applyZoneDamage (165 fire / 166 water / 167 air / 168 earth, "Perte de points
+// de vie <élément> triggerée en zone") deals elemental damage to every fighter
+// in the spell's zone centred on the CASTER, the caster excluded — the same
+// footprint rule as its 169/177 siblings, resolved through the ordinary
+// elemental pipeline so resistance, rebound and transfer all apply.
+func (f *Fight) applyZoneDamage(caster *FightFighter, ef gamedata.Effect, _ Pos) {
+	if caster == nil {
+		return
+	}
+	elem := damageElement(ef.ActionID)
+	for _, victim := range f.areaFighters(caster, ef, caster.Pos) {
+		if victim == caster {
+			continue
+		}
+		// Roll PER VICTIM: the magnitude is a dice range, and every other
+		// multi-target path in this resolver rolls per target.
+		base := ef.Roll(f.rngSource())
+		if base <= 0 {
+			continue
+		}
+		final := f.computeElementalDamage(caster, victim, base, elem)
+		final = f.applyDamageRebound(caster, victim, final)
+		f.applyHPDelta(caster, victim, ef.ActionID, ef.EffectID, -final)
 	}
 }
 

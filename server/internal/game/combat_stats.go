@@ -53,13 +53,15 @@ type combatStats struct {
 // matching the reference (poison ignores resistance).
 func damageElement(actionID int32) int {
 	switch actionID {
-	case 2, 131, 7, 178, 156, 157: // direct/"par sort"/leech/line fire + AP/MP-scaled fire (156/157)
+	// 165-168 are the ZONE-triggered elemental HP losses (mh_2 "Perte de points
+	// de vie <élément> triggerée en zone", one aez_1 class per element).
+	case 2, 131, 7, 178, 156, 157, 165: // direct/"par sort"/leech/line fire + AP/MP-scaled fire (156/157) + zone fire
 		return elemFire
-	case 3, 132, 8, 181, 162, 163: // …earth + AP/MP-scaled earth (162/163)
+	case 3, 132, 8, 181, 162, 163, 168: // .earth + AP/MP-scaled earth (162/163) + zone earth
 		return elemEarth
-	case 4, 133, 9, 179, 160, 161: // …water + AP/MP-scaled water (160/161)
+	case 4, 133, 9, 179, 160, 161, 166: // .water + AP/MP-scaled water (160/161) + zone water
 		return elemWater
-	case 5, 134, 10, 180, 158, 159: // …air + AP/MP-scaled air (158/159)
+	case 5, 134, 10, 180, 158, 159, 167: // .air + AP/MP-scaled air (158/159) + zone air
 		return elemAir
 	default: // 1/130/6 neutral, AP/MP-scaled neutral (151/152), and every non-elemental effect
 		return elemNeutral

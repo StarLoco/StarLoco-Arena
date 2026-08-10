@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-079 | The "triggerée en zone" effect family completed (165-168 elemental, 169 AP; 177 already done). Effect-row coverage 94.2%→94.7% |
 | B-078 | **Tier 0 complete.** Effective AP/MP derived like the client's `gn_0.d`; `StringU8` enforces the 127-byte limit (a remote client-crash vector) |
 | B-077 | Dispel no longer strips summons' innate states; `Coach.Standing` persisted and put on the wire (2052 + 4096) |
 | B-076 | Forced displacement (push/pull/teleport/swap/throw) now arms traps; the full type-210 trigger enum recovered from `he_1.a` |

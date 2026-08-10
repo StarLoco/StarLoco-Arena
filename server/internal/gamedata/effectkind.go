@@ -95,6 +95,16 @@ const (
 	// the CASTER (the caster excluded).
 	KindZoneMPLoss
 
+	// KindZoneAPLoss (169 "Perte de points d'action triggerée en zone"): the AP
+	// twin of KindZoneMPLoss, same shape, same mh_2 family.
+	KindZoneAPLoss
+
+	// KindZoneDamage (165 fire / 166 water / 167 air / 168 earth, "Perte de
+	// points de vie <élément> triggerée en zone"): elemental HP loss to every
+	// fighter in the spell's zone centred on the CASTER (caster excluded). One
+	// mh_2 aez_1 class per element; the element comes from damageElement.
+	KindZoneDamage
+
 	// KindLineDamage (178-181 "Perte de PV <élément> en ligne entre deux
 	// combattants"): elemental damage to every fighter in the axis-aligned
 	// bounding box spanned by the caster and the target (both excluded).
@@ -156,10 +166,17 @@ var effectKind = func() map[int32]EffectKind {
 	for _, id := range []int32{60, 98, 139} {
 		m[id] = KindVisual
 	}
-	m[58] = KindCarry           // Porter quelqu'un
-	m[59] = KindThrow           // Jeter quelqu'un
-	m[176] = KindAura           // Pose une aura
-	m[177] = KindZoneMPLoss     // Perte de PM triggerée en zone
+	m[58] = KindCarry       // Porter quelqu'un
+	m[59] = KindThrow       // Jeter quelqu'un
+	m[176] = KindAura       // Pose une aura
+	m[177] = KindZoneMPLoss // Perte de PM triggerée en zone
+	m[169] = KindZoneAPLoss // Perte de points d'action triggeree en zone
+	// Zone-triggered ELEMENTAL HP loss: one mh_2 aez_1 class per element
+	// (165 fire, 166 water, 167 air, 168 earth - see damageElement). Same shape
+	// as 177/169: the spell's own zone, centred on the caster, caster excluded.
+	for _, id := range []int32{165, 166, 167, 168} {
+		m[id] = KindZoneDamage
+	}
 	m[129] = KindDamageTransfer // Transfert de dommages
 	m[149] = KindRemoveEffect   // Retire un effet (targeted removal by effectId)
 	// Line/box elemental damage between two fighters (178 fire, 179 water, 180
