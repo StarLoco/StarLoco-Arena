@@ -154,7 +154,7 @@ func TestVictoryConditionLayout(t *testing.T) {
 	}
 	v := got[0].Victory
 	if v.Type != 1024 || v.ID != 99 || len(v.Params) != 1 || v.Params[0] != 7 ||
-		!v.Flag || v.Value != 42 || v.Grade != 3 {
+		!v.IsNecessary || v.VictoryPoints != 42 || v.AffectedTeam != 3 {
 		t.Errorf("victory condition = %+v", v)
 	}
 	// wi_0.nj() = 12 + mp_2.nj() = 12 + (7 + 4*1 + 6) = 29, after the count byte.

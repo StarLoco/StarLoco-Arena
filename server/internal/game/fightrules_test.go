@@ -11,8 +11,12 @@ import (
 func TestFightRulesFromParameters(t *testing.T) {
 	def := defaultFightRules()
 
-	// No parameters -> the defaults, untouched.
-	if got := rulesFromParameters(nil); got != def {
+	// No parameters -> the defaults, untouched. (Compared field by field: the
+	// ruleset now carries slices, so it is no longer a comparable struct.)
+	if got := rulesFromParameters(nil); got.TurnClock != def.TurnClock ||
+		got.SuddenDeathTurn != def.SuddenDeathTurn ||
+		got.BonusCellMultiplier != def.BonusCellMultiplier ||
+		len(got.StartEffects) != 0 || len(got.Victory) != 0 {
 		t.Errorf("empty parameter list = %+v, want the defaults %+v", got, def)
 	}
 
@@ -84,7 +88,9 @@ func TestFightRulesFromParameters(t *testing.T) {
 	// An unimplemented rule type is inert, not fatal — the client behaves the
 	// same way (np_1.co falls back to a generic holder).
 	r = rulesFromParameters([]gamedata.Parameter{{Type: 1000, Params: []int32{7}}})
-	if r != def {
+	if r.TurnClock != def.TurnClock || r.SuddenDeathTurn != def.SuddenDeathTurn ||
+		r.BonusCellMultiplier != def.BonusCellMultiplier ||
+		len(r.StartEffects) != 0 || len(r.Victory) != 0 {
 		t.Errorf("an unknown rule type changed the ruleset: %+v", r)
 	}
 }

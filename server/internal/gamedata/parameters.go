@@ -39,16 +39,80 @@ const ParamTypeVictoryCondition int32 = 14
 
 // VictoryCondition is the `mp_2` payload of a type-14 parameter:
 //
-//	[i16 type][i32 id][u8 n][i32 × n params][u8 flag][i32 value][u8 grade]
+//	[i16 type][i32 id][u8 n][i32 × n params][u8 isNecessary][i32 victoryPoints][u8 affectedTeam]
 //
 // (`mp_2.i` / `mp_2.cd`; its `nj()` = 7 + 4*len + 1 + 4 + 1 confirms the shape.)
+//
+// The three trailing scalars are named from the client's OWN column names: it
+// carries a second constructor that hydrates the same object from a SQL row,
+//
+//	mp_2.a(rs.getShort("condition_type"), rs.getInt("condition_id"),
+//	       rs.getArray("condition_parameters"), rs.getBoolean("condition_is_necessary"),
+//	       rs.getInt("condition_victory_points"), rs.getByte("condition_affected_team"))
+//
+// and its argument order is the wire order, so each field's meaning is pinned by
+// the retail schema rather than guessed.
+//
+// NONE of the three has a single caller in the client — `rh()`, `ri()` and
+// `rj()` are pure accessors, exactly like the drop-table modifiers. Retail
+// arbitrated victory conditions server-side; see game/victory.go.
 type VictoryCondition struct {
 	Type   int16
 	ID     int32
 	Params []int32
-	Flag   bool
-	Value  int32
-	Grade  uint8
+	// IsNecessary is `condition_is_necessary`. True on all 9 shipped conditions.
+	IsNecessary bool
+	// VictoryPoints is `condition_victory_points`, the score a non-necessary
+	// condition contributes. 0 on all 9 shipped conditions.
+	VictoryPoints int32
+	// AffectedTeam is `condition_affected_team` — which side the condition wins
+	// FOR. 0 on all 9 shipped conditions.
+	AffectedTeam uint8
+}
+
+// Victory-condition subtypes: the client's `qk_1` enum, each with one concrete
+// `mp_2` subclass whose one-line evaluator IS the semantics.
+//
+//	1 cy_1  "Posséder une position"                    a fighter of the team is
+//	                                                   alive on cell (p[0], p[1])
+//	2 fp_1  "Posséder un nombre de points de victoire"  team victory points >= p[0]
+//	3 ct_1  "Tuer des combattants d'une classe"         >= p[1] (default 1) enemies
+//	                                                   of breed p[0] are dead
+//	4 ajm_0 "Atteindre un tour donné"                   fight.roundCounter > p[0]
+//	1000    "Aucune condition sur ce combat"            no condition
+//
+// ONLY subtype 4 occurs in the shipped data (9 challenges); see game/victory.go
+// for which of these the server evaluates and why.
+const (
+	VictoryHoldPosition int16 = 1
+	VictoryPointsTotal  int16 = 2
+	VictoryKillBreed    int16 = 3
+	VictoryReachTurn    int16 = 4
+	VictoryNoCondition  int16 = 1000
+)
+
+// VictoryConditions returns every type-14 victory condition in an np_1 list, in
+// data order.
+func VictoryConditions(ps []Parameter) []VictoryCondition {
+	var out []VictoryCondition
+	for _, p := range ps {
+		if p.Type == ParamTypeVictoryCondition && p.Victory != nil {
+			out = append(out, *p.Victory)
+		}
+	}
+	return out
+}
+
+// FightStartEffects returns the inline effects carried by type-12 parameters
+// ("Lance un effet sur tous les combattants à la création du combat").
+func FightStartEffects(ps []Parameter) []Effect {
+	var out []Effect
+	for _, p := range ps {
+		if p.Type == ParamTypeFightStartEffect && p.Effect != nil {
+			out = append(out, *p.Effect)
+		}
+	}
+	return out
 }
 
 // Parameter is one decoded `np_1` element.
@@ -140,9 +204,9 @@ func decodeVictoryCondition(c *cur) *VictoryCondition {
 	for i := 0; i < n && c.ok(); i++ {
 		v.Params = append(v.Params, c.i32())
 	}
-	v.Flag = c.u8() == 1
-	v.Value = c.i32()
-	v.Grade = c.u8()
+	v.IsNecessary = c.u8() == 1
+	v.VictoryPoints = c.i32()
+	v.AffectedTeam = c.u8()
 	return v
 }
 
@@ -154,8 +218,11 @@ const (
 	ParamTypeMaxFighters     int32 = 3  // "Modifie le nombre maximum de combattant"
 	ParamTypeTurnDurationMS  int32 = 10 // "Modifie la durée en milliseconde du tour de chaque combattant"
 	ParamTypeSuddenDeathTurn int32 = 11 // "Modifie le tour du début de la mort subite"
-	ParamTypeBonusCellMult   int32 = 13 // "Multiplie les effets des cases bonus"
-	ParamTypeArena           int32 = 29 // "Choisir une arène"
+	// ParamTypeFightStartEffect carries an inline `Ht` effect applied to every
+	// fighter when the fight is created. Challenges 29/30/31 use it.
+	ParamTypeFightStartEffect int32 = 12
+	ParamTypeBonusCellMult    int32 = 13 // "Multiplie les effets des cases bonus"
+	ParamTypeArena            int32 = 29 // "Choisir une arène"
 	// ParamTypeNoBudgetLimit carries no parameters; its i18n label is the whole
 	// rule ("content.54.1000 = Pas de limite de budget"). Challenge 12 uses it.
 	ParamTypeNoBudgetLimit int32 = 1000

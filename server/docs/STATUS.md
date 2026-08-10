@@ -3,7 +3,7 @@
 Single entry point for picking the 2.70 server back up cold. Everything else is
 detail; this is state.
 
-**Updated:** 2026-08-05
+**Updated:** 2026-08-10
 
 ---
 
@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-074 | np_1 types 12 + 14 wired: fight-start effects and victory conditions now drive fights (12 of 39 challenges); target-condition bits 512/1024 added |
 | DIST | Shipping pipeline: automated releases, self-writing config, web sign-up, update notice (§10) |
 | B-073 | Challenges 39/39: inline unlength-prefixed effects now parsed exactly |
 | B-072 | Turn clock + sudden-death turn now per-fight, from data (were hardcoded globals) |
@@ -81,13 +82,17 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    (`"FIGHTER_CONDITION"`, `"FIGHTER_CARD_USE"`), so nothing is broken today — but the
    moment a name or description field is decoded it will need `protocol.DecodeText`.
 4. **Enforce the remaining `np_1` rules.** Turn duration, sudden death and the
-   bonus-cell multiplier are wired (B-072); still inert are budget (incl. type 1000
-   "no budget limit"), roster limits, banned/allowed spells and equipment, class limits
-   and prices, arena choice, event-list choice, and victory conditions (9 challenges,
-   type 14 — needs the four `mp_2` subclasses decoded first). Each is small on its own
-   now that the ruleset plumbing exists. **Read `content.54.<type>` before implementing
-   any rule** — it is the authoritative semantics table, and it is what revealed that
-   the timing rules are deltas rather than absolutes.
+   bonus-cell multiplier are wired (B-072); fight-start effects (12) and victory
+   conditions (14) are wired (B-074). Still inert: budget (incl. type 1000 "no limit"),
+   roster limits, banned/allowed spells and equipment, class limits and prices, arena
+   choice, event-list choice. **Read `content.54.<type>` before implementing any rule**
+   — it is the authoritative semantics table, and it is what revealed that the timing
+   rules are deltas rather than absolutes.
+   ⚠ **The blocker is the operand, not the enforcement.** Every one of those rule types
+   occurs exactly ONCE in the shipped data, on a coach card, with an EMPTY parameter
+   array (dumped 2026-08-10). They read like per-rule template cards. Anything actually
+   parameterised lives in type 13, type 10 or the 900-930 block. Find where the operand
+   comes from before writing an enforcer that would index `params[0]` on an empty slice.
 5. **Spell `TargetMasks` + `MaxActive`** — decoded, not evaluated. Needs the client's
    `aLc` evaluator / a live-instance counter. Small payoff (3 and 6 spells).
 6. **Tournaments** (types 1000/1001) — currently three hand-built definitions; the real
@@ -121,8 +126,11 @@ second player, and the client HUD renders fully once *the client* starts the fig
 - **`OPCODE-INVENTORY.md` H count must equal the `r.Register(protocol.` count in
   `internal/game`.** Currently **82 = 82**. Check after adding a handler.
 - **Never send opcode 22002.** Criteria reach the client only via the 2052 `0x200` blob.
-- **Do not "fix" pre-existing gofmt drift** in `handlers_team.go`, `packets_test.go`,
-  `summon_test.go`, `target_conditions.go`, `team_codec.go`.
+- **`gofmt -l internal cmd test` must be EMPTY.** (This used to name five files as
+  having untouchable pre-existing drift. Verified 2026-08-10 against a pristine
+  `HEAD` checkout: there is none, in those five or anywhere else. The old wording
+  trained people to filter those names out of `gofmt -l`, which would mask real
+  drift — do not re-add it.)
 - **Data over v2.04b.** v2.04b is a useful *unobfuscated reference* for structure (its
   `Breed.java` is the twin of 2.70's `xq`), but its VALUES are beta-era and differ.
 - `data/maps/` and `data/` must not move — tests read them by relative path.
@@ -134,6 +142,17 @@ second player, and the client HUD renders fully once *the client* starts the fig
   frames. I cannot self-verify any in-fight *visual*. Fights the user starts normally do
   render.
 - Clicks reach AWT/Swing dialogs only, **not the GLCanvas**.
+- **B-074 is server-verified, not visually verified.** The victory-condition chain is
+  proven over a real socket (`test/e2e/victory_condition_test.go` drives a real
+  challenge fight to the condition and asserts END_FIGHT names the coach; the server
+  log shows `victory condition met ... round=2 winner=0` → `fight ended winnerTeam=0`),
+  and every assertion is mutation-checked. What is NOT confirmed in the retail GUI is
+  how the client renders the end-of-fight panel when **the losing team is still
+  alive** — a state the elimination path never produces. Judged low risk: the 8300
+  payload shape is unchanged by B-074 (only the winner id differs, a field that
+  already varies) and that panel is live-verified for elimination wins. Confirming it
+  needs a coach with fighters plus ~20 rounds of a "Défi du temps" in the GUI; worth
+  folding into the next live session rather than doing standalone.
 - The e2e harness builds `game.Deps` with **nil** `Cards`, `Spells`, `FighterCards`,
   `Summonings`, `CardSets`, `Events`, `FightMaps`. Most data-layer work is therefore
   provably inert in e2e — check this before blaming a gameplay change for a red suite. A

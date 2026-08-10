@@ -23,8 +23,27 @@ const (
 	condIsAllyNotSelf int64 = 128 // CONDITION_IS_ALLY_EXCEPT_CASTER
 	condIsNotCaster   int64 = 256 // CONDITION_IS_NOT_CASTER
 
+	// 512 / 1024 test the target's breed against the ZERO breed rather than
+	// against a numbered slot, so they are separate from the two banks below:
+	//
+	//	aLc: (0x200 & c) != 0 && (!(t instanceof gn_0) || t.NY().lV() != xq.axE.lV())  -> reject
+	//	     (0x400 & c) != 0 && (!(t instanceof gn_0) || t.NY().lV() == xq.axE.lV())  -> reject
+	//
+	// `xq.axE` is breed id 0 — the stat-less pseudo-breed the client lists
+	// between axD(-1) and the 14 real breeds, i.e. "no player breed". So 512 =
+	// "is a creature", 1024 = "is a real player-breed fighter".
+	//
+	// In THIS server's model those two coincide with condIsSummoned /
+	// condIsHuman, because only a summon has no Fighter row and breedOf then
+	// returns 0. They are still evaluated on the breed id, exactly as the client
+	// writes them, rather than aliased to isSummon() — the client keeps them
+	// distinct (16/32 test its `Dk()` summon flag, 512/1024 test the breed), and
+	// aliasing would silently diverge if the two ever disagree.
+	condBreedIsZero    int64 = 512  // target's breed IS 0 (a creature/summon)
+	condBreedIsNotZero int64 = 1024 // target's breed is NOT 0 (a real breed)
+
 	// Breed conditions come in a POSITIVE and a NEGATIVE bank, per the client's
-	// condition evaluator (aap.a): bit 16+k means "target's breed IS k+1", and
+	// condition evaluator (aLc.a): bit 16+k means "target's breed IS k+1", and
 	// bit 32+k means "target's breed is NOT k+1". Each set bit is checked
 	// independently and all must hold, so two positive breed bits in one
 	// condition can never pass.
@@ -84,6 +103,12 @@ func targetConditionPasses(caster, target *FightFighter, cond int64) bool {
 	if cond&condIsEffectArea != 0 {
 		return false // a resolved fighter is never a ground area
 	}
+	if cond&condBreedIsZero != 0 && targetBreed(target) != 0 {
+		return false
+	}
+	if cond&condBreedIsNotZero != 0 && targetBreed(target) == 0 {
+		return false
+	}
 	if cond&(breedIsMask|breedIsNotMask) != 0 && !breedConditionAllows(cond, target) {
 		return false
 	}
@@ -92,16 +117,22 @@ func targetConditionPasses(caster, target *FightFighter, cond int64) bool {
 
 // breedConditionAllows reports whether target satisfies every breed bit set in
 // cond, positive and negative alike (the client checks each bit on its own and
-// rejects on the first failure — aap.a).
+// rejects on the first failure — aLc.a).
 //
 // A summon has no breed of its own, so it can never satisfy a POSITIVE breed
 // condition; conversely it always satisfies a NEGATIVE one ("not an Enutrof" is
 // true of something that is not any breed).
-func breedConditionAllows(cond int64, target *FightFighter) bool {
-	var breed int64
-	if target != nil && !target.isSummon() {
-		breed = int64(breedOf(target))
+// targetBreed is the target's breed id, or 0 for a summon or a missing target —
+// which is exactly the client's `xq.axE` ("no breed") slot.
+func targetBreed(target *FightFighter) int64 {
+	if target == nil || target.isSummon() {
+		return 0
 	}
+	return int64(breedOf(target))
+}
+
+func breedConditionAllows(cond int64, target *FightFighter) bool {
+	breed := targetBreed(target)
 	for k := 0; k < breedSlots; k++ {
 		if cond&(int64(1)<<(16+k)) != 0 && breed != int64(k+1) {
 			return false // must BE breed k+1

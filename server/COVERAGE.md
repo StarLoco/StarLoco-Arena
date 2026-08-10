@@ -224,7 +224,7 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 4520 | FighterDies | S2C | ✓ | A | — | ✓ (forfeit) |
 | 8200 | ActionSequenceExecute | S2C | ✓ | A | — | ✓ |
 | 8300 | EndFight | S2C | ✓ | A (2.70 strength-map counts) | ✓ | ✓ |
-| 4321 | EndFightDone | C2S | ✓ | A | — | — |
+| 26321 | EndFightDone | C2S | ✓ | A | — | — |
 | 8151 | GiveUpFight | C2S | ✓ | A | — | ✓ |
 
 ---
@@ -285,12 +285,19 @@ missing feature manifests to the client as a *hang*. Prioritized:
   OpponentSearchError (2302) reply exists on the wire but is never emitted (no
   error condition maps to it yet).
 
-**Fight feature gaps (deferred until open world is complete):**
-- Combat effect variety — only single-target HP-loss resolves; no areas, buffs,
-  multi-target, non-damage effects, range/LoS/pathfinding validation.
+**Fight feature gaps:**
+- ~~Combat effect variety — only single-target HP-loss resolves; no areas, buffs,
+  multi-target, non-damage effects, range/LoS/pathfinding validation.~~
+  **Every clause of that is now false** and it stayed here long after it stopped
+  being true: **502 of 533 effect rows resolve (94.2 %)** across 31 mechanic
+  kinds, with areas, buffs, poison DoTs, target conditions, cast criteria,
+  altitude line-of-sight and full range validation. The real remaining gap is
+  **12 action ids / 31 rows** — see ROADMAP §8.5 for the itemised list.
 - Bet stakes on a fight win (fights carry a bet field but it isn't wagered).
-- In-fight movement (4503) validated only by MP-cost; placement (8021) no phase
-  guard. A distinct HP-zero kill-to-victory assertion is not isolated.
+- In-fight movement (4503) is fully validated (rooted, MP budget, walkable, not
+  destroyed, adjacency, occupancy, stop-on-contact). **Placement (8021) still has
+  no phase guard and no cell validation** — that one is real, and is Tier 0 item
+  1 in the ROADMAP backlog.
 
 **E2E gaps** (impl + audited, no end-to-end test yet):
 - FighterInformationList (6006), TeamPresetList (6030) round-trips.
@@ -360,7 +367,7 @@ go test ./...            # full suite
 go test -race ./...      # race detector (all green; heavy combat E2E skipped under -race)
 ```
 
-E2E suite: **44 top-level tests** (+ store/game unit tests). Added recently —
+E2E suite: **70 top-level tests** (+ store/game unit tests). Added recently —
 matchmaking cancel, channel chat, fighter loadout equip (6011/6010), the card
 shop (open→catalog 5300→5401, wallet sync 4001, token buy 5450→5403/5200,
 insufficient-funds, card-for-card barter 5400), the fight-win token faucet, the

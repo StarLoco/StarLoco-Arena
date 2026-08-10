@@ -599,27 +599,36 @@ func (f *Fight) closeCombat(ff *FightFighter, target Pos) {
 	}
 }
 
-// checkFightEnd ends the fight if one team has no living fighters.
+// checkFightEnd ends the fight if one team has no living fighters, or if
+// something else has already decided a winner (victory.go).
 func (d *Deps) checkFightEnd(f *Fight) {
 	if f.Phase() == PhaseEnded {
 		return
 	}
-	aliveByTeam := map[uint8]int{}
-	for _, ff := range f.allFighters() {
-		if ff.HP > 0 {
-			aliveByTeam[ff.TeamID]++
-		}
-	}
-	teamsAlive := 0
 	var winnerTeam uint8
-	for team, n := range aliveByTeam {
-		if n > 0 {
-			teamsAlive++
-			winnerTeam = team
+	if f.decidedWinner != nil {
+		// A victory condition ended the fight while both sides may still have
+		// living fighters, so the survivor count cannot decide it. Nobody is
+		// killed to make the numbers work: the loser simply loses, which also
+		// keeps evolution deaths (driven by HP, not by the result) correct.
+		winnerTeam = *f.decidedWinner
+	} else {
+		aliveByTeam := map[uint8]int{}
+		for _, ff := range f.allFighters() {
+			if ff.HP > 0 {
+				aliveByTeam[ff.TeamID]++
+			}
 		}
-	}
-	if teamsAlive >= 2 {
-		return // fight continues
+		teamsAlive := 0
+		for team, n := range aliveByTeam {
+			if n > 0 {
+				teamsAlive++
+				winnerTeam = team
+			}
+		}
+		if teamsAlive >= 2 {
+			return // fight continues
+		}
 	}
 
 	// Persist win/loss stats + update the ranked ladder strength for each real

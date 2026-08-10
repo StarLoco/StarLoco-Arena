@@ -231,24 +231,54 @@ system — the mechanism a challenge or tournament uses to customise a match:
 | 4-9 | spell/equipment allow + ban lists (incl. "ban everything") | |
 | **10** | **per-fighter turn duration (ms) — a DELTA** | ✅ wired (B-072); only challenge 46 uses it: +3 600 000 ms |
 | **11** | **sudden-death turn — a DELTA (±turns)** | ✅ wired (B-072); unused by challenges, expected tournament-side |
-| 12 | cast an effect on all fighters at fight creation | decoded (B-073): 3 challenges, each +40% dodge for the fight; carried, not applied |
+| **12** | **cast an effect on all fighters at fight creation** | ✅ wired (B-074); 3 challenges (29/30/31), each +40% dodge for the whole fight, target mask 1024 = real breeds only |
 | 13 | multiply bonus-cell effects (absolute) | ✅ wired (B-072); 5 challenges (x2, x2, x5, x10) |
-| **14** | **victory condition** | the ONE type with its own layout (`wi_0` + `mp_2`); 9 challenges |
+| **14** | **victory condition** | ✅ wired (B-074); the ONE type with its own layout (`wi_0` + `mp_2`); 9 challenges, all subtype 4 |
 | 15-25 | class limits, class bans, fighter/spell/equipment prices | |
 | 26, 32 | event list, sudden-death event list | |
 | 27 | add a coach spell | |
 | 28 | max distinct classes | |
-| 29 | choose the arena | |
+| 29 | choose the arena | no `content.54.29` label — the enum is the only evidence |
 | 30 | max league | |
 | 31 | hide opponent statistics | |
-| 900 | class parameter | |
-| 1000 | `Pas de limite de budget` (no params) | named, not enforced; challenge 12 |
-| 901-912 | per-breed spell parameters (Féca … Pandawa) | |
+| 900 | class parameter | params = breed id; 14 coach cards |
+| 901-912, 929, 930 | per-breed spell parameters — Féca…Pandawa **plus 929 Roublard / 930 Zobal** | params = spell id; ~10 coach cards each |
+| 913, 924 | low / high budget parameter | |
+| 914-923 | per-equipment-kind parameters (sword, dagger, wand, bow, hammer, shovel, hat, cape, pet, dofus) | |
+| 925-928 | turn / time (ms) / arena id / fighter count parameters | |
+| 1000 | `Aucune limite sur ce combat` (no params) | named, not enforced; challenge 12 |
+
+`content.54.<type>` is the authoritative semantics table and **must be read before
+implementing a rule** — it is what proved 10/11 are deltas. Note it is a *display*
+table and is incomplete: there is no entry for 29, and 900-913 all render as
+"Erreur dans l'AGT". The `ajr_2` enum is the authority on what a type IS; the i18n
+line is the authority on how its parameters are meant to be read.
+
+### The type-14 victory-condition subtypes (`qk_1`)
+
+Each is one concrete `mp_2` subclass whose one-line body is the semantics:
+
+| subtype | label | client body | state |
+|---:|---|---|---|
+| 1 | Posséder une position | `cy_1`: a living fighter of the team is on cell (p0,p1) | decoded, not implemented — unused by shipped data |
+| 2 | Posséder un nombre de points de victoire | `fp_1`: `team.amt() >= p0` | decoded, not implemented — unused |
+| 3 | Tuer des combattants d'une classe | `ct_1`: ≥ p1 (default 1) enemies of breed p0 are dead | decoded, not implemented — unused |
+| **4** | **Atteindre un tour donné** | `ajm_0`: `fight.ZB().JI() > p0` | ✅ **all 9 shipped conditions**; wired (B-074) |
+| 1000 | Aucune condition sur ce combat | — | — |
+
+The nine shipped conditions are identical: subtype 4, one param (20 or 30),
+`is_necessary`=true, `victory_points`=0, `affected_team`=0. Their holders are
+challenge 14 and the "Défi du temps" set — *time* challenges. **The client never
+evaluates any of this**: `mv_1.b(mp_2)` is an empty method, the 3-arg evaluator has
+no call site, `rh()`/`ri()`/`rj()` have no callers, and `content.55` stops at entry
+1 so a type-4 condition cannot even be displayed. Retail arbitrated these
+server-side; the condition is recovered, the arbitration is ours (see B-074).
 
 ## 6. Change log
 
 | Date | Change |
 |---|---|
+| 2026-08-10 | Wired np_1 types 12 and 14 (B-074): fight-start effects and victory conditions now drive fights instead of being carried inert. Added target-condition bits 512/1024 (breed-is-zero), corrected the validator's provenance from `aap.a` to `aLc.a`, renamed the `mp_2` scalars to the client's own SQL column names, and documented the `qk_1` subtypes and the 913-930 parameter block. |
 | 2026-08-05 | Inline unlength-prefixed Ht effects parsed exactly; challenges now 39/39 with zero residual (B-073). |
 | 2026-08-04 | np_1 rule 13 (bonus-cell multiplier) applied to the beneficial tiles; timing rules 10/11 corrected to DELTAS per content.54.* (B-072). |
 | 2026-08-04 | Wired np_1 rule types 10/11: the turn clock and sudden-death turn are per-fight and read from data instead of hardcoded package globals (B-072). |

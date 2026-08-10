@@ -220,6 +220,13 @@ type Fight struct {
 	Rules         fightRules
 	effectAreaSeq int64
 	inAreaTrigger bool
+	// decidedWinner is set when something other than elimination has decided the
+	// fight — today only a met victory condition (victory.go). When set,
+	// checkFightEnd declares this side the winner instead of counting survivors,
+	// so a fight can end with both teams still standing. nil = decide normally.
+	decidedWinner *uint8
+	// startEffectsDone makes the np_1 type-12 fight-start effects apply once.
+	startEffectsDone bool
 
 	// rng is the fight's damage/dice source (lazily seeded via roll()). Tests may
 	// set it directly for deterministic rolls.
@@ -394,6 +401,16 @@ func (f *Fight) applyDirectionChange(coachID uint, wireID int64, dir uint8) *Fig
 func (f *Fight) teamOfCoach(coachID uint) *FightTeam {
 	for _, t := range f.Teams {
 		if t != nil && t.Coach != nil && t.Coach.ID == coachID {
+			return t
+		}
+	}
+	return nil
+}
+
+// teamByID returns the team with the given side id (nil if none).
+func (f *Fight) teamByID(id uint8) *FightTeam {
+	for _, t := range f.Teams {
+		if t != nil && t.ID == id {
 			return t
 		}
 	}

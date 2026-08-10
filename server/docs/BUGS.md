@@ -38,6 +38,104 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-074 - np_1 rule types 12 and 14 were decoded but nothing consumed them
+B-071/B-073 decoded every 
+p_1 element, including the three type-12 fight-start
+effects and the nine type-14 victory conditions. Both were then carried, inert:
+12 of the 39 shipped challenges were playing by rules the server had read and
+ignored. The "Defi du temps" ("time challenge") demons in particular had NO win
+condition at all - the only way to finish one was to eliminate the whole demon
+team, which is not what the challenge asks for.
+
+**Type 14 - alternative victory conditions.** Read content.55 first, as the
+method demands, and it stops at entry 1: the client cannot even DISPLAY a type-4
+condition. It goes further than that. wi_0.a(mv_1) hands the decoded condition
+to the fight via mv_1.b(mp_2), and **mv_1.b is an empty method**; the
+three-argument evaluator (mv_1, yg_0, yg_0) has **no call site anywhere in the
+client**; and h()/i()/j() (is_necessary, victory_points, affected_team)
+have no callers either. Retail arbitrated victory conditions entirely
+server-side and the client kept the machinery as dead reference.
+
+What IS recoverable is the CONDITION, because each of the four mp_2 subclasses
+is a one-line body. qk_1 names them and jm_0 - the only subtype the shipped
+data uses - is simply:
+
+`java
+return mv_12.ZB().JI() > this.JI[0];
+`
+
+JI() returns NC, incremented in cn_0.dm() on each timeline wrap: the same
+table-turn counter this server calls 	ableTurn. So subtype 4 is "the round
+counter passed N", strictly greater.
+
+Three independent things agree on the reading, which is what makes it safe:
+qk_1 labels subtype 4 **"Atteindre un tour donne"**; the nine holders are
+challenge 14 plus **"Defi du temps : Poison / Violence / Pont mortel / Kawotte /
+Lac / Quai des brumes / Altruisme"** and its finale - literally *time*
+challenges; and the parameter is 20 or 30 turns. Survive to the turn and you
+win. None of them touches sudden death, so the default collapse at turn 15 still
+lands first and the last 5-15 rounds are fought on a shrinking arena. That is
+the mechanic, not an accident.
+
+**The arbitration is ours and is labelled as such.** ffected_team is the only
+field that could name a winner, it is 0 on all nine, and the client never reads
+it; we read it as the team index it is named for. This server builds a PvE
+challenge with the coach as team 0, so the shipped value makes the coach win by
+surviving. ictory_points (all 0) and is_necessary (all true) would matter
+only for scoring several partial conditions, so they are carried and
+deliberately unused rather than guessed at. Subtypes 1/2/3 are documented from
+their client bodies but NOT implemented - no shipped record uses them, so there
+would be nothing to validate against.
+
+checkFightEnd gained an explicit decided-winner path, because a fight can now
+end with **both teams still standing** and a survivor count cannot express that.
+Nobody is killed to make the result work: downing the loser would have been the
+easy shortcut and would have silently destroyed evolution fighters, whose deaths
+are driven by HP rather than by the result.
+
+**Type 12 - fight-start effects.** Applied through the same path round event
+cards already use (pplyRoundEvent): each fighter is both caster and target so
+a percentage scales off its own stats, and every effect is still gated by its own
+target conditions.
+
+That last part turned out to be the real work. The three effects carry target
+mask **1024**, and B-073 recorded that as needing "the client's aLc evaluator, a
+separate open item". That was over-cautious - 	arget_conditions.go already IS
+a port of Lc.a; it was simply missing bits 512/1024, which are one line each:
+
+`java
+(0x200 & c) != 0 && (!(t instanceof gn_0) || t.NY().lV() != xq.axE.lV())  -> reject
+(0x400 & c) != 0 && (!(t instanceof gn_0) || t.NY().lV() == xq.axE.lV())  -> reject
+`
+
+xq.axE is breed id **0**, the stat-less pseudo-breed listed between xD(-1)
+and the 14 real breeds. So 512 = "is a creature", 1024 = "is a real player-breed
+fighter". **An unimplemented condition bit is silently permissive**, so without
+them the +40% dodge would also have landed on every summon - the mask is there
+precisely to stop that.
+
+While confirming which class our validator ports: the file credited **ap.a**,
+but ap is a genuinely different validator (its low bits are is/is-not pairs
+and its 512+ bits are count thresholds). Our port matches Lc.a bit for bit.
+The wrong attribution is what sent B-073 looking for a second evaluator that did
+not need to exist; corrected.
+
+**Verification.** Two real-data canaries assert the shipped shape (9 conditions,
+all subtype 4, param 20 or 30, (true, 0, 0); 3 start effects, action 122,
+params [40], targets [1024]) so a future field-order slip fails loudly instead of
+silently disabling the mechanic. Behavioural tests cover the strictly-greater
+boundary, a fight ending with both teams alive, the winner coming from
+ffected_team rather than a hardcoded side, an unknown team being skipped, and
+fights without conditions being untouched. Each was mutation-checked: > to
+>= and dropping the ffected_team read each fail multiple tests, and
+removing the 1024 check reproduces the summon-buff bug.
+
+**Not done, deliberately:** subtypes 1/2/3, ictory_points scoring, and the
+np_1 rules that still have no consumer (budget, roster limits, spell/equipment
+and class bans, prices, arena choice, event lists).
+
+---
+
 ### B-073 · Challenges 29/30/31 stopped short on an inline, unlength-prefixed effect
 B-071 left three challenge records deliberately unfinished: each carries an `np_1`
 type-12 parameter ("Lance un effet sur tous les combattants à la création du combat")

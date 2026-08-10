@@ -329,6 +329,10 @@ func (f *Fight) transition(from, to FightPhase) bool {
 // fighter's turn, and arms the turn clock.
 func (f *Fight) startFirstTurn() {
 	f.tableTurn = 1
+	// np_1 type 12 lands BEFORE the first round card, so a fight-long buff is
+	// already in place when round 1 resolves (and, being sent before the first
+	// turn begins, the client shows its icon from the very first fighter).
+	f.applyFightStartEffects()
 	f.beginTableTurn()
 	if len(f.Timeline) > 0 {
 		f.turnIndex = 0
@@ -498,6 +502,18 @@ func (f *Fight) endTurn(wireID int64) {
 		f.maybeTriggerSuddenDeath()
 		if f.Phase() != PhaseAction {
 			return // the collapse ended the fight
+		}
+		// An alternative win condition (np_1 type 14) can end the fight with
+		// both sides still standing. Checked AFTER the collapse, because the
+		// shipped conditions all outlast the default sudden-death turn: the
+		// last rounds of a "Défi du temps" are meant to be fought on a
+		// shrinking arena, and a fighter the collapse just killed must not
+		// still be credited with surviving the round.
+		if f.deps != nil {
+			f.deps.checkVictoryConditions(f)
+			if f.Phase() != PhaseAction {
+				return // a victory condition ended the fight
+			}
 		}
 	}
 	f.beginTurn(next)

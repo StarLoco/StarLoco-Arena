@@ -26,8 +26,13 @@ type fightRules struct {
 	// (np_1 type 11).
 	SuddenDeathTurn int32
 	// BonusCellMultiplier scales bonus-cell effects (np_1 type 13). 1 = normal.
-	// Decoded and carried, but the bonus-cell path does not consume it yet.
 	BonusCellMultiplier int32
+	// StartEffects are applied to every fighter once, when the fight starts
+	// (np_1 type 12). Challenges 29/30/31 each carry one.
+	StartEffects []gamedata.Effect
+	// Victory are the alternative win conditions (np_1 type 14). Nine shipped
+	// challenges carry one; see victory.go for which subtypes are evaluated.
+	Victory []gamedata.VictoryCondition
 }
 
 // defaultFightRules is the ruleset a fight gets with no parameters of its own.
@@ -75,6 +80,8 @@ func rulesFromParameters(ps []gamedata.Parameter) fightRules {
 	if m, ok := gamedata.FirstParam(ps, gamedata.ParamTypeBonusCellMult); ok && m > 0 {
 		r.BonusCellMultiplier = m
 	}
+	r.StartEffects = gamedata.FightStartEffects(ps)
+	r.Victory = gamedata.VictoryConditions(ps)
 	return r
 }
 
