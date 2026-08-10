@@ -76,6 +76,10 @@ func TestCoachCreationAndReload(t *testing.T) {
 	// Save mutable fields (position/stats) and confirm they persist.
 	got.PosX, got.PosY, got.PosZ = 42, 43, 7
 	got.Strength = 1500
+	// Standing is the EVOLUTION experience, a different axis from Strength (the
+	// ladder rating). It was updated in memory by the post-fight META and then
+	// dropped by Save's field map, so every point earned died on relog.
+	got.Standing = 9000
 	if err := s.Coaches.Save(got); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -83,6 +87,9 @@ func TestCoachCreationAndReload(t *testing.T) {
 	if again.PosX != 42 || again.PosY != 43 || again.PosZ != 7 || again.Strength != 1500 {
 		t.Errorf("saved fields = (%d,%d,%d,str=%d), want (42,43,7,str=1500)",
 			again.PosX, again.PosY, again.PosZ, again.Strength)
+	}
+	if again.Standing != 9000 {
+		t.Errorf("standing = %d after reload, want 9000 (evolution level resets without it)", again.Standing)
 	}
 }
 

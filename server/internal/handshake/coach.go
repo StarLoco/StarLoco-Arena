@@ -68,6 +68,11 @@ type Coach struct {
 	HairColor uint8
 	SkinColor uint8
 	Sex       uint8
+	// Standing is the coach's EVOLUTION experience. The client derives the
+	// evolution level from it (aet_0.nJ, mirrored by game.StandingToLevel) and
+	// pops its level-up dialog when it changes, so sending 0 pinned every coach
+	// at level 1 no matter how much it had earned.
+	Standing int32
 	// Criteria are the coach's persisted achievement criteria, emitted in the
 	// 0x200 stat-pairs blob. criterionZaapUnlock is always added on top, so this
 	// may be nil. See buildCriteriaBlob for the ordering/dedup rules.
@@ -171,7 +176,7 @@ func EncodeCoachInformations(c Coach) ([]byte, error) {
 	w.U16(0) // Q blob length = 0
 
 	// 0x400: standing
-	w.I32(0) // bMU
+	w.I32(c.Standing) // bMU
 
 	// 0x20: guild blob (empty -> no guild)
 	w.U16(0)

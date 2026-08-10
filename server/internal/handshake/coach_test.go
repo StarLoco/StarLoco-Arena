@@ -44,3 +44,29 @@ func TestCoachInformationsLookOrder(t *testing.T) {
 		t.Errorf("hair byte = %#x, want 0x22 (hair second)", p[11])
 	}
 }
+
+// TestCoachInformationsCarriesStanding: the 2052 descriptor must carry the
+// coach's real evolution experience. It was hardcoded to 0, so the client — which
+// derives the evolution LEVEL from this field (aet_0.nJ) — pinned every coach at
+// level 1 however much it had earned.
+//
+// The field sits after the look block and the 0x100 tournament blob:
+//
+//	i64 id(8) + u8 nameLen(1) + name(1) + skin(1) + hair(1) + sex(1) + u16 look(2)
+//	+ i32 tournamentPoints(4) + u16 ladderBlobLen(2) = offset 21, then i32 standing.
+func TestCoachInformationsCarriesStanding(t *testing.T) {
+	const want int32 = 0x0A0B0C0D
+	frame, err := EncodeCoachInformations(Coach{ID: 1, Name: "X", Standing: want})
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	p := frame[4:]
+	const off = 8 + 1 + 1 + 1 + 1 + 1 + 2 + 4 + 2
+	if len(p) < off+4 {
+		t.Fatalf("payload too short (%d bytes) to hold the standing field", len(p))
+	}
+	got := int32(uint32(p[off])<<24 | uint32(p[off+1])<<16 | uint32(p[off+2])<<8 | uint32(p[off+3]))
+	if got != want {
+		t.Errorf("standing on the wire = %#x, want %#x", got, want)
+	}
+}

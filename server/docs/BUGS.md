@@ -38,6 +38,62 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-077 - Dispel stripped summons of what they ARE, and Standing was thrown away
+
+Two more Tier 0 items, unrelated except that both are one-line omissions with
+outsized consequences.
+
+**1. Dispel cleared the whole state map.** The buff half of applyDispel always
+kept permanent entries ("dispel leaves permanent enchantments"); the state half
+deleted every key unconditionally. Summon innate properties are applied at spawn
+as INFINITE states - of the 53 shipped creatures **22 are rooted, 21 anchored,
+18 stabilised, 15 intransposable** - so a single dispel made a stationary summon
+mobile, or a carry-proof one carryable, for the rest of the fight. Those are not
+enchantments to undo; they are what the creature IS.
+
+Infinite states (>= infiniteStateTurns) now survive, which also makes dispel
+agree with `tickStates`, which has always refused to age them, and with the
+buff loop beside it.
+
+**The client's model is richer, and is the eventual general fix.** Fighter
+properties (rooted/anchored/intransposable/...) live in a REFERENCE-COUNTED
+store: `Kt.g()` increments, `Kt.h()` decrements and removes at zero,
+`c()` reads the count and `b()` is "count != 0" - and `gn_0` really does
+read the count (`this.c(avx_0.deu) != 0`). So a summon's innate root and a
+spell's root coexist as count 2, and removing either leaves the other. This
+server's `States` map holds remaining TURNS, conflating "how long" with "how
+many sources" - the same shortcut behind the buff-stacking gap. Keeping infinite
+states is correct for every case the shipped data produces; counting sources
+would additionally fix overlapping FINITE ones. Recorded rather than attempted,
+because it touches skip-turn charges, ageing and removal-by-source-id.
+
+**2. `Coach.Standing` was computed, then thrown away three different ways.**
+Standing is the coach's EVOLUTION experience - a different axis from Strength,
+the ladder rating - and the client derives the evolution LEVEL from it and pops
+its level-up dialog when it changes. The post-fight META already computed and
+applied it (`t.Coach.Standing += standing`, with the level transition logged),
+but:
+
+- `CoachRepo.Save`'s field map omitted the column, so every point died on
+  relog. The column existed and was migrated; it was simply never written.
+- The 2052 coach descriptor hardcoded `w.I32(0)`, so the coach's OWN level
+  read as 1 however much it had earned.
+- The 4096 actor-spawn record hardcoded `w.I32(0)` too, so every other coach
+  visible in the world also rendered as level 1.
+
+All three now carry the real value. **No wire layout changed** - both sites
+already wrote an i32 in the right place, they just wrote a zero into it - so
+this is a value fix, not a protocol change.
+
+**Verification.** Store round-trip through Save/Get; byte-offset assertions on
+both wire records; dispel tests covering a summon's four innate properties, an
+infinite state on an ordinary fighter (a Masqueraider mask), and that a genuine
+finite enchantment is still stripped. All five mutation-checked: reverting each
+of the three Standing sites, and restoring the blanket state clear, each fail
+the tests that claim to cover them.
+
+---
+
 ### B-076 - Forced displacement walked straight past every trap
 
 checkEffectAreasMove had exactly ONE caller - the voluntary walk path - so push,

@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-076 (forced displacement arms traps)
+· **Latest work:** B-077 (dispel keeps innate states; Standing persisted + on the wire)
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 272 Go files · 467 test functions (72 of them end-to-end
+**Scale reference.** 272 Go files · 471 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -170,12 +170,12 @@ fighter_objects, fighter_conditions, teams, team_fighters, mails, mail_cards.
 challenges, card exchanges, tournament registrations, AoI registry, spectator
 lists.
 
-**Three persistence defects worth fixing:**
+**Persistence defects:**
 
-1. **`Coach.Standing` is never written to the DB** — `CoachRepo.Save`'s field map
-   omits the column, so the whole coach-evolution level resets on relog. It is
-   also hardcoded to `0` on the wire in both `handshake/coach.go` and
-   `game/packets.go`.
+1. ~~**`Coach.Standing` is never written to the DB**~~ — **fixed (B-077)**. It was
+   dropped in three places: `CoachRepo.Save`'s field map, the 2052 descriptor and
+   the 4096 actor record (both of the latter hardcoded `0` into an i32 that was
+   already the right size, so no wire layout changed).
 2. **`TimeInFightSecs` / `TotalPlaySecs` are never incremented** — the 2400
    statistics panel permanently shows 0 for both.
 3. **`CardLocked` is read in three places and set nowhere** — because the 5203
@@ -499,8 +499,15 @@ whole arena on round 1 (event card 14 is 94+127+128). They are distinct now.
 **Gaps:**
 - **No stacking rules.** Casting the same buff twice appends two independent
   entries with two independent deltas — nothing merges, refreshes or caps.
-- **Dispel deletes infinite states too**, permanently stripping a summon's innate
-  rooted/anchored/stabilised/intransposable properties.
+- ~~**Dispel deletes infinite states too**~~ — **fixed (B-077)**: permanent states
+  now survive, as permanent buffs always did.
+  The **general** fix is still open, and the client shows what it looks like:
+  properties live in a **reference-counted** store (`Kt.g()` increments, `h()`
+  decrements and removes at zero, `c()` reads the count), so a summon's innate
+  root and a spell's root coexist as count 2 and removing one leaves the other.
+  Our `States` map holds remaining TURNS, conflating "how long" with "how many
+  sources" — the same shortcut as the stacking gap above. That would also fix
+  overlapping *finite* sources, which keeping-infinites does not.
 - Dispel does not touch poisons, damage-transfer links or auras.
 - **Buff/debuff icons are not restored on reconnect or spectate** — the server
   keeps the buffs and they keep working; only the client-side icons are missing
@@ -920,10 +927,14 @@ is a signing certificate or SignPath); no published Docker image.
    All five paths now run the enter check. It also recovered the full trigger
    enum: 10002 (left), 10008 (stayed inside), 10003 and 10006 remain
    unimplemented — see §8.14.
-4. **Dispel strips infinite states**, permanently removing a summon's innate
-   properties.
-5. **`Coach.Standing` is never persisted or transmitted** — the coach evolution
-   level resets on every relog. One missing column in a field map.
+4. ~~**Dispel strips infinite states**~~ — **done (B-077)**. Permanent states now
+   survive, matching the buff loop and `tickStates`. The general fix — the
+   client reference-counts properties (`Kt.g`/`h`), so overlapping sources
+   compose — is recorded in §8.12 as a follow-up.
+5. ~~**`Coach.Standing` is never persisted or transmitted**~~ — **done (B-077)**.
+   It was dropped in three places: `CoachRepo.Save`'s field map, the 2052
+   descriptor and the 4096 actor record. No wire layout changed; both sites
+   already wrote an i32 and simply wrote zero into it.
 6. Rooted fighters get their MP gauge refilled client-side; petrified fighters do
    not have AP/MP zeroed as the client does.
 7. `Writer.StringU8` does not enforce the 127-byte limit that would crash the client.

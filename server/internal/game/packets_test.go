@@ -230,3 +230,25 @@ func TestActorSpawnFraming(t *testing.T) {
 		t.Errorf("actor count = %d, want 2", count)
 	}
 }
+
+// TestWriteCoachActorCarriesStanding: the bMU field in a Coach actor is the
+// coach's evolution experience, from which the client renders its evolution
+// level. It was hardcoded to 0, so every OTHER coach visible in the world showed
+// as level 1 regardless of what they had earned.
+//
+// Offset: V (i64 id 8 + u8 len 1 + "Bob" 3) + U (4+4+2+1) + T (1+1+1+2) = 28.
+func TestWriteCoachActorCarriesStanding(t *testing.T) {
+	const want int32 = 0x0A0B0C0D
+	w := protocol.NewWriter()
+	writeCoachActor(w, CoachView{ID: 1, Name: "Bob", PosX: 10, PosY: 20, PosZ: 3, Standing: want})
+	got := w.Bytes()
+
+	const off = 12 + 11 + 5
+	if len(got) < off+4 {
+		t.Fatalf("actor record too short (%d bytes)", len(got))
+	}
+	v := int32(uint32(got[off])<<24 | uint32(got[off+1])<<16 | uint32(got[off+2])<<8 | uint32(got[off+3]))
+	if v != want {
+		t.Errorf("standing on the wire = %#x, want %#x", v, want)
+	}
+}

@@ -168,9 +168,30 @@ func (f *Fight) applyPerTargetEffect(caster *FightFighter, ef gamedata.Effect, c
 
 // applyDispel (62 "Désenvoûtement") strips the fighter at `cell` of its
 // enchantments: every tracked (finite) buff is reverted — undoing its resource
-// or elemental stat change — and every timed state is cleared. Infinite buffs
-// (applied permanently, not tracked) are left as-is. The dispel running-effect is
-// broadcast so the client plays it.
+// or elemental stat change — and every TIMED state is cleared. The dispel
+// running-effect is broadcast so the client plays it.
+//
+// PERMANENT things survive, states as well as buffs. The buff loop always did
+// this ("dispel leaves permanent enchantments"); the state loop did not, and
+// cleared the map wholesale. That silently un-rooted summons: innate creature
+// properties are applied at spawn as INFINITE states (applySummonInnateProperties
+// — 22 of the 53 shipped creatures are rooted, 21 anchored, 18 stabilised, 15
+// intransposable), so one dispel made a stationary summon mobile, or a
+// carry-proof one carryable, for the rest of the fight. Those are not
+// enchantments to be undone; they are what the creature IS.
+//
+// The same rule already governs ageing: tickStates leaves any state at
+// >= infiniteStateTurns untouched. Dispel now agrees with it.
+//
+// NOTE — the client's model is richer, and is the eventual general fix. It keeps
+// fighter properties in a REFERENCE-COUNTED store (`Kt`: `g()` increments,
+// `h()` decrements and removes at zero, `c()` reads the count, and `b()` is
+// "count != 0"), so a summon's innate root and a spell's root coexist as count 2
+// and removing one leaves the other. This server's `States` map holds remaining
+// TURNS, which conflates "how long" with "how many sources" — the same shortcut
+// behind the buff-stacking gap in the roadmap. Keeping infinite states is the
+// correct behaviour for every case the shipped data actually produces; counting
+// sources would additionally fix overlapping FINITE ones.
 func (f *Fight) applyDispel(caster *FightFighter, ef gamedata.Effect, cell Pos) {
 	victim := f.fighterAtCell(cell)
 	if victim == nil {
@@ -185,10 +206,13 @@ func (f *Fight) applyDispel(caster *FightFighter, ef gamedata.Effect, cell Pos) 
 		f.revertBuff(victim, b)
 	}
 	victim.Buffs = kept
-	for s := range victim.States {
+	for s, turns := range victim.States {
+		if turns >= infiniteStateTurns {
+			continue // innate/permanent: not an enchantment to strip
+		}
 		delete(victim.States, s)
+		delete(victim.stateSrc, s)
 	}
-	victim.stateSrc = nil
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
 		caster.WireID, victim.WireID, victim.Pos, 0, 0, false)
 	f.broadcast(eff)

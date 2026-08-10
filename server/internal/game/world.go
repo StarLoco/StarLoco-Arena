@@ -29,6 +29,10 @@ type CoachView struct {
 	PosX int32
 	PosY int32
 	PosZ int16
+	// Standing is the coach's evolution experience. The client turns it into the
+	// evolution LEVEL shown next to the name, so a hardcoded 0 made every other
+	// coach in the world render as level 1.
+	Standing int32
 }
 
 // Registry tracks online coaches for presence, spawn fan-out and chat.
@@ -108,7 +112,7 @@ func viewOf(o *Online) CoachView {
 	c := o.Coach
 	return CoachView{
 		ID: c.ID, Name: c.Name, Hair: c.Hair, Skin: c.Skin, Sex: c.Sex,
-		PosX: c.PosX, PosY: c.PosY, PosZ: c.PosZ,
+		PosX: c.PosX, PosY: c.PosY, PosZ: c.PosZ, Standing: c.Standing,
 	}
 }
 

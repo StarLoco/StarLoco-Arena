@@ -181,3 +181,64 @@ func TestDispel(t *testing.T) {
 			len(enemy.Buffs), enemy.Stats.resFlat[elemFire], enemy.hasState(stateImmune), enemy.MaxAP)
 	}
 }
+
+// TestDispelKeepsInnateSummonProperties is the bug: dispel cleared the whole
+// state map, so one cast permanently stripped a summon of what it IS. Of the 53
+// shipped creatures 22 are rooted, 21 anchored, 18 stabilised and 15
+// intransposable, all applied at spawn as INFINITE states — so a dispel used to
+// make a stationary summon mobile, or a carry-proof one carryable, for the rest
+// of the fight.
+//
+// The buff half of dispel always kept permanent entries; the state half now
+// agrees, as does tickStates, which never ages a state at >= infiniteStateTurns.
+func TestDispelKeepsInnateSummonProperties(t *testing.T) {
+	f, caster, enemy := stateTestFight()
+
+	// What a summon looks like after applySummonInnateProperties.
+	applySummonInnateProperties(enemy, &gamedata.Summoning{
+		Rooted: true, CannotBeCarried: true, Stabilised: true, Intransposable: true,
+	})
+	// Plus a genuine, finite enchantment that SHOULD be stripped.
+	f.resolveEffect(caster, gamedata.Effect{ActionID: 124, Duration: []int32{3, 0}}, enemy.Pos) // immunity
+	if !enemy.hasState(stateImmune) {
+		t.Fatal("setup: the finite state was not applied")
+	}
+
+	f.resolveEffect(caster, gamedata.Effect{ActionID: 62}, enemy.Pos)
+
+	if enemy.hasState(stateImmune) {
+		t.Error("dispel left the finite state (immunity) in place")
+	}
+	for _, s := range []struct {
+		name  string
+		state fighterState
+	}{
+		{"rooted", stateRooted},
+		{"anchored", stateAnchored},
+		{"stabilized", stateStabilized},
+		{"intransposable", stateIntransposable},
+	} {
+		if !enemy.hasState(s.state) {
+			t.Errorf("dispel stripped the summon's innate %s property", s.name)
+		}
+	}
+}
+
+// TestDispelKeepsAnInfiniteStateOnARealFighter: the rule is about PERMANENCE,
+// not about being a summon. A Masqueraider's mask (173/174/175) is an infinite
+// state on an ordinary fighter and survives for the same reason its infinite
+// buff half already did.
+func TestDispelKeepsAnInfiniteStateOnARealFighter(t *testing.T) {
+	f, caster, enemy := stateTestFight()
+	// Duration 63 = infinite (the same marker the shipped condition rows use).
+	f.resolveEffect(caster, gamedata.Effect{ActionID: 173, Duration: []int32{63, 0}}, enemy.Pos)
+	if !enemy.hasState(stateMaskClass) {
+		t.Fatal("setup: the infinite mask state was not applied")
+	}
+
+	f.resolveEffect(caster, gamedata.Effect{ActionID: 62}, enemy.Pos)
+
+	if !enemy.hasState(stateMaskClass) {
+		t.Error("dispel stripped an infinite (permanent) state from a real fighter")
+	}
+}

@@ -19,6 +19,7 @@ func buildCoachInformation(c *domain.Coach) ([]byte, error) {
 		HairColor: c.Hair,
 		SkinColor: c.Skin,
 		Sex:       c.Sex,
+		Standing:  c.Standing,
 		Criteria:  coachCriteria(c),
 	})
 }
@@ -211,8 +212,9 @@ func writeCoachActor(w *protocol.Writer, v CoachView) {
 	w.U8(v.Sex)
 	w.U16(0) // UF look short
 
-	// bMU (0x400): standing
-	w.I32(0)
+	// bMU (0x400): standing — the coach's evolution experience, which the client
+	// turns into the evolution level it renders (aet_0.nJ / StandingToLevel).
+	w.I32(v.Standing)
 	// dBg (0x40): bool
 	w.U8(0)
 	// W (0x20): guild blob (empty)

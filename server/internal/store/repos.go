@@ -535,10 +535,16 @@ func (r *CoachRepo) LadderRank(coachID uint) (int, error) {
 func (r *CoachRepo) Save(c *domain.Coach) error {
 	c.Mu.Lock()
 	fields := map[string]any{
-		"pos_x":              c.PosX,
-		"pos_y":              c.PosY,
-		"pos_z":              c.PosZ,
-		"strength":           c.Strength,
+		"pos_x":    c.PosX,
+		"pos_y":    c.PosY,
+		"pos_z":    c.PosZ,
+		"strength": c.Strength,
+		// Standing is the coach's EVOLUTION experience, and it is NOT the same
+		// thing as Strength: post-fight META adds to it (postfight_apply.go) and
+		// the client derives the coach's evolution LEVEL from it. Omitting it
+		// here meant every point earned was thrown away on relog — the column
+		// existed and was updated in memory, it was simply never written.
+		"standing":           c.Standing,
 		"stat_fights":        c.StatFights,
 		"stat_wins":          c.StatWins,
 		"stat_losses":        c.StatLosses,
