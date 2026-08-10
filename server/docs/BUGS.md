@@ -38,6 +38,55 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-080 - AoE shape 8 was unimplemented and the cross ignored two of its three arities
+
+**Shape 8 (`acg_0`, "forme a base de points")** fell through to a single cell.
+It is an explicit list of `(dx,dy)` offsets from the centre: `acg_0.a(int[])`
+rejects an odd-length array outright and reads consecutive pairs, and its
+parameter labels name them x1,y1,x2,y2... ("Liste de N points").
+
+It is **directional**, which is the part worth getting right. The client's shapes
+carry a symmetry flag `fi()` - true for the circle and the point, which look
+the same whichever way you face, and FALSE for the T, the inverted T and this
+one. The authored offsets sit in a fixed reference frame, which the labels state
+outright: "prendre l'axe sud-est pour construire". So the list is rotated by the
+caster->centre cardinal step exactly as the T shapes rotate their stem, and a
+caster standing on the centre degrades to the centre cell, the same degradation
+the T shapes already use. Malformed (odd-length) lists degrade rather than throw
+the way `acg_0` does - this is attacker-reachable data.
+
+One shipped row uses it: spell 469's action-125 effect, size `[0 0 -1 0]`.
+
+**The cross (shape 3, `qv`)** applied `size[0]` to all four arms with a note
+calling the other forms a rare approximation. `qv.a(int[])` in fact accepts
+exactly 1, 2 or 4 lengths and rejects anything else, and the arm-to-axis mapping
+is legible from the cell list it builds and confirmed by its own debug name
+`"cross-h"+aeD+"b"+aeF+"-g"+aeG+"d"+aeE`:
+
+    aeD = haut   -> (+n, 0)      1 param : all four arms alike
+    aeF = bas    -> (-n, 0)      2 params: face-a-soi (+-x), then cote (+-y)
+    aeG = gauche -> (0, -n)      4 params: haut, bas, gauche, droite
+    aeE = droite -> (0, +n)
+
+The cross is NOT directional (`qv.fi()` returns true), so the arms stay on the
+grid axes - our existing non-directional handling was right about that much.
+
+**Scope, honestly.** A dump of every shape/size combination across the spell AND
+static-effect tables shows shape 3 carries exactly one size in every shipped row,
+so the 2-/4-param work is forward safety rather than a live fix. It still beats
+the status quo: the old code would have produced a WRONG footprint for those
+forms rather than an obviously missing one. Shapes 7 and 10 exist in the client's
+`zg_1` table and remain unimplemented - nothing ships them either.
+
+**Verification.** Arity tables for all three cross forms with per-axis inside and
+outside cases; an exhaustive equivalence test over r=0..3 and dx,dy=-4..4 proving
+the 1-param form - the only one any record uses - behaves exactly as the old
+implementation; and shape-8 coverage of the identity rotation, a quarter turn,
+the zero-direction degradation and a malformed list. Mutation-checked by
+unrouting shape 8 and by dropping the 4-param cross branch.
+
+---
+
 ### B-079 - The "triggeree en zone" effect family was 1 of 6 implemented
 
 Action 177 ("Perte de points de mouvement triggeree en zone") was implemented and

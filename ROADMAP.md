@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-079 (zone-effect family completed) — **Tier 0 complete**
+· **Latest work:** B-080 (AoE shapes completed) — **Tier 0 complete**
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 274 Go files · 479 test functions (72 of them end-to-end
+**Scale reference.** 275 Go files · 482 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -411,13 +411,16 @@ damage — it selects the effect rows the data authored as critical.
 |---|:---:|
 | Point (1) | ✅ |
 | Circle — Manhattan diamond (2) | ✅ |
-| Cross (3) | 🟡 symmetric arms; rare 2-/4-param asymmetric variants approximate with `size[0]` |
+| Cross (3) | ✅ all three arities the client accepts — 1, 2 or 4 arm lengths (`qv`) |
 | Directional T (4) | ✅ orients by the cardinal step from source to centre |
 | Ring / annulus (5) | ✅ |
 | Square / rect (6) | ✅ |
 | Inverted T (9) | ✅ |
 | "All" (32767) | ✅ |
-| Point-list (8) | ⬜ falls through to a single cell |
+| Point-list (8) | ✅ explicit (dx,dy) offsets, rotated by the cast direction (`acg_0`) |
+
+Shapes **7** and **10** exist in the client's `zg_1` table (`nd_1`, `aJF`) and are
+not implemented — no shipped record uses either.
 
 Friendly fire is authentic: an area lands on allies, enemies **and the caster**.
 Expanded targets are re-filtered by each effect's own target conditions.
@@ -994,7 +997,12 @@ is a signing certificate or SignPath); no published Docker image.
     wire message reorders it. See §8.2. Gear initiative already works.
 14. **5203 destructive/lock inventory ops** — currently a re-push stub; would also
     give `CardLocked` its first writer.
-15. **AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.
+15. ~~**AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.~~ —
+    **done (B-080)**. Shape 8 is directional (the client's symmetry flag `fi()`
+    is false for it, as for the T shapes); the cross accepts 1/2/4 arm lengths
+    and is *not* directional (`fi()` true). Only the 1-param cross and one
+    shape-8 row occur in shipped data, so the cross work is forward safety —
+    but it replaces an approximation that would have been silently wrong.
 16. **Matchmaking rating band + queue timeout.**
 17. **Spell `TargetMasks` + `MaxActive`** — decoded, not evaluated. Small payoff
     (3 and 6 spells) but closes the spell record completely.

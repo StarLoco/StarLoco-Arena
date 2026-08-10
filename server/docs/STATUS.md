@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-080 | AoE shape 8 (point-list, directional) implemented; the cross now honours all three arities the client accepts |
 | B-079 | The "triggerée en zone" effect family completed (165-168 elemental, 169 AP; 177 already done). Effect-row coverage 94.2%→94.7% |
 | B-078 | **Tier 0 complete.** Effective AP/MP derived like the client's `gn_0.d`; `StringU8` enforces the 127-byte limit (a remote client-crash vector) |
 | B-077 | Dispel no longer strips summons' innate states; `Coach.Standing` persisted and put on the wire (2052 + 4096) |

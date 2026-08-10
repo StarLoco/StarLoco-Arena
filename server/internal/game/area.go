@@ -23,7 +23,10 @@ const (
 	areaShapeRing   int32 = 5 // diamond annulus [size[0]..size[1]]
 	areaShapeSquare int32 = 6 // filled square/rect, half-extents size[0](,size[1])
 	areaShapeTInv   int32 = 9 // directional: bar size[0] through center + stem size[1] toward target
-	areaShapeEmpty  int32 = 32767
+	// areaShapePointList (8, client acg_0 "forme à base de points") is an explicit
+	// list of (dx,dy) offsets from the centre rather than a parametric shape.
+	areaShapePointList int32 = 8
+	areaShapeEmpty     int32 = 32767
 )
 
 // areaFighters returns every living fighter an effect aimed at `center` (cast
@@ -89,10 +92,7 @@ func pointInArea(shape int32, size []int32, source, center, point Pos) bool {
 	case areaShapeCircle:
 		return abs32(dx)+abs32(dy) <= areaSz(size, 0) // Manhattan diamond (client nw_0)
 	case areaShapeCross:
-		// Symmetric row/column arms of length size[0] (the common 1-param form;
-		// the rare 2-/4-param asymmetric variants approximate with size[0]).
-		r := areaSz(size, 0)
-		return (dx == 0 && abs32(dy) <= r) || (dy == 0 && abs32(dx) <= r)
+		return crossContains(size, dx, dy)
 	case areaShapeRing:
 		lo, hi := areaSz(size, 0), areaSz(size, 1)
 		if hi < lo {
@@ -111,6 +111,8 @@ func pointInArea(shape int32, size []int32, source, center, point Pos) bool {
 		return tZoneContains(source, center, point, areaSz(size, 1), areaSz(size, 0), false)
 	case areaShapeTInv:
 		return tZoneContains(source, center, point, areaSz(size, 1), areaSz(size, 0), true)
+	case areaShapePointList:
+		return pointListContains(source, center, size, dx, dy)
 	default: // point (1), unknown; "all" (32767) is handled by areaFighters
 		return dx == 0 && dy == 0
 	}
@@ -157,4 +159,99 @@ func abs32(v int32) int32 {
 		return -v
 	}
 	return v
+}
+
+// pointListContains implements AoE shape 8 (client acg_0, "forme à base de
+// points"): an explicit list of (dx,dy) offsets from the centre rather than a
+// parametric shape. `acg_0.a(int[])` rejects an odd-length array outright and
+// reads consecutive pairs, and its parameter labels name them x1,y1,x2,y2,…
+// ("Liste de N points").
+//
+// It is DIRECTIONAL. The client's shapes carry a symmetry flag `fi()` — true for
+// the circle and the point, which look the same whichever way you face, and
+// FALSE for the T, the inverted T and this one. The authored offsets are written
+// in a fixed reference frame, which the labels state outright: "prendre l'axe
+// sud-est pour construire". So the list is rotated by the caster→centre cardinal
+// step, exactly as tZoneContains rotates its stem, and a zero direction (caster
+// standing on the centre) degenerates to the centre cell only — the same
+// degradation the T shapes already use.
+//
+// One shipped row uses this: spell 469's action-125 effect, size [0 0 -1 0] —
+// the centre cell plus the cell one step behind it along the reference axis.
+func pointListContains(source, center Pos, size []int32, dx, dy int32) bool {
+	if len(size) < 2 {
+		return dx == 0 && dy == 0 // malformed: degrade to the centre cell
+	}
+	dirX, dirY := cardinalStep(center.X-source.X, center.Y-source.Y)
+	if dirX == 0 && dirY == 0 {
+		return dx == 0 && dy == 0
+	}
+	// Rotate each authored offset from the reference axis (+x) onto the cast
+	// direction. For a cardinal step this is the standard integer rotation:
+	//	(ox,oy) -> (ox*dirX - oy*dirY, ox*dirY + oy*dirX)
+	// which is the identity when the cast runs along +x, and matches the quarter
+	// turns tZoneContains applies for the other three cardinals.
+	for i := 0; i+1 < len(size); i += 2 {
+		ox, oy := size[i], size[i+1]
+		rx := ox*dirX - oy*dirY
+		ry := ox*dirY + oy*dirX
+		if rx == dx && ry == dy {
+			return true
+		}
+	}
+	return false
+}
+
+// crossContains implements AoE shape 3 (client qv, "cross"), which accepts ONE,
+// TWO or FOUR arm lengths — `qv.a(int[])` rejects any other count outright:
+//
+//	1 param  "Croix (deux barres de tailles identiques)"   all four arms alike
+//	2 params "Croix (deux barres de tailles différentes)"  face-à-soi, then côté
+//	4 params "Croix (4 barres de tailles différentes)"     haut, bas, gauche, droite
+//
+// The arm-to-axis mapping is read off the cell list qv builds, and confirmed by
+// its own debug name `"cross-h"+aeD+"b"+aeF+"-g"+aeG+"d"+aeE`:
+//
+//	aeD = haut    -> (+n, 0)
+//	aeF = bas     -> (-n, 0)
+//	aeG = gauche  -> (0, -n)
+//	aeE = droite  -> (0, +n)
+//
+// with the 2-param form assigning aeD=aeF=p0 and aeG=aeE=p1.
+//
+// The cross is NOT directional: `qv.fi()` returns true, the client's
+// symmetry flag (true for the circle and the point, false for the T shapes and
+// the point list), so the arms sit on the grid axes and are not rotated by the
+// cast direction.
+//
+// No shipped record uses the 2- or 4-param forms — every shape-3 row in the
+// spell and static-effect tables carries exactly one size — so this is forward
+// safety rather than a live fix. It replaces an approximation that applied
+// size[0] to all four arms, which would have been silently WRONG for those forms
+// rather than merely unimplemented.
+func crossContains(size []int32, dx, dy int32) bool {
+	if len(size) == 0 {
+		return dx == 0 && dy == 0
+	}
+	up, down, left, right := areaSz(size, 0), areaSz(size, 0), areaSz(size, 0), areaSz(size, 0)
+	switch {
+	case len(size) >= 4:
+		up, down, left, right = size[0], size[1], size[2], size[3]
+	case len(size) >= 2:
+		up, down = size[0], size[0]
+		left, right = size[1], size[1]
+	}
+	switch {
+	case dx == 0 && dy == 0:
+		return true
+	case dy == 0 && dx > 0:
+		return dx <= up
+	case dy == 0 && dx < 0:
+		return -dx <= down
+	case dx == 0 && dy < 0:
+		return -dy <= left
+	case dx == 0 && dy > 0:
+		return dy <= right
+	}
+	return false
 }
