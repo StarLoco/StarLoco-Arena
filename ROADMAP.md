@@ -46,7 +46,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Chat & social | 🟡 | Vicinity/private/channel + friends/ignore; channels have no real scoping |
 | Economy (shop, barter, fusion, trade, mail) | 🟡 | All flows work; fusion recipes are approximated |
 | Fighters, teams, rosters | ✅ | Create/delete/equip/preset/assign, budget enforced from real data |
-| **Fight system** | **🟡** | **Whole 1v1 loop is server-authoritative; see §8 for the 40-item breakdown** |
+| **Fight system** | **🟡** | **Whole 1v1 loop is server-authoritative; 505/533 effect rows resolve; see §8 for the 40-item breakdown** |
 | Progression / META layer | 🟡 | XP, morale, fatigue, wounds, death rolls — client-exact formulas |
 | Evolution mode & graveyard | ✅ | State machine, capacities, resurrection gamble, persistent deaths |
 | PvE challenges | 🟡 | 39/39 records decoded; win conditions + fight-start rules now enforced; opponent rosters are invented |
