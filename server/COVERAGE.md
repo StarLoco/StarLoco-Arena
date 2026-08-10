@@ -295,9 +295,9 @@ missing feature manifests to the client as a *hang*. Prioritized:
   **12 action ids / 31 rows** — see ROADMAP §8.5 for the itemised list.
 - Bet stakes on a fight win (fights carry a bet field but it isn't wagered).
 - In-fight movement (4503) is fully validated (rooted, MP budget, walkable, not
-  destroyed, adjacency, occupancy, stop-on-contact). **Placement (8021) still has
-  no phase guard and no cell validation** — that one is real, and is Tier 0 item
-  1 in the ROADMAP backlog.
+  destroyed, adjacency, occupancy, stop-on-contact). Placement (8021) is gated to
+  the placement phase and to the fighter's own side's free start cells (B-075);
+  before that it was a free mid-fight teleport to any coordinate.
 
 **E2E gaps** (impl + audited, no end-to-end test yet):
 - FighterInformationList (6006), TeamPresetList (6030) round-trips.

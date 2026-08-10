@@ -10,7 +10,7 @@ import (
 // buildFighterBlob builds a minimal et_2 type-1 blob for FighterCreate:
 // [u8 type=1][i16 budget][u8 breed][u8 name][u8 sex][i8 ey=-1][3 colors]
 // [i16 spellLen=0][i16 cardLen=0].
-func buildFighterBlob(name string, breed uint8) []byte {
+func buildFighterBlob(name string, breed uint8, spellIDs ...int32) []byte {
 	w := testclient.NewW()
 	w.U8(1)             // type = info
 	w.U16(0)            // budget
@@ -19,8 +19,14 @@ func buildFighterBlob(name string, breed uint8) []byte {
 	w.U8(0)             // sex (zv)
 	w.U8(0xFF)          // ey = -1 -> colors follow
 	w.U8(1).U8(2).U8(3) // hair, skin, eye
-	w.U16(0)            // spell blob len
-	w.U16(0)            // card blob len
+	// Spell blob: [i16 lengthInBytes][i32 spellId...]. Fighters created with no
+	// spells cannot cast anything — castSpellByFighter refuses a spell the
+	// fighter does not know — so any test that casts must pass them here.
+	w.U16(uint16(len(spellIDs) * 4))
+	for _, id := range spellIDs {
+		w.I32(id)
+	}
+	w.U16(0) // card blob len
 	return w.Bytes()
 }
 

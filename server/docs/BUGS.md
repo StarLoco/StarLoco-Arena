@@ -38,6 +38,73 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-075 - Two anti-cheat holes: placement was a free teleport, casts skipped spell ownership
+
+Both were Tier 0 items on the roadmap. Both were exploitable by a forged packet
+from an otherwise ordinary client session.
+
+**1. MoveToPlacementReq (8021) had no phase guard and no cell validation.** The
+handler checked only that the fighter belonged to the requesting coach, then
+assigned the coordinates verbatim. So the placement opcode worked at ANY time,
+including mid-fight, which made it a free teleport: no MP cost, ignoring
+rooting, tackle, walk-on traps and line of sight. It also accepted any
+coordinate at all - off-map, into scenery or void, onto a cell sudden death had
+destroyed, onto the ENEMY's starting area, or onto a cell another fighter
+already occupied. That last one silently stacks two fighters on one cell and
+corrupts targeting, tackle and LoS for the rest of the fight.
+
+Now gated to PhasePlacement, and the cell must be one of the fighter's OWN
+side's start cells - the same set the server seeded the team from, and the only
+set the client ever offers - and free. The phase is read on the fight ACTOR
+rather than in the handler, because the phase can advance while the message sits
+in the mailbox. Altitude stays unvalidated, matching the movement path: (x,y) is
+the unit of placement and the client owns per-cell z.
+
+**2. castSpellByFighter never checked that the caster knows the spell.** It
+resolved the id straight out of the 203-entry table, so a forged 8109 could fire
+any spell in the game from any fighter. The equipment path (8107) has always
+checked ownership via fighterHasEquipped; this closes the same hole on the spell
+path, in the same place and style (deep, not in the handler - castSpellByFighter
+already re-checks isCurrentTurn even though the handler did, and that
+defence-in-depth is deliberate).
+
+The check has to accept TWO sources, and getting this wrong would have been
+worse than the hole. A real coach fighter casts what it has equipped
+(Fighter.Spells, preloaded by the store on both fighter-load paths). But a
+SERVER-DRIVEN fighter casts its single SummonSpellID - and that covers not only
+summoned creatures but every AI opponent in PvE: challenge demons are built with
+a domain.Fighter for breed and stats and an EMPTY spell list, their one spell
+living in SummonSpellID. A naive "must be in Fighter.Spells" check would have
+muted every demon in the game and broken all 39 challenges.
+
+**Two e2e tests were codifying the defects.**
+
+- TestPlacementMove drove the fight to the ACTION phase and placed from there,
+  onto the arbitrary cell (2,9), with a comment stating outright that "the
+  placement handler has no phase guard". Rewritten to place during placement,
+  onto a legal start cell, plus a new TestPlacementRejectsIllegalCellsAndPhases
+  covering off-map, outside-any-start-area, scenery, the enemy's start cell, and
+  8021 after the phase has passed.
+- TestCombatSpellDamage cast spell id 0 from the synthesized "Champion"
+  placeholder - the fallback fighter the server invents when a coach has none -
+  which owns nothing. It now creates real fighters that own the spell they cast,
+  which is what a real client does.
+
+Fixing them exposed that the combat e2e fixtures never created fighters at all:
+every one of those fights ran on the placeholder. buildFighterBlob now takes
+spell ids, and matchIntoFight lets a test prepare its coaches and stop before
+any phase gate.
+
+**Verification.** Unit tests cover both legitimate spell sources and the demon
+case explicitly; e2e covers legal placement, four illegal cells, wrong-phase
+placement, and a forged cast that must neither damage nor spend AP. Every
+assertion mutation-checked: removing the phase gate, removing the cell
+validation and removing the ownership check each fail the tests that claim to
+cover them. The e2e suite was run three times end to end for flakiness, since a
+shared helper used by nine tests changed.
+
+---
+
 ### B-074 - np_1 rule types 12 and 14 were decoded but nothing consumed them
 B-071/B-073 decoded every 
 p_1 element, including the three type-12 fight-start

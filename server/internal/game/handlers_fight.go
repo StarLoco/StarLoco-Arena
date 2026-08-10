@@ -252,15 +252,67 @@ func handleMoveToPlacement(s *Session, frame *protocol.C2SFrame) error {
 	z, _ := r.U16()
 	cid := s.Coach.ID
 	f.Post(func(f *Fight) {
+		// PHASE GATE. Without this, 8021 is a free teleport: sent during the
+		// action phase it moved a fighter anywhere on the map, at no MP cost,
+		// ignoring rooting, tackle, traps and line of sight. Read here rather
+		// than before Post because the phase can advance while the message sits
+		// in the fight's mailbox, and the actor is the authoritative point.
+		if f.Phase() != PhasePlacement {
+			f.logPlacement("refused: not the placement phase", wireID)
+			return
+		}
 		ff := f.fighterByWireID(wireID)
 		if ff == nil || ff.CoachID != cid {
 			return // not your fighter
 		}
-		ff.Pos = Pos{X: x, Y: y, Z: int16(z)}
+		p := Pos{X: x, Y: y, Z: int16(z)}
+		if !f.placementCellValid(ff, p) {
+			f.logPlacement("refused: illegal placement cell", wireID)
+			return
+		}
+		ff.Pos = p
 		bc, _ := buildPlacementBroadcast(wireID, ff.Pos)
 		f.broadcast(bc)
 	})
 	return nil
+}
+
+// placementCellValid reports whether `ff` may stand on `p` during placement.
+//
+// The client only ever offers a side its OWN start cells — the same set the
+// server seeded the team from at fight creation — so a genuine placement always
+// passes. Everything else was previously accepted: the enemy's starting area,
+// scenery, void, off-map coordinates, and a cell already occupied by another
+// fighter (which silently stacked two fighters on one cell and corrupted
+// targeting, tackle and line of sight for the rest of the fight).
+//
+// Altitude is deliberately NOT validated, matching the movement path: (x,y) is
+// the unit of placement and the client owns per-cell z.
+func (f *Fight) placementCellValid(ff *FightFighter, p Pos) bool {
+	if ff == nil {
+		return false
+	}
+	if !f.Arena().walkable(p.X, p.Y) || f.cellDestroyed(p.X, p.Y) {
+		return false
+	}
+	if f.cellHeldByOther(p, ff) {
+		return false
+	}
+	for _, c := range f.Arena().startCells(ff.TeamID) {
+		if c.X == p.X && c.Y == p.Y {
+			return true
+		}
+	}
+	return false
+}
+
+// logPlacement records a refused placement. Debug, not warn: a client that
+// double-clicks during the phase change produces one legitimately.
+func (f *Fight) logPlacement(why string, wireID int64) {
+	if f.deps == nil || f.deps.Log == nil {
+		return
+	}
+	f.deps.Log.Debug("placement "+why, "fight", f.ID, "wireID", wireID)
 }
 
 func handleReadyForObservation(s *Session, _ *protocol.C2SFrame) error {

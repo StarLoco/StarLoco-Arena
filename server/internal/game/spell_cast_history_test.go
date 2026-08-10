@@ -3,12 +3,27 @@ package game
 import (
 	"testing"
 
+	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
 )
 
 // castFreqFight builds a 1-caster-vs-N-target fight in the action phase whose
 // deps carry the given spell templates, for exercising castSpellByFighter.
 func castFreqFight(caster *FightFighter, enemies []*FightFighter, spells ...*gamedata.Spell) *Fight {
+	// Teach the caster every template it is handed. castSpellByFighter refuses a
+	// spell the fighter does not know, so a fixture that skipped this would be
+	// testing the ownership check rather than the frequency limits.
+	if caster != nil {
+		if caster.Fighter == nil {
+			caster.Fighter = &domain.Fighter{}
+		}
+		for _, sp := range spells {
+			if sp != nil {
+				caster.Fighter.Spells = append(caster.Fighter.Spells,
+					domain.FighterSpell{SpellID: sp.ID})
+			}
+		}
+	}
 	f := &Fight{
 		Teams: [2]*FightTeam{
 			{ID: 0, Fighters: []*FightFighter{caster}},

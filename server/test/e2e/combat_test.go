@@ -7,14 +7,53 @@ import (
 	"github.com/StarLoco/arena-2.70/internal/testclient"
 )
 
+// combatTestSpellID is the spell the combat e2e fighters are created with. The
+// harness has no spell table, so the id resolves to nothing and the cast takes
+// castSpellByFighter's unknown-spell fallback (default AP cost, neutral HP
+// loss) - which is exactly what these tests assert on. It must still be a spell
+// the fighter OWNS.
+const combatTestSpellID int32 = 1
+
 // startFightForCombat runs two clients through matchmaking + all phase gates so
 // they're both in the action phase, returning both clients.
 func startFightForCombat(t *testing.T, addr string) (a, b *testclient.Client) {
 	t.Helper()
-	a, _ = dialLogin(t, addr, "c1", "Combatant1")
+	a, b = matchIntoFight(t, addr, nil)
+	readyGate(a, b, testclient.OpReadyForPlacement)
+	readyGate(a, b, testclient.OpReadyForObservation)
+	_ = a.Send(3, testclient.OpReadyForAction, nil)
+	_ = b.Send(3, testclient.OpReadyForAction, nil)
+	return a, b
+}
+
+// readyGate sends one phase-ready signal from both clients and drains.
+//
+// Generous drains: the fight actor processes ready signals asynchronously, and
+// under -race everything runs ~10x slower.
+func readyGate(a, b *testclient.Client, op uint16) {
+	_ = a.Send(3, op, nil)
+	_ = b.Send(3, op, nil)
+	a.DrainReceived(250 * time.Millisecond)
+	b.DrainReceived(250 * time.Millisecond)
+}
+
+// matchIntoFight logs two clients in, optionally runs `prepare` on each before
+// queueing (to create fighters), and takes them through matchmaking to
+// CREATE_FIGHT — stopping BEFORE any phase gate, so a caller can act during
+// presentation or placement.
+func matchIntoFight(t *testing.T, addr string, prepare func(c *testclient.Client, coachID int64)) (a, b *testclient.Client) {
+	t.Helper()
+	var aID, bID int64
+	a, aID = dialLogin(t, addr, "c1", "Combatant1")
 	reachWorld(t, a)
-	b, _ = dialLogin(t, addr, "c2", "Combatant2")
+	b, bID = dialLogin(t, addr, "c2", "Combatant2")
 	reachWorld(t, b)
+	if prepare != nil {
+		prepare(a, aID)
+		prepare(b, bID)
+		a.DrainReceived(150 * time.Millisecond)
+		b.DrainReceived(150 * time.Millisecond)
+	}
 
 	search := testclient.NewW().U16(1).U16(0).I32(0).Bytes()
 	_ = a.Send(2, testclient.OpSearch, search)
@@ -35,19 +74,6 @@ func startFightForCombat(t *testing.T, addr string) (a, b *testclient.Client) {
 	_, _, _ = b.WaitFor(testclient.OpCreateFight, testclient.DefaultTimeout)
 	a.DrainReceived(150 * time.Millisecond)
 	b.DrainReceived(150 * time.Millisecond)
-
-	// Generous drains: the fight actor processes ready signals asynchronously,
-	// and under -race everything runs ~10x slower.
-	gate := func(op uint16) {
-		_ = a.Send(3, op, nil)
-		_ = b.Send(3, op, nil)
-		a.DrainReceived(250 * time.Millisecond)
-		b.DrainReceived(250 * time.Millisecond)
-	}
-	gate(testclient.OpReadyForPlacement)
-	gate(testclient.OpReadyForObservation)
-	_ = a.Send(3, testclient.OpReadyForAction, nil)
-	_ = b.Send(3, testclient.OpReadyForAction, nil)
 	return a, b
 }
 
@@ -60,7 +86,22 @@ func TestCombatSpellDamage(t *testing.T) {
 			"(server logic itself is race-clean -- internal/game passes -race)")
 	}
 	addr := testServer(t)
-	a, b := startFightForCombat(t, addr)
+	// Both coaches field a real fighter that KNOWS combatTestSpellID. Casting
+	// works through the unknown-spell fallback (this harness builds Deps with a
+	// nil spell table), but the caster must still own the spell — a forged 8109
+	// for an id the fighter never equipped is refused, which is the whole point
+	// of the ownership check. Before this the fight ran on the synthesized
+	// "Champion" placeholder, which owns nothing.
+	a, b := matchIntoFight(t, addr, func(c *testclient.Client, _ int64) {
+		blob := buildFighterBlob("Caster", 8, combatTestSpellID)
+		req := testclient.NewW().U8(0).U16(0).U16(uint16(len(blob))).Raw(blob).Bytes()
+		_ = c.Send(3, testclient.OpFighterCreate, req)
+		_, _, _ = c.WaitFor(testclient.OpFighterCreateResult, testclient.DefaultTimeout)
+	})
+	readyGate(a, b, testclient.OpReadyForPlacement)
+	readyGate(a, b, testclient.OpReadyForObservation)
+	_ = a.Send(3, testclient.OpReadyForAction, nil)
+	_ = b.Send(3, testclient.OpReadyForAction, nil)
 
 	// Drive B in the background: drain it (so its write queue never fills and
 	// back-pressures the fight actor) AND end its turns immediately.
@@ -131,7 +172,7 @@ func TestCombatSpellDamage(t *testing.T) {
 		// fighter we do not own is a harmless no-op, so casting on every turn is
 		// both simpler and correct whichever side we drew.
 		target := enemyStartCell(caster)
-		if err := a.CastSpell(caster, 0, target.x, target.y, target.z); err != nil {
+		if err := a.CastSpell(caster, combatTestSpellID, target.x, target.y, target.z); err != nil {
 			t.Fatalf("cast: %v", err)
 		}
 		// Collect until the flush barrier (8200) ends the cast group, or the

@@ -3,6 +3,7 @@ package game
 import (
 	"testing"
 
+	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
 )
 
@@ -12,8 +13,20 @@ func TestCarryCastGating(t *testing.T) {
 	throwSpell := &gamedata.Spell{ID: 101, AP: 4, RangeMax: 4, Criterion: "canCastWhenCarryEnnemy", Effects: []gamedata.Effect{{ActionID: 59}}}
 	carriedGate := &gamedata.Spell{ID: 103, AP: 2, RangeMax: 4, Criterion: "cantCastWhenCarried", Effects: []gamedata.Effect{{ActionID: 1, Params: []float32{5}}}}
 	freeSpell := &gamedata.Spell{ID: 104, AP: 2, RangeMax: 4, Effects: []gamedata.Effect{{ActionID: 1, Params: []float32{5}}}}
-	carrier := &FightFighter{WireID: 1, TeamID: 0, Pos: Pos{X: 7, Y: 15}, HP: 70, MaxHP: 70, AP: 6, MaxAP: 6}
-	victim := &FightFighter{WireID: 2, TeamID: 1, Pos: Pos{X: 8, Y: 15}, HP: 70, MaxHP: 70, AP: 6, MaxAP: 6}
+	// Both fighters know every spell under test — castSpellByFighter refuses a
+	// spell its caster has not equipped, and this test is about the criterion
+	// tokens, not about ownership.
+	knows := func(ids ...int32) *domain.Fighter {
+		fr := &domain.Fighter{}
+		for _, id := range ids {
+			fr.Spells = append(fr.Spells, domain.FighterSpell{SpellID: id})
+		}
+		return fr
+	}
+	carrier := &FightFighter{WireID: 1, TeamID: 0, Pos: Pos{X: 7, Y: 15}, HP: 70, MaxHP: 70, AP: 6, MaxAP: 6,
+		Fighter: knows(100, 101, 103, 104)}
+	victim := &FightFighter{WireID: 2, TeamID: 1, Pos: Pos{X: 8, Y: 15}, HP: 70, MaxHP: 70, AP: 6, MaxAP: 6,
+		Fighter: knows(100, 101, 103, 104)}
 	f := &Fight{
 		Teams: [2]*FightTeam{{ID: 0, Fighters: []*FightFighter{carrier}}, {ID: 1, Fighters: []*FightFighter{victim}}},
 		deps:  &Deps{Spells: gamedata.NewSpells(carrySpell, throwSpell, carriedGate, freeSpell), Fights: NewFightManager()},

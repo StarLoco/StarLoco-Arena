@@ -5,7 +5,7 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-074 (np_1 types 12 + 14 wired)
+· **Latest work:** B-075 (Tier 0 anti-cheat: placement guard, spell ownership)
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -29,7 +29,7 @@ per-record data audit see
 | ⬜ | **Not started** |
 | ⛔ | **Deliberately not implemented** — with a documented reason (usually: not recoverable from the client) |
 
-**Scale reference.** 270 Go files · 458 test functions (71 of them end-to-end
+**Scale reference.** 271 Go files · 461 test functions (72 of them end-to-end
 over a real socket) · 82 C2S opcode handlers · 96 S2C frames emitted · 189
 opcode constants · 9 of 24 populated client record types decoded.
 
@@ -264,7 +264,7 @@ with a 64-slot mailbox, so no fight state is ever touched under a lock.
 | Per-fight turn clock | ✅ | Read from np_1 rule 10 as a **delta**, not a global (B-072) |
 | Fight creation (8000) | ✅ | Presentation blob, grid tail, coach deck, special-cell list |
 | Observation phase | 🟡 | Exists as a 10 s cue pair with **no mechanic between the cues** |
-| **Placement (8021 → 8022)** | **⚠️** | **No phase guard and no cell validation** — accepts any (x,y,z) at any time from the owning coach. Biggest validation hole in the loop |
+| Placement (8021 → 8022) | ✅ | Gated to the placement phase; the cell must be one of the fighter's own side's start cells and unoccupied (B-075). Altitude deliberately unvalidated, as on the movement path |
 
 ### 8.2 Turn order, timeline & the turn loop ✅
 
@@ -309,9 +309,13 @@ with a 64-slot mailbox, so no fight state is ever touched under a lock.
 stat boost only when base `RangeMax > 1` and the spell is not
 `RangeNotBoostable` (5 spells), `OnlyLine`, `NeedFreeCell`, `TestLoS`.
 
-**⚠️ Anti-cheat hole:** `castSpellByFighter` **never checks that the caster knows
-the spell**. A forged 8109 can cast any spell id in the table. (The weapon path
-*does* check ownership.)
+**Spell ownership** ✅ — `castSpellByFighter` requires the caster to own the
+spell (B-075), closing the hole where a forged 8109 could fire any of the 203
+spells from any fighter. Two legitimate sources: a coach fighter's equipped
+`Fighter.Spells`, or a server-driven fighter's single `SummonSpellID`. The
+second is not an edge case — PvE challenge demons carry a `domain.Fighter` for
+breed and stats with an **empty** spell list, so a check against `Fighter.Spells`
+alone would have muted every demon in the game.
 
 ### 8.5 Spell effect coverage — measured 🟡
 
@@ -896,11 +900,13 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 0 — correctness & anti-cheat (cheap, high value)
 
-1. **Placement phase has no guard at all** — no phase check, no walkable/destroyed/
-   occupied check, no "must be one of your side's start cells". Any coordinate is
-   accepted at any time.
-2. **Spell casts do not check spell ownership** — a forged 8109 can cast any spell
-   in the table. (The weapon path already checks.)
+1. ~~**Placement phase has no guard at all**~~ — **done (B-075)**. Gated to the
+   placement phase, and the cell must be one of the fighter's own side's start
+   cells and free.
+2. ~~**Spell casts do not check spell ownership**~~ — **done (B-075)**. The
+   caster must own the spell (`Fighter.Spells`) or be a server-driven fighter
+   casting its `SummonSpellID` — the latter matters, because challenge demons
+   carry an empty spell list and would otherwise have been muted.
 3. **Forced displacement does not trigger walk-on traps** — push, pull, teleport,
    swap and throw all bypass the check.
 4. **Dispel strips infinite states**, permanently removing a summon's innate

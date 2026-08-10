@@ -400,6 +400,36 @@ func handleSpellCast(s *Session, frame *protocol.C2SFrame) error {
 	return nil
 }
 
+// fighterKnowsSpell reports whether `ff` is allowed to cast `spellID` at all.
+//
+// Two legitimate sources, because this server has two kinds of caster:
+//
+//   - A real coach fighter casts what it has equipped (`Fighter.Spells`, capped
+//     at maxFighterSpells and chosen at creation).
+//   - A SERVER-DRIVEN fighter casts its single `SummonSpellID`. That covers both
+//     summoned creatures (from the type-300 template) and the AI opponents in
+//     PvE challenges — challenge demons are built with a `domain.Fighter` for
+//     their breed and stats but an EMPTY spell list, their one spell living in
+//     SummonSpellID. Checking only `Fighter.Spells` would therefore have muted
+//     every demon in the game and broken all 39 challenges.
+func fighterKnowsSpell(ff *FightFighter, spellID int32) bool {
+	if ff == nil {
+		return false
+	}
+	if ff.SummonSpellID != 0 && ff.SummonSpellID == spellID {
+		return true
+	}
+	if ff.Fighter == nil {
+		return false
+	}
+	for _, sp := range ff.Fighter.Spells {
+		if sp.SpellID == spellID {
+			return true
+		}
+	}
+	return false
+}
+
 // castSpellByFighter runs a spell cast for `caster` at `target`: it validates AP
 // and targeting (range/only-line/free-cell/LoS), broadcasts SPELL_CAST, debits AP
 // (silent), resolves every effect (each broadcasting its own RUNNING_EFFECT), and
@@ -408,6 +438,18 @@ func handleSpellCast(s *Session, frame *protocol.C2SFrame) error {
 // (which drives its own summon directly). It must run on the fight goroutine.
 func (f *Fight) castSpellByFighter(caster *FightFighter, spellID int32, target Pos) bool {
 	if caster == nil || !f.isCurrentTurn(caster.WireID) {
+		return false
+	}
+	// The caster must actually KNOW the spell. Without this a forged 8109 could
+	// cast any id in the 203-spell table from any fighter — the whole table is
+	// reachable through f.deps.Spells, so a level-1 fighter could fire a boss
+	// spell. The equipment path (8107) has always checked ownership this way
+	// (fighterHasEquipped); this closes the same hole on the spell path.
+	if !fighterKnowsSpell(caster, spellID) {
+		if f.deps != nil && f.deps.Log != nil {
+			f.deps.Log.Debug("spell cast refused: caster does not know this spell",
+				"fight", f.ID, "wireID", caster.WireID, "spell", spellID)
+		}
 		return false
 	}
 	// Resolve AP cost + spell template (fallback for an unknown spell / absent

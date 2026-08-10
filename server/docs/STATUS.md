@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-075 | Two anti-cheat holes closed: 8021 placement was a free teleport to any cell at any time; spell casts never checked the caster owned the spell |
 | B-074 | np_1 types 12 + 14 wired: fight-start effects and victory conditions now drive fights (12 of 39 challenges); target-condition bits 512/1024 added |
 | DIST | Shipping pipeline: automated releases, self-writing config, web sign-up, update notice (§10) |
 | B-073 | Challenges 39/39: inline unlength-prefixed effects now parsed exactly |
