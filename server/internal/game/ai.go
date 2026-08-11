@@ -296,7 +296,7 @@ func aiEffectHarms(ef gamedata.Effect) bool {
 // predictable and cheap to reason about; the cost is that the AI declines a cast
 // that a human might judge worth it. Uses the caster's CURRENT position, which is
 // where chooseAISpell is called from, so the directional shapes resolve exactly.
-func (f *Fight) aiWouldHitOwnTeam(caster *FightFighter, sp *gamedata.Spell, center Pos) bool {
+func (f *Fight) aiWouldHitOwnTeam(caster *FightFighter, from Pos, sp *gamedata.Spell, center Pos) bool {
 	if caster == nil || sp == nil {
 		return false
 	}
@@ -304,13 +304,45 @@ func (f *Fight) aiWouldHitOwnTeam(caster *FightFighter, sp *gamedata.Spell, cent
 		if !aiEffectHarms(ef) {
 			continue
 		}
-		for _, v := range f.areaFighters(caster, ef, center) {
+		for _, v := range f.areaFightersFrom(caster, from, ef, center) {
 			if v != nil && v.HP > 0 && v.TeamID == caster.TeamID {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// aiSpellCastableFrom is THE predicate: could ff, standing at `from`, legally and
+// sensibly cast sp at target right now?
+//
+// There must be exactly one of these. Positioning and casting used to ask
+// different questions — moveIntoSpellRange only checked range/validity while
+// chooseAISpell also checked cooldown, frequency and friendly fire — and a spell
+// that passed the first but failed the second FROZE the fighter: it would not
+// move, believing it could fire, and then would not cast. That is not
+// hypothetical, it stalled a live 5v4 for eight rounds. The Cra's spell 3 reaches
+// 5-8 cells, so at distance 8 it "could fire"; its best spell (18) was on its
+// 1-turn cooldown, and nothing else was in range, so the fighter stood still with
+// full AP and MP.
+func (f *Fight) aiSpellCastableFrom(ff *FightFighter, from Pos, sp *gamedata.Spell, target *FightFighter) bool {
+	if ff == nil || sp == nil || target == nil {
+		return false
+	}
+	if !aiSpellHarmsEnemy(sp) {
+		return false
+	}
+	if aiSpellAPCost(sp) > ff.AP {
+		return false
+	}
+	if !ff.CastHistory.canCast(sp.LimitKeyID(), sp.Cooldown, sp.CastMaxPerTurn,
+		sp.CastMaxPerTarget, f.tableTurn, target.WireID, true) {
+		return false
+	}
+	if !f.spellTargetValidFrom(ff, from, sp, target.Pos) {
+		return false
+	}
+	return !f.aiWouldHitOwnTeam(ff, from, sp, target.Pos)
 }
 
 // chooseAISpell picks the best spell to cast at `target` from where the fighter
@@ -330,23 +362,10 @@ func (f *Fight) chooseAISpell(ff *FightFighter, target *FightFighter) int32 {
 	var bestID, bestDmg, bestCost int32
 	for _, id := range f.aiRepertoire(ff) {
 		sp := f.deps.Spells.Get(id)
-		if sp == nil || !aiSpellHarmsEnemy(sp) {
+		if sp == nil || !f.aiSpellCastableFrom(ff, ff.Pos, sp, target) {
 			continue
 		}
 		cost := aiSpellAPCost(sp)
-		if cost > ff.AP {
-			continue
-		}
-		if !ff.CastHistory.canCast(sp.LimitKeyID(), sp.Cooldown, sp.CastMaxPerTurn,
-			sp.CastMaxPerTarget, f.tableTurn, target.WireID, true) {
-			continue
-		}
-		if !f.spellTargetValid(ff, sp, target.Pos) {
-			continue
-		}
-		if f.aiWouldHitOwnTeam(ff, sp, target.Pos) {
-			continue // would splash an ally (or itself)
-		}
 		dmg, _, ok := sp.Damage()
 		if !ok {
 			dmg = 0
@@ -396,10 +415,7 @@ func (f *Fight) aiCanFireFrom(ff *FightFighter, from Pos, target *FightFighter) 
 	}
 	for _, id := range f.aiRepertoire(ff) {
 		sp := f.deps.Spells.Get(id)
-		if sp == nil || !aiSpellHarmsEnemy(sp) || aiSpellAPCost(sp) > ff.AP {
-			continue
-		}
-		if f.spellTargetValidFrom(ff, from, sp, target.Pos) {
+		if sp != nil && f.aiSpellCastableFrom(ff, from, sp, target) {
 			return true
 		}
 	}
@@ -417,6 +433,12 @@ func (f *Fight) aiFiringGap(ff *FightFighter, from Pos, target *FightFighter) in
 	for _, id := range f.aiRepertoire(ff) {
 		sp := f.deps.Spells.Get(id)
 		if sp == nil || !aiSpellHarmsEnemy(sp) || aiSpellAPCost(sp) > ff.AP {
+			continue
+		}
+		// Skip one it could not cast even standing in the perfect spot, so it does
+		// not walk toward a spell that is on cooldown or out of casts.
+		if !ff.CastHistory.canCast(sp.LimitKeyID(), sp.Cooldown, sp.CastMaxPerTurn,
+			sp.CastMaxPerTarget, f.tableTurn, target.WireID, true) {
 			continue
 		}
 		g := firingGap(from, target.Pos, int32(sp.RangeMin), spellEffectiveMaxRange(ff, sp))

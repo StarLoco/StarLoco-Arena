@@ -36,6 +36,18 @@ const (
 // lands on allies AND enemies AND the caster if they fall in the zone (authentic
 // friendly-fire — you position to spare your team).
 func (f *Fight) areaFighters(caster *FightFighter, ef gamedata.Effect, center Pos) []*FightFighter {
+	var src Pos
+	if caster != nil {
+		src = caster.Pos
+	}
+	return f.areaFightersFrom(caster, src, ef, center)
+}
+
+// areaFightersFrom is areaFighters evaluated from an ARBITRARY origin rather than
+// the caster's current cell. Only the directional shapes actually read the
+// origin, but the AI needs it to ask "who would this catch if I cast it from over
+// there?" while planning a move, without having to move first.
+func (f *Fight) areaFightersFrom(caster *FightFighter, from Pos, ef gamedata.Effect, center Pos) []*FightFighter {
 	shape := ef.AreaShape
 	// Point, unknown, or a zone shape with no radius/size -> only the fighter on
 	// the target cell. This aim was already validated by the client, so it is NOT
@@ -55,7 +67,7 @@ func (f *Fight) areaFighters(caster *FightFighter, ef gamedata.Effect, center Po
 	if shape == areaShapeEmpty {
 		candidates = f.livingFighters()
 	} else {
-		src := caster.Pos
+		src := from
 		for _, ff := range f.allFighters() {
 			if ff.HP > 0 && pointInArea(shape, ef.AreaSize, src, center, ff.Pos) {
 				candidates = append(candidates, ff)
