@@ -190,13 +190,15 @@ func (c *Cards) Len() int { return len(c.byID) }
 //	[i8 count]{i8 currencyType, i32 amount} (field 5, the shop "tokenValue"),
 //	... (remaining fields skipped).
 //
-// decodeCoachCard parses an aPp record through field 18 (rank), matching the
-// client's aPp deserializer field for field.
+// decodeCoachCard parses an aPp record in full, matching the client's aPp
+// deserializer field for field.
 //
-// Fields 19-26 are left unread: field 19 is an `np_1[]` array whose element layout
-// would have to be decoded first, and everything after it (fusion power/quality,
-// pet model, colour slot/palette) sits behind it. They are listed in
-// docs/DATA-COVERAGE.md rather than silently ignored.
+// The record is read to the END, including the 19-26 tail (the `np_1[]`
+// parameters, fusion power/quality, pet model, colour slot/palette). That tail
+// used to be unreachable because the `np_1` element layout was unknown; it was
+// decoded in B-071/B-073. Nothing in this record references a spell — the last
+// field, `tE()`, is the colour PALETTE index (the client builds the style class
+// as `"fighterColor" + tE()`), not a link to anything castable.
 func decodeCoachCard(data []byte) (*CoachCard, error) {
 	return decodeCoachCardCursor(&cur{b: data})
 }

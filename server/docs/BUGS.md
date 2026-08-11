@@ -13,30 +13,35 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### Which spell ids belong in the coach action deck
+### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
-The wrong-namespace half of this is FIXED (B-088): the blob no longer emits card
-ids, and the deck is empty, which is the correct output because nothing in the
-shipped data grants a coach an action spell. What is still unknown is where the
-grant comes from, i.e. what should eventually populate
-`coachActionDeckSpellIDs`.
+The wrong-namespace half is fixed (B-088). The remaining question was what should
+populate `coachActionDeckSpellIDs`. Answer: **nothing does, in this build** — so
+the empty deck is the complete and correct behaviour, not a stub awaiting work.
 
-Ruled out so far: `zd_2` (the Masqueraider mask picker — only the 5 parented
-spells 471/472/473→462, 474/475→452), `aJt.Qx()` (a SUMMON's spell list —
-`ta_0`'s error string says *"SummonedFighter"*), `agp` (np_1 **type 12**, the
-fight-start effect, already implemented), and `np_1` type 27 *"Ajouter un sort de
-coach"*, which appears on no shipped coach card.
+Every mechanism that could grant a coach an action spell was followed to ground:
 
-Best remaining leads: **breed 0**, the only non-breed spell group, with **44**
-spells including obvious coach utility (432 = a range-0 heal of 40 for 3 AP); and
-the card record's unread tail after the `np_1[]` (`UH` i16, `UI` u8, `UJ` i32,
-`UK` u8, `tg` i32 — we stop at `Unknown19/20` = `UF`/`UG`), where `eh_2` passes
-`tg` to `xj` as the last constructor argument.
+- **`np_1` type 27**, literally *"Ajouter un sort de coach"* — appears on **no**
+  shipped coach card. The 13 rule types that do appear are catalogue entries with
+  no operands.
+- **`azk.h()` / `azk.i()`**, which bucket castables by breed 99 / 98 (`xq` is the
+  breed enum: `axT(98)`, `axU(99)`), and **`azk.aLO()`**, which would draw up to 3
+  at random from the breed-99 bucket — **none of the three has a single caller**,
+  so the buckets are never filled and the draw never runs.
+- **The coach card record** carries no spell reference. It is decoded to the end;
+  its last field `tE()` is the colour PALETTE index (the client builds
+  `"fighterColor" + tE()`), not a link to anything castable.
+- **`zd_2`** is the Masqueraider mask picker (only the 5 parented spells
+  471/472/473→462, 474/475→452), and **`aJt.Qx()`** is a SUMMON's spell list
+  (`ta_0`'s own error string says *"SummonedFighter"*).
 
-The play path itself is NOT missing: the deck is exposed as `"coachSpellInventory"`
-(a list of `yp_2`) and played with **8109**, the ordinary spell cast. When the
-source is found, the cast handler will also need to accept a deck spell the
-FIGHTER does not know (`fighterKnowsSpell`), since it belongs to the coach.
+The client-side feature is fully built — the deck is exposed as
+`"coachSpellInventory"` and played with **8109**, the ordinary spell cast — but
+2.70 ships no data to fill it. If a source is ever found or invented, the only
+change needed is the candidate list in `coachActionDeckSpellIDs`; the filter, cap
+and wire format are already right, and the cast handler would then also need to
+accept a deck spell the FIGHTER does not know (`fighterKnowsSpell`), since it
+belongs to the coach.
 
 - **The coach META layer is only PARTLY built.** Slice 1 — XP, morale, fatigue and
   coach reputation — landed in B-065. Still missing: the wound roll, the death roll

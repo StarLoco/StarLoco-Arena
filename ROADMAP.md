@@ -1229,16 +1229,17 @@ is a signing certificate or SignPath); no published Docker image.
     Cards and spells are **separate registries** — `eh_2` loads type-100 records
     into `la_0.XJ()` as `xj`, `apS` loads type-220 into `je_1.Wa()` as `yp_2` —
     so a card id in that blob can only ever miss.
-    **Open: which spell ids belong in the deck.** Ruled out this session: `zd_2`
+    **Closed: nothing populates it in this build.** `np_1` type 27 (*"Ajouter un
+    sort de coach"*) appears on no card; `azk.h()`/`i()` (the breed-99/98 buckets)
+    and `azk.aLO()` (a random draw of 3 from them) have **no callers at all**; and
+    the card record carries no spell reference — its last field is the colour
+    palette index. So the empty deck is complete and correct, not a stub. Also
+    ruled out: `zd_2`
     (the Masqueraider mask picker — only the 5 parented spells 471/472/473→462,
     474/475→452), `aJt.Qx()` (a SUMMON's spells — `ta_0` says *"SummonedFighter"*),
     and `agp` (np_1 **type 12**, the fight-start effect, already implemented).
-    np_1 type 27 is literally *"Ajouter un sort de coach"* but appears on **no**
-    shipped card. Most likely pool: **breed 0**, the only non-breed group, with
-    **44 spells** including obvious coach utility (432 = range-0 heal of 40 for
-    3 AP). The card record also has unread tail fields after the `np_1[]` (`UH`
-    i16, `UI` u8, `UJ` i32, `UK` u8, `tg` i32 — we stop at `Unknown19/20`).
-    See BUGS.md for the live test that would confirm the bug.
+    See BUGS.md *"Coach action deck — nothing populates it in the 2.70 build"*
+    for the full elimination trail.
 20. **Card staking / bets** on a fight.
 21. **Evolution per-fighter death chance** (currently: all downed fighters die).
 22. **Fusion recipe table** — decode record type 1100 and replace the flat 60 % roll.
