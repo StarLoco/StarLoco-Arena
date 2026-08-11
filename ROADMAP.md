@@ -705,9 +705,15 @@ becomes AI-driven the moment the coach drops mid-fight, carrying whatever the
 player equipped, and only 3 shipped spells have an enforced ally-only mask — so
 without the gate the AI would cheerfully heal the enemy it was attacking (B-084).
 
+The AI also **will not end a move on a Killer tile** (`aiCellIsSuicide`), which
+kills whoever starts a turn on it. Watched live: a Xelor closing on the player's
+team stepped onto one and was dead the next turn, because movement scoring only
+measured distance. Passing OVER one is still allowed - it fires at turn start -
+and the Trap tile is deliberately not avoided, since 10 HP is a cost to weigh
+rather than certain death.
+
 **What the AI cannot do:** heal or buff allies; summon; place traps; focus-fire
-cooperatively; consider AoE friendly fire, traps, special cells or sudden-death
-safety; move diagonally. There are no difficulty tiers. Still the biggest
+cooperatively; consider trap tiles or sudden-death safety; move diagonally. There are no difficulty tiers. Still the biggest
 gameplay-quality lever left, but the two largest pieces — the single-spell limit
 and never attacking — are now gone.
 
@@ -1158,9 +1164,11 @@ is a signing certificate or SignPath); no published Docker image.
     **close combat with leftover AP** (a spell-less fighter used to do nothing
     whatsoever), and two guards that the repertoire itself made necessary —
     never aiming a support spell at an enemy (B-084) and never splashing its own
-    team with an area spell (B-085). Still open: healing/buffing allies,
-    summoning, placing traps, cooperative focus-fire, trap and sudden-death
-    awareness, diagonal pathfinding, difficulty tiers.
+    team with an area spell (B-085), one shared castability predicate so
+    positioning and casting cannot disagree and freeze the fighter (B-086), and
+    not walking onto Killer tiles. Still open: healing/buffing allies, summoning,
+    placing traps, cooperative focus-fire, trap-tile and sudden-death awareness,
+    diagonal pathfinding, difficulty tiers.
 19. **Coach action cards in fight** — the deck is already rendered by the client
     and is completely unplayable.
 20. **Card staking / bets** on a fight.

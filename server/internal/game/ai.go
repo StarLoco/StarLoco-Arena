@@ -539,6 +539,27 @@ func (f *Fight) retreatFromOpponents(ff *FightFighter) {
 	}
 }
 
+// aiCellIsSuicide reports whether ENDING a move on this cell would kill the
+// fighter outright. Today that is the Killer tile (template 1002): whoever starts
+// its turn there dies with no save and no resistance
+// (applyTurnStartSpecialCell).
+//
+// Watched live: a Xelor walked onto one mid-approach and was dead at the start of
+// its next turn. Nothing in the movement scoring knew the cell existed — it only
+// measured distance — so the AI would keep doing it.
+//
+// Only the DESTINATION matters: a Killer tile fires at turn start, so passing
+// over one is harmless. The Trap tile (1003) is deliberately not included: it
+// costs 10 HP, which is a cost to weigh rather than a certain death, and refusing
+// to path near it would distort movement far more than the damage is worth.
+func (f *Fight) aiCellIsSuicide(p Pos) bool {
+	sc, _, ok := f.Arena().specialAt(p.X, p.Y)
+	if !ok {
+		return false
+	}
+	return specialCellByTemplate[sc.Template] == specialCellKiller
+}
+
 // orderedReachablePaths returns every reachable-cell path (from reachableCells)
 // in a deterministic order (shorter routes first, then by destination coords),
 // so the AI's "first strictly-better wins" tie-breaks are stable across the map's
@@ -547,7 +568,7 @@ func (f *Fight) orderedReachablePaths(ff *FightFighter, mp int32) [][]Pos {
 	reachable := f.reachableCells(ff, ff.Pos, mp)
 	paths := make([][]Pos, 0, len(reachable))
 	for _, p := range reachable {
-		if len(p) > 0 {
+		if len(p) > 0 && !f.aiCellIsSuicide(p[len(p)-1]) {
 			paths = append(paths, p)
 		}
 	}

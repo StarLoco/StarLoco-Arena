@@ -38,6 +38,47 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-086 - The AI froze: positioning and casting disagreed about what was castable
+
+**Third self-inflicted bug from the repertoire work, found by watching a live
+5v4 stall for eight rounds** - every demon on full AP and full MP, doing nothing
+at all.
+
+`moveIntoSpellRange` asked "could I cast anything from there?" using harm,
+affordability and the targeting validator. `chooseAISpell` asked the same
+question PLUS cooldown, cast-frequency limits and friendly fire. A spell that
+passed the first and failed the second froze the fighter: it would not move,
+believing it could already fire, and then would not cast.
+
+**The live case was exact.** The Cra's spell 3 reaches 5-8 cells and its nearest
+enemy stood at distance 8, so "it could fire". Its best spell (18, d38) was on
+its 1-turn cooldown and everything else was range 2-5, so nothing was actually
+castable - and it stood still, every turn.
+
+**Fix.** `aiSpellCastableFrom` is now THE predicate, used by `chooseAISpell`
+(from the caster's own cell) and `aiCanFireFrom` (from each candidate cell), so a
+plan and the action that follows it cannot disagree. `aiFiringGap` also skips a
+spell on cooldown or out of casts, so the AI does not walk toward one it could
+not cast even from the perfect spot. `areaFighters` gained an explicit-origin
+variant so the friendly-fire question can be asked about a cell not yet moved to.
+
+Same class as making positioning consult the real targeting validator - and a
+reminder that fixing that for RANGE only was half the job.
+
+**Verified:** `live` - re-running the same challenge, all four demons now spend
+their MP closing in (mp=0/3) where before they sat at mp=3/3 for eight rounds.
+`unit` - TestAIDoesNotFreezeWhenTheOnlyInRangeSpellIsUncastable, mutation-checked
+against the weaker positioning predicate.
+
+Also in this pass: the AI **will not end a move on a Killer tile**
+(`aiCellIsSuicide`). Watched live in the same fight - a Xelor closing on the
+player's team stepped onto one and was dead at the start of its next turn,
+because movement scoring only measured distance. Passing OVER one is still
+allowed, since it fires at turn start; the Trap tile is deliberately not avoided,
+as 10 HP is a cost to weigh rather than certain death, and refusing to path near
+it would distort movement more than the damage is worth.
+(`unit` - TestAIWillNotWalkOntoAKillerCell, mutation-checked.)
+
 ### B-085 - The AI would nuke its own team with area spells
 
 **Self-inflicted, same review pass as B-084.** Friendly fire here is real and
