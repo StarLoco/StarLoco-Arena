@@ -6,9 +6,15 @@ import (
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
-// Combat defaults (used until real spell gamedata is wired in). The fallback
-// damage is deliberately small: fighters have breed-scale HP (~60-80, see
-// breed.go), so a big default would one-shot them and desync death timing.
+// Combat fallbacks for when a spell cannot be resolved from gamedata — an
+// unknown spell id, or a server started without the data files at all. Real
+// spell data IS wired in (this comment used to say "until"), so these only apply
+// on that fallback path; `defaultMPPerCell` is the exception and is the live
+// movement cost.
+//
+// The fallback damage is deliberately small: fighters have breed-scale HP
+// (~60-80, see breed.go), so a big default would one-shot them and desync death
+// timing.
 const (
 	defaultSpellAPCost = 3
 	defaultSpellDamage = 15

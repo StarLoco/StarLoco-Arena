@@ -34,18 +34,29 @@ validation step.
 ```powershell
 go build ./...
 go test ./...
-go run ./cmd/server                 # listens on 127.0.0.1:5555
-go run ./cmd/server --addr :5555    # all interfaces
+go run ./cmd/server                              # listens on 0.0.0.0:5555
+go run ./cmd/server --config configs/config.sqlite.yaml
+go run ./cmd/server --data "C:\path\to\DofusArena"
 ```
 
+The listen address is a config key (`addr`), not a flag — the first run writes a
+fully commented `config.yaml` next to the binary. The three flags are `--config`,
+`--data` and `--version`.
+
 The retail client already ships pointed at `127.0.0.1:5555`
-(`client config.properties → proxyAddresses_1`), so it connects with no change.
+(`client config.properties → proxyAddresses_1`), so it connects with no change;
+the server binds `0.0.0.0` by default so other machines can reach it too.
 
 ## Layout
 
 ```
-cmd/server              entrypoint
+cmd/server              entrypoint (config, data discovery, wiring)
+cmd/studio              Wails desktop data browser (Windows; excluded from releases)
 internal/protocol       frame codec, opcodes, big-endian read/write buffer
 internal/handshake      version + auth message decode/encode
-internal/net            TCP server + session loop
+internal/game           the game server: sessions, world, fights, economy
+internal/gamedata       .bdat / maps decoders
+internal/store          persistence (SQLite / PostgreSQL / MySQL)
+internal/config         self-writing YAML config
+internal/web            browser sign-up portal
 ```

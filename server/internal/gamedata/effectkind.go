@@ -24,7 +24,7 @@ const (
 	KindLeech        // HP leech 6-10: damage the target, heal the caster the same
 	KindHeal         // 69 "Soin"
 	KindPercentHP    // 125 HP loss as a % of the target's MAX HP
-	KindPoison       // 61 poison HP loss (resolved as immediate damage for now)
+	KindPoison       // 61 poison: a real per-round DoT (immediate first tick, then a fresh roll each table turn)
 	KindScaledAP     // 151/156/158/160/162 neutral+elem damage scaled by caster AP
 	KindScaledMP     // 152/157/159/161/163 neutral+elem damage scaled by caster MP
 	KindInstantDeath // 63 "Mort instantanée"
@@ -57,9 +57,16 @@ const (
 	// KindBuff is a timed characteristic buff/debuff/gain/loss (CharacBuff /
 	// CharacGain / CharacDebuff / CharacLoss family). The resolver renders every
 	// one (so the client shows the buff icon + timer for its Duration turns) and
-	// fully models the RESOURCE buffs (AP/MP/HP/Range — see BuffResource); the
-	// pure-stat buffs (resistances, damage %, crit, dodge, initiative, …) are
-	// rendered but not consumed by the current flat-damage combat model.
+	// fully models the RESOURCE buffs (AP/MP/HP/Range — see BuffResource).
+	//
+	// The pure-stat buffs are consumed too, and have been since the elemental
+	// damage model landed: resistances (flat and %), damage (flat and %),
+	// all-element res/damage %, AP/MP-loss resistance, damage rebound, heal
+	// power, crit/fumble rate, block and dodge all feed the combat formulas.
+	// What stays render-only is the genuinely inert set — initiative above all
+	// (no shipped spell grants it, and nothing re-sorts the timeline mid-fight;
+	// see ROADMAP §8.2) — plus a few exotic ids. This comment used to say the
+	// whole stat family was unconsumed.
 	KindBuff
 
 	// KindTrap places a persistent ground-effect area (trap/glyph): action 66

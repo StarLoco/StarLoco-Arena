@@ -1096,31 +1096,32 @@ is a signing certificate or SignPath); no published Docker image.
 
 ---
 
-## 14. Documentation hygiene (found while compiling this)
+## 14. Documentation hygiene
 
-Stale claims that will actively mislead the next person. **Fixed rows are struck
-through** — the rest are still open.
+Stale claims that will actively mislead the next person. **Struck-through rows are
+fixed**; the list is kept rather than deleted so it stays auditable.
 
-| Where | Says | Reality |
+| Where | Said | Reality |
 |---|---|---|
-| ~~`server/COVERAGE.md` "Fight feature gaps"~~ | ~~"only single-target HP-loss resolves…"~~ | **Fixed 2026-08-10.** Every clause was false — 94 % of effect rows resolve |
-| ~~`server/COVERAGE.md`~~ | ~~"E2E suite: 44 top-level tests"~~ | **Fixed 2026-08-10** → 70 |
-| ~~`server/COVERAGE.md`~~ | ~~lists `4321 EndFightDone`~~ | **Fixed 2026-08-10** → 26321 |
-| ~~`server/docs/DATA-COVERAGE.md`~~ | ~~"8 of 24 populated types decoded"; type 902 ❌~~ | **Fixed** (B-073 pass) → 9 of 24 |
-| ~~`internal/game/fightrules.go`~~ | ~~bonus-cell multiplier "not consumed yet"~~ | **Fixed 2026-08-10** (B-074 pass) |
-| ~~`internal/game/target_conditions.go`~~ | ~~credits the validator to `aap.a`~~ | **Fixed (B-074)** — it ports `aLc.a`; `aap` is a different validator, and the misattribution cost real time |
-| `internal/game/postfight.go`, `postfight_apply.go` | wound/death rolls "deliberately NOT run yet" | They run |
-| `internal/game/cardsets.go` | "resurrection is the only one this server implements" | Nine set-bonus families are wired |
-| `internal/gamedata/effectkind.go` | poison "resolved as immediate damage for now" | It is a real per-round DoT |
-| `internal/gamedata/effectkind.go` | stat buffs "not consumed by the current flat-damage combat model" | Resistances, damage %, crit and dodge *are* consumed; only initiative and a few exotic ids remain render-only |
-| `internal/game/elements.go` | Challenge/DemonChallenge/BreedMaster/DemonTotem/TournamentTotem "deliberately NOT spawned yet"; mailbox "NOT implemented yet" | All are spawned; the mailbox is complete |
-| `internal/game/handlers_fight_combat.go` | "Combat defaults (used until real spell gamedata is wired in)" | Gamedata is wired in; these are an absent-data fallback |
-| `server/README.md` | lists `internal/net`; default addr `127.0.0.1:5555`; an `--addr` flag | No such package; default is `0.0.0.0:5555`; no such flag |
-| `server/docs/STATUS.md` §7 vs `CLIENT-TESTING.md` | "clicks reach AWT/Swing dialogs only, not the GLCanvas" | `CLIENT-TESTING.md` explicitly retracts this as false |
-| `client/analysis/opcodes.md` | "little-endian" | Everything else — and the code — says big-endian |
+| ~~`server/COVERAGE.md` "Fight feature gaps"~~ | ~~"only single-target HP-loss resolves…"~~ | **Fixed 2026-08-10.** Every clause was false — 94.7 % of effect rows resolve |
+| ~~`server/COVERAGE.md`~~ | ~~"E2E suite: 44 top-level tests"~~ | **Fixed** → 72 |
+| ~~`server/COVERAGE.md`~~ | ~~lists `4321 EndFightDone`~~ | **Fixed** → 26321 |
+| ~~`server/docs/DATA-COVERAGE.md`~~ | ~~"8 of 24 populated types decoded"; type 902 ❌~~ | **Fixed** → 9 of 24 |
+| ~~`internal/game/fightrules.go`~~ | ~~bonus-cell multiplier "not consumed yet"~~ | **Fixed** |
+| ~~`internal/game/target_conditions.go`~~ | ~~credits the validator to `aap.a`~~ | **Fixed (B-074)** — it ports `aLc.a`; the misattribution cost real time |
+| ~~`internal/game/postfight.go`, `postfight_apply.go`~~ | ~~wound/death rolls "deliberately NOT run yet"~~ | **Fixed 2026-08-10** — they run (B-066) |
+| ~~`internal/game/cardsets.go`~~ | ~~"resurrection is the only one this server implements"~~ | **Fixed 2026-08-10** — nine families, 14 call sites |
+| ~~`internal/gamedata/effectkind.go`~~ | ~~poison "resolved as immediate damage for now"~~ | **Fixed 2026-08-10** — a real per-round DoT |
+| ~~`internal/gamedata/effectkind.go`~~ | ~~stat buffs "not consumed by the current flat-damage combat model"~~ | **Fixed 2026-08-10** — they are; only initiative and a few exotic ids stay render-only |
+| ~~`internal/game/elements.go`~~ | ~~6 element kinds "deliberately NOT spawned yet"~~ | **Fixed 2026-08-10** — all six are spawned (2/11/9/12/24/2); only cardUsingSwitch and NPCTalker are genuinely absent |
+| ~~`internal/game/handlers_fight_combat.go`~~ | ~~"used until real spell gamedata is wired in"~~ | **Fixed 2026-08-10** — it is wired; these are the absent-data fallback |
+| ~~`server/README.md`~~ | ~~lists `internal/net`; default addr `127.0.0.1`; an `--addr` flag~~ | **Fixed 2026-08-10** — no such package, default is `0.0.0.0:5555`, and the flags are `--config`/`--data`/`--version` |
+| ~~`client/analysis/opcodes.md`~~ | ~~"little-endian"~~ | **Fixed 2026-08-10** → big-endian, as everything else and the code say |
+| ~~`server/docs/STATUS.md` §7~~ | ~~"clicks reach AWT/Swing dialogs only, not the GLCanvas"~~ | **Fixed 2026-08-10** — `CLIENT-TESTING.md` retracts it, and coach creation was driven by canvas clicks the same day |
 
----
-
+**None currently open.** New entries belong here the moment a claim is found false,
+with the correction rather than a deletion — a struck row teaches; a removed row
+just loses the lesson.
 ## 15. Invariants — do not break
 
 - **`OPCODE-INVENTORY.md` H count must equal the `r.Register(protocol.` count in

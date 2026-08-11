@@ -162,12 +162,16 @@ func mustCardMaster(instanceID int64, x, y int32, alt int16, cardListID int32, m
 // there. The first Zaap listed for a world is its "primary" one (see primaryZaap):
 // it is the default arrival for /WORLD and the login spawn.
 //
-// Deliberately NOT spawned yet (they need systems the server does not have, and
-// clicking them would start a flow that cannot complete): env type 3 Challenge and
-// type 7 DemonChallenge (challenge + Lua scenario systems), type 8 ZoneTrigger
-// (scenario triggers), type 12 cardUsingSwitch (use-card-on-element flow), type 15
-// NPCTalker (dialog trees), type 5 BreedMaster, type 11 DemonTotem, type 13
-// TournamentTotem.
+// STALE UNTIL NOW: this list used to name Challenge (3), DemonChallenge (7),
+// ZoneTrigger (8), BreedMaster (5), DemonTotem (11) and TournamentTotem (13) as
+// "deliberately NOT spawned yet". All six ARE spawned — the table below places
+// 2 Challenges, 11 DemonChallenges, 9 ZoneTriggers, 12 BreedMasters, 24
+// DemonTotems and 2 TournamentTotems — and their flows exist (PvE challenges,
+// breed-master test fights, the tournament calendar).
+//
+// Genuinely NOT spawned, because clicking them would start a flow that cannot
+// complete: env type 12 cardUsingSwitch (the use-card-on-element flow) and type
+// 15 NPCTalker (dialog trees, record type 1500 undecoded).
 var worldElements = map[int16][]worldElement{
 	// --- Maknala ---------------------------------------------------------------
 	23: {

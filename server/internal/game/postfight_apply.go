@@ -5,8 +5,9 @@ package game
 // modify it, bank the results onto the persistent fighters, and award the coach
 // its reputation.
 //
-// Scope note (slice 1): XP, morale, fatigue and reputation only. The wound and
-// death rolls are not run — see postfight.go.
+// Scope: XP, morale, fatigue and reputation, PLUS the wound and death rolls
+// (applyWoundAndDeathRolls, B-066) and condition ageing. This note used to say
+// the rolls were not run; they are.
 
 import (
 	"math/rand"

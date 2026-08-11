@@ -10,12 +10,21 @@ package game
 //
 // Set effects use the client's AI enum — the coach META layer (XP, wounds,
 // morale, fatigue, drops, reputation, resurrection), not in-fight combat stats.
-// Of those, resurrection is currently the only one this server implements, so it
-// is the only one wired up; the rest are decoded and waiting for their mechanic
-// (see docs/DATA-COVERAGE.md).
+//
+// NINE families are wired today, through this one lookup: XP % and flat, morale,
+// fatigue, reputation, wound chance, death chance, wound cancellation and
+// resurrection — plus the "…for the opponent" variants of six of them, which
+// postfight_apply.go sums off the OTHER team (opposingSetBonus). This comment
+// used to say resurrection was the only one; that was true when only
+// handlers_evolution.go called in.
+//
+// Still inert: the DROP family (AI 18–21), and deliberately so — see the drop
+// table entry in docs/STATUS.md, where the pool and base rate are documented as
+// not recoverable from the client.
 
 // AI-enum action ids carried by coach-card and card-set effects. Only the ones we
-// act on are named here; the full list is in the client's `AI` enum.
+// act on are named here; the full list is in the client's `AI` enum. The
+// post-fight META ids live next to their use in postfight.go.
 const (
 	aiActionResurrect int32 = 13 // "x% chance to resurrect a fighter that just died"
 )

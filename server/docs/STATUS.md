@@ -146,11 +146,15 @@ second player, and the client HUD renders fully once *the client* starts the fig
 
 ## 7. Known limits of my own verification
 
-- **Fights started by packet injection build no client-side match object**
-  (`apN.aDK().aDL()` is null), so that client renders no fighters and processes no fight
-  frames. I cannot self-verify any in-fight *visual*. Fights the user starts normally do
-  render.
-- Clicks reach AWT/Swing dialogs only, **not the GLCanvas**.
+- **Fights started by packet injection do not arm the client's fight HUD.** The
+  injected fight itself is correct (the client loads the arena and logs no errors); what
+  is missing is local UI state the client only enters when *it* initiates. So drive the
+  real UI instead — `CLIENT-TESTING.md` records the exact solo-fight recipe (team emblem
+  → **TESTER** → **PRÊT**), which needs one account and no second player and renders the
+  full HUD.
+- ~~Clicks reach AWT/Swing dialogs only, not the GLCanvas.~~ **False** — retracted in
+  `CLIENT-TESTING.md` and confirmed again on 2026-08-10, when coach creation was driven
+  entirely by canvas clicks. `ControlAgent` targets the GLCanvas deliberately.
 - **B-074 is server-verified, not visually verified.** The victory-condition chain is
   proven over a real socket (`test/e2e/victory_condition_test.go` drives a real
   challenge fight to the condition and asserts END_FIGHT names the coach; the server

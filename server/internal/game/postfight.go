@@ -16,9 +16,11 @@ package game
 // and displays several of these values, so drifting from them shows up as visibly
 // inconsistent numbers on the results screen.
 //
-// Scope: this is slice 1 — XP, morale, fatigue and coach reputation. The wound
-// roll (`bf_1.b`) and the death roll (`adl_0.atd`) are deliberately NOT run yet,
-// so `injuryRolled` stays false and the wound/death fields stay 0. See
+// Scope: XP, morale, fatigue and coach reputation, PLUS the wound roll
+// (`bf_1.b`) and the death roll (`adl_0.atd`) — both added in B-066 and run
+// from applyWoundAndDeathRolls in postfight_apply.go. (This comment described
+// the slice-1 state, where they were deliberately skipped and `injuryRolled`
+// stayed false; that stopped being true two slices ago.) See
 // docs/DATA-COVERAGE.md.
 
 import (
