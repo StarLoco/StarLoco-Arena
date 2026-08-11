@@ -1223,14 +1223,19 @@ is a signing certificate or SignPath); no published Docker image.
     **spell** records (type 220) keyed by SPELL id. We emit **CoachCard template
     ids**, and only 65 of the 325 `HasUsableAction` cards share an id with a
     spell — the rest would be dropped with *"impossible d'ajouter l'item"*.
-    So the work is: find the CoachCard→spell link (the record's fields 19–26 are
-    still unread — field 19 is the `np_1[]`), emit resolvable ids, and let the
-    cast handler accept a deck card the fighter does not "know". See BUGS.md
-    *"The 8000 coach-deck blob probably carries the WRONG ID NAMESPACE"* for the
-    live test that would confirm it.
-    NB `zd_2` (`cooldownInFight`/`linkedSpells`) is **not** the deck — it exists
-    only for the 5 spells with a parent (471/472/473→462, 474/475→452), i.e. the
-    Masqueraider mask picker.
+    Cards and spells are **separate registries** — `eh_2` loads type-100 records
+    into `la_0.XJ()` as `xj`, `apS` loads type-220 into `je_1.Wa()` as `yp_2` —
+    so a card id in that blob can only ever miss.
+    **Open: which spell ids belong in the deck.** Ruled out this session: `zd_2`
+    (the Masqueraider mask picker — only the 5 parented spells 471/472/473→462,
+    474/475→452), `aJt.Qx()` (a SUMMON's spells — `ta_0` says *"SummonedFighter"*),
+    and `agp` (np_1 **type 12**, the fight-start effect, already implemented).
+    np_1 type 27 is literally *"Ajouter un sort de coach"* but appears on **no**
+    shipped card. Most likely pool: **breed 0**, the only non-breed group, with
+    **44 spells** including obvious coach utility (432 = range-0 heal of 40 for
+    3 AP). The card record also has unread tail fields after the `np_1[]` (`UH`
+    i16, `UI` u8, `UJ` i32, `UK` u8, `tg` i32 — we stop at `Unknown19/20`).
+    See BUGS.md for the live test that would confirm the bug.
 20. **Card staking / bets** on a fight.
 21. **Evolution per-fighter death chance** (currently: all downed fighters die).
 22. **Fusion recipe table** — decode record type 1100 and replace the flat 60 % roll.

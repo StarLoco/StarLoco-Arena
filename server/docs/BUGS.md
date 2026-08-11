@@ -49,6 +49,34 @@ the deck. It is created only for spells that have a parent (`jd()`), and exactly
 5 shipped spells do: 471/472/473 -> 462 and 474/475 -> 452, the Masqueraider mask
 variants. It is the mask-switch picker.
 
+**Cards and spells are separate registries, which settles it.** The card loader
+`eh_2` builds an `xj` per type-100 record into `la_0.XJ()`; the spell loader `apS`
+builds a `yp_2` per type-220 record into `je_1.Wa()`. The coach deck is built as
+`new ajO(je_1.Wa(), 8)` - the SPELL registry, capacity 8 - so it holds **8 spell
+ids**, and a card id can only ever miss.
+
+**What we do not yet know is which spell ids belong in it.** Leads followed and
+ruled out this session:
+
+- `zd_2` (`cooldownInFight`/`linkedSpells`) is the Masqueraider mask picker, not
+  the deck: it is created only for spells with a parent, and exactly 5 have one
+  (471/472/473 -> 462, 474/475 -> 452), which we already decode as
+  `Spell.ParentID`.
+- `aJt.Qx()` populates a SUMMON's spells, not the coach's - `ta_0`'s own error
+  string says *"SummonedFighter"*.
+- `agp`, the np_1 subclass registered from each card's parameter list, is
+  **type 12** (fight-start effect, already implemented), not a spell link.
+- np_1 type 27 is literally *"Ajouter un sort de coach"*, but it appears on NO
+  shipped coach card - the 13 rule types that do appear are 1,2,3,4,5,10,11,17,
+  19,20,24,29,31.
+
+The most likely pool is **breed 0**, which holds **44 spells** - the only
+non-breed group, and it contains obvious coach-style utility (e.g. spell 432, a
+range-0 heal of 40 for 3 AP). The card record also still has unread tail fields
+after the `np_1[]` (`UH` i16, `UI` u8, `UJ` i32, `UK` u8, `tg` i32; we stop at
+`Unknown19/20` = `UF`/`UG`), and `tg` is an i32 that could carry a reference -
+`eh_2` passes it to `xj` as the last constructor argument.
+
 **Not yet confirmed live** (the deck is empty until action cards are equipped, and
 the equip UI was not located this session). The decisive test: equip an action
 card, start a fight, and grep the client log for "impossible d'ajouter l'item".
