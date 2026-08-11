@@ -185,11 +185,45 @@ func aiSpellAPCost(sp *gamedata.Spell) int32 {
 	return defaultSpellAPCost
 }
 
+// aiSpellHarmsEnemy reports whether a spell is something the AI should aim AT AN
+// OPPONENT — it takes HP, drains a resource, inflicts a state, or shoves the
+// target around.
+//
+// This gate is not optional. The AI aims at the nearest opponent, and a
+// fighter's loadout is arbitrary: a real coach's team becomes AI-driven the
+// moment that coach drops mid-fight (coachLeftFightOnActor nils the session),
+// and those fighters carry whatever spells the player equipped. Without this,
+// the AI would happily cast a HEAL on the enemy it is trying to kill — only 3
+// shipped spells carry an enforced ally-only target mask, so the targeting
+// validator does not catch it.
+//
+// Deliberately a whitelist: an effect kind we do not model reads as "not known
+// to harm", so a new or unsupported effect is never fired at an enemy on a
+// guess.
+func aiSpellHarmsEnemy(sp *gamedata.Spell) bool {
+	if sp == nil {
+		return false
+	}
+	for _, ef := range sp.Effects {
+		switch ef.Kind() {
+		case gamedata.KindDamage, gamedata.KindLeech, gamedata.KindPercentHP,
+			gamedata.KindPoison, gamedata.KindScaledAP, gamedata.KindScaledMP,
+			gamedata.KindInstantDeath, gamedata.KindZoneDamage, gamedata.KindLineDamage,
+			gamedata.KindAPLoss, gamedata.KindMPLoss, gamedata.KindAPSteal,
+			gamedata.KindMPSteal, gamedata.KindZoneAPLoss, gamedata.KindZoneMPLoss,
+			gamedata.KindState, gamedata.KindPush, gamedata.KindPull:
+			return true
+		}
+	}
+	return false
+}
+
 // chooseAISpell picks the best spell to cast at `target` from where the fighter
-// is standing right now, or 0 if nothing is castable. A candidate must be
-// affordable, off cooldown, within its frequency limits and pass the REAL
-// targeting validator from the caster's cell — so a choice is never made that
-// the cast handler would then reject.
+// is standing right now, or 0 if nothing is castable. A candidate must harm an
+// enemy, be affordable, be off cooldown, be within its frequency limits and pass
+// the REAL targeting validator from the caster's cell — so a choice is never
+// made that the cast handler would then reject, and never one that would help
+// the target.
 //
 // Ranking is deliberately simple and deterministic: highest raw damage first,
 // then cheaper, then lowest id. Damage is the spell record's own figure, not a
@@ -201,7 +235,7 @@ func (f *Fight) chooseAISpell(ff *FightFighter, target *FightFighter) int32 {
 	var bestID, bestDmg, bestCost int32
 	for _, id := range f.aiRepertoire(ff) {
 		sp := f.deps.Spells.Get(id)
-		if sp == nil {
+		if sp == nil || !aiSpellHarmsEnemy(sp) {
 			continue
 		}
 		cost := aiSpellAPCost(sp)
@@ -264,7 +298,7 @@ func (f *Fight) aiCanFireFrom(ff *FightFighter, from Pos, target *FightFighter) 
 	}
 	for _, id := range f.aiRepertoire(ff) {
 		sp := f.deps.Spells.Get(id)
-		if sp == nil || aiSpellAPCost(sp) > ff.AP {
+		if sp == nil || !aiSpellHarmsEnemy(sp) || aiSpellAPCost(sp) > ff.AP {
 			continue
 		}
 		if f.spellTargetValidFrom(ff, from, sp, target.Pos) {
@@ -284,7 +318,7 @@ func (f *Fight) aiFiringGap(ff *FightFighter, from Pos, target *FightFighter) in
 	}
 	for _, id := range f.aiRepertoire(ff) {
 		sp := f.deps.Spells.Get(id)
-		if sp == nil || aiSpellAPCost(sp) > ff.AP {
+		if sp == nil || !aiSpellHarmsEnemy(sp) || aiSpellAPCost(sp) > ff.AP {
 			continue
 		}
 		g := firingGap(from, target.Pos, int32(sp.RangeMin), spellEffectiveMaxRange(ff, sp))

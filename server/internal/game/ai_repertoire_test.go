@@ -102,6 +102,58 @@ func TestChooseAISpellPicksBestAffordableInRange(t *testing.T) {
 	}
 }
 
+// TestAINeverAimsSupportSpellsAtEnemies guards a hole that a spell repertoire
+// opens up. The AI aims at the nearest OPPONENT, and a fighter's loadout is
+// arbitrary — a real coach's team becomes AI-driven the moment that coach drops
+// mid-fight (coachLeftFightOnActor nils the session), carrying whatever spells
+// the player equipped. Only 3 shipped spells have an enforced ally-only mask, so
+// the targeting validator will NOT stop a heal aimed at an enemy.
+func TestAINeverAimsSupportSpellsAtEnemies(t *testing.T) {
+	heal := &gamedata.Spell{ // action 69 "Soin"
+		ID: 400, AP: 2, RangeMin: 1, RangeMax: 6,
+		Effects: []gamedata.Effect{{ActionID: 69, EffectID: 4000, Params: []float32{50}}},
+	}
+	buff := &gamedata.Spell{ // action 13 = AP boost, a pure self/ally buff
+		ID: 401, AP: 2, RangeMin: 1, RangeMax: 6,
+		Effects: []gamedata.Effect{{ActionID: 13, EffectID: 4010, Params: []float32{2}, Duration: []int32{3, 0}}},
+	}
+	hurt := dmgSpell(402, 4, 1, 6, 20)
+
+	f, caster, enemy := summonTestFight()
+	f.deps.Spells = gamedata.NewSpells(heal, buff, hurt)
+	f.deps.Fights = NewFightManager()
+	f.deps.Log = testLogger()
+
+	// Loadout of ONLY support spells: there must be nothing to cast at an enemy,
+	// even though both are affordable and in range.
+	caster.Fighter = &domain.Fighter{Spells: []domain.FighterSpell{{SpellID: 400}, {SpellID: 401}}}
+	caster.AP = 6
+	if got := f.chooseAISpell(caster, enemy); got != 0 {
+		t.Errorf("chooseAISpell with only support spells = %d, want 0 (never aid the enemy)", got)
+	}
+
+	// It must not walk into range for them either.
+	if f.aiCanFireFrom(caster, caster.Pos, enemy) {
+		t.Error("aiCanFireFrom true with only support spells")
+	}
+
+	// Casting a full turn must not touch the enemy's HP.
+	enemyHP := enemy.HP
+	f.castAISpellRepeatedly(caster)
+	if enemy.HP != enemyHP {
+		t.Errorf("enemy HP moved %d -> %d; the AI used a support spell on it", enemyHP, enemy.HP)
+	}
+	if caster.AP != 6 {
+		t.Errorf("AP spent (%d left of 6) casting support at an enemy", caster.AP)
+	}
+
+	// With a damaging spell added it engages normally, picking the harmful one.
+	caster.Fighter.Spells = append(caster.Fighter.Spells, domain.FighterSpell{SpellID: 402})
+	if got := f.chooseAISpell(caster, enemy); got != 402 {
+		t.Errorf("chooseAISpell = %d, want 402 (the only harmful spell)", got)
+	}
+}
+
 // TestCastAISpellRepeatedlyUsesMultipleSpells proves the turn is played from the
 // repertoire rather than one spell: with 6 AP and a 4-AP + 2-AP pair, the AI
 // should spend everything by casting BOTH, which the old single-spell loop

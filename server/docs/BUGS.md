@@ -38,6 +38,34 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-084 - The AI would heal the enemy it was attacking
+
+**Self-inflicted, caught by reviewing my own change before moving on.** Giving
+the AI a spell repertoire (it previously cast one fixed spell) opened a hole:
+`chooseAISpell` aims at the nearest OPPONENT and ranked purely by damage, so any
+spell in the fighter's loadout became a candidate - including a heal or a buff.
+
+**Why it was reachable, and not just theoretical.** Challenge demons are safe by
+construction (`breedSpellRepertoire` filters to damaging spells), but they are
+not the only AI-driven fighters. When a coach drops mid-fight,
+`coachLeftFightOnActor` nils that team's session, and `isAIControlled` then hands
+their fighters to the AI - carrying whatever spells the PLAYER equipped. The
+targeting validator does not save us either: only 3 shipped spells carry an
+enforced ally-only target mask (B-081), so a heal aimed at an enemy passes
+validation and lands as a heal.
+
+**Fix.** `aiSpellHarmsEnemy` gates every candidate in `chooseAISpell`,
+`aiCanFireFrom` and `aiFiringGap`, so the AI neither casts nor walks into
+position for a spell that would help its target. It is a deliberate WHITELIST of
+harmful effect kinds (damage, leech, %HP, poison, AP/MP-scaled, instant death,
+zone/line damage, AP/MP loss and steal, states, push/pull): an effect kind we do
+not model reads as "not known to harm", so a new or unsupported effect is never
+fired at an enemy on a guess.
+
+**Verified:** `unit` - TestAINeverAimsSupportSpellsAtEnemies, mutation-checked by
+removing the guard, which reproduces the bug exactly (the AI picks the heal and
+spends all 6 AP on the enemy).
+
 ### B-083 - Fighter conditions were missing from CREATE_FIGHT (and the "effects" slot is not what the roadmap thought)
 
 The fighter blob in CREATE_FIGHT ends with two id lists, and both were sent
