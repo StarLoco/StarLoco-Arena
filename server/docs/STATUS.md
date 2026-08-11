@@ -105,11 +105,21 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    choice, event-list choice. **Read `content.54.<type>` before implementing any rule**
    — it is the authoritative semantics table, and it is what revealed that the timing
    rules are deltas rather than absolutes.
-   ⚠ **The blocker is the operand, not the enforcement.** Every one of those rule types
-   occurs exactly ONCE in the shipped data, on a coach card, with an EMPTY parameter
-   array (dumped 2026-08-10). They read like per-rule template cards. Anything actually
-   parameterised lives in type 13, type 10 or the 900-930 block. Find where the operand
-   comes from before writing an enforcer that would index `params[0]` on an empty slice.
+   ✅ **RESOLVED — there is nothing to enforce; they are a CATALOGUE.** `np_1` has two
+   namespaces and the `ajr_2` enum names them: **1–32 are rules**, **900–930 are
+   PARAMETERS** (every one literally *"Paramètre de …"* — de classe, d'id d'arène, de
+   nombre de combattant, de temps). A rule declares how many operands it needs
+   (`np_1.T()`); a parameter carries a value and needs none (`aIE`, the only subclass
+   with `sp()` true). `np_1.b()` **concatenates** params until `rg().length >= T()`,
+   `je_2.a(np_1[])` applies the rule the moment it has enough, and `jk_1` — registered
+   as **"coachCardFightParametersManager"** — pairs each bare rule with every compatible
+   parameter to build the picker entries (`WN`: `selected`/`description`/`activated`/
+   `forbidden`). The data matches exactly: 13 rule types × 1 instance × 0 params, vs 31
+   parameter types × 245 instances **all** carrying values, with catalogue-shaped counts
+   (14 classes, 10 spells per breed, 27 arenas). So enforcing them as shipped would be
+   enforcing a menu. Real rules arrive already parameterised via challenge records
+   (10/12/13/14 — all wired). This only becomes work if custom rulesets/tournaments are
+   built. Pinned by `TestNp1RuleCatalogueShape`.
 5. **`MaxActive`** — decoded, not enforced. `TargetMasks` is **done** (B-081, 3 spells;
    a mask carrying a bit we cannot represent is skipped whole rather than guessed).
    For `MaxActive` the SCOPE question that blocked it is now answered and it needs **no

@@ -789,11 +789,24 @@ leak into another). **5 of ~25 rule types are wired:**
 | 12 | Cast an effect on all fighters at fight creation | ✅ 3 challenges, +40 % dodge for the fight, summons excluded by mask 1024 |
 | 13 | Bonus-cell multiplier (absolute) | ✅ |
 | **14** | **Victory conditions** (9 challenges) | ✅ subtype 4 ("reach turn N") wired; 1/2/3 decoded, unused by any shipped record |
-| 1–9 | Budget, min/max fighters, spell & equipment allow/ban lists | 🔷 |
-| 15–32 | Class limits/bans/prices, event lists, coach spell, max classes, **arena choice**, max league, hide opponent stats | 🔷 |
-| 900–930, 1000 | Class/spell/equipment/budget parameters, "no limit on this fight" | 🔷 |
+| 1–9 | Budget, min/max fighters, spell & equipment allow/ban lists | catalogue only |
+| 15–32 | Class limits/bans/prices, event lists, coach spell, max classes, **arena choice**, max league, hide opponent stats | catalogue only |
+| 900–930 | **PARAMETERS**, not rules — every one is *"Paramètre de …"* | operand pool |
+| 1000 | "Aucune limite sur ce combat" | ✅ |
 
 Unknown rule types are inert, not fatal.
+
+**"Catalogue only" is a resolution, not a gap.** `np_1` has two namespaces: 1–32
+are rules, 900–930 are the typed OPERANDS they get composed with. A rule declares
+how many it needs (`T()`); `np_1.b()` concatenates until it has them;
+`je_2.a(np_1[])` applies the rule the moment it does; and `jk_1`
+("coachCardFightParametersManager") pairs each bare rule with every compatible
+parameter to build the picker entries (`WN`). The shipped data is exactly that
+shape — 13 rule types with one instance and zero params each, against 31
+parameter types whose 245 instances all carry values — so those rules are a menu
+for composing a custom ruleset, and enforcing them as shipped would be enforcing
+the menu. Everything that really applies arrives already parameterised, via the
+challenge records. See Tier 1 item 9.
 
 **Read `content.54.<type>` before implementing any rule** — it is the authoritative
 semantics table and it is what proved 10/11 are deltas. It is a *display* table
@@ -1061,21 +1074,34 @@ is a signing certificate or SignPath); no published Docker image.
 8. ~~**Zone-effect action ids 165 / 166 / 169**~~ — **done (B-079)**, plus 167 and
    168, which the roadmap had missed: `mh_2` shows the family is six members of
    one shape. Effect-row coverage 502→505 of 533 (94.2 %→94.7 %).
-9. **Enforce the remaining np_1 rules.** Budget (incl. type 1000 "no limit"),
-   roster limits, banned/allowed spells and equipment, class limits and prices,
-   **arena choice**, event-list choice. Each is small now that the ruleset
-   plumbing exists. *Read `content.54.<type>` first* — it is the authoritative
-   semantics table, and it is what revealed the timing rules are deltas.
-   **Check the operand question first.** A dump of every `np_1` element in the
-   shipped data shows each of these rule types occurs **exactly once, on a coach
-   card, always with an EMPTY parameter array** (types 1, 2, 3, 4, 5, 11, 17, 19,
-   20, 24, 29, 31 — one instance each, zero params). They look like per-rule
-   template/declaration cards rather than configured rules. Everything actually
-   parameterised lives elsewhere: type 13 (5 challenges), type 10 (challenge 46),
-   and the whole 900–930 block, which is always populated (927 "arena id" alone
-   has 27 instances). So "enforce rule N" is not the hard part — finding where
-   its operand comes from is, and that must be answered before writing an
-   enforcer that would read `params[0]` off an empty slice.
+9. ~~**Enforce the remaining np_1 rules.**~~ — **resolved: there is nothing to
+   enforce.** The operand question is answered, and the answer is that those
+   entries are a **catalogue**, not rules.
+   The client splits `np_1` into two namespaces, and the `ajr_2` enum names them:
+   **1–32 are RULES** ("Modifie le budget", "Sort interdit", "Choisir une
+   arène"), **900–930 are PARAMETERS** — every one literally *"Paramètre de …"*
+   (de classe, d'id d'arène, de nombre de combattant, de temps…).
+   A rule declares how many operands it needs (`np_1.T()`); a parameter carries a
+   value and needs none (`aIE`, the only subclass with `sp()` true, and its type
+   id is dynamic). `np_1.b(a,b)` **concatenates** a's params with b's until
+   `rg().length >= T()`, and `je_2.a(np_1[])` walks the array accumulating
+   exactly that way, applying a rule the moment it has enough operands. `jk_1` —
+   which registers itself as **"coachCardFightParametersManager"** — pairs each
+   under-parameterised rule with every compatible parameter to build the
+   selectable combinations (`WN`, whose fields are `selected` / `description` /
+   `activated` / `forbidden`: a picker UI).
+   The shipped data matches exactly: **13 rule types, one instance each, zero
+   params; 31 parameter types, 245 instances, every one carrying a value** — and
+   the counts are self-evidently a catalogue (900 *classe* = 14 breeds, 901–912/
+   929/930 *sort de \<breed\>* = 10 each because every breed has 10 spells, 927
+   *id d'arène* = 27).
+   So these were never configured rules and enforcing them as shipped would be
+   enforcing a menu. Rules that actually apply arrive **already parameterised**,
+   from the challenge records (types 10/12/13/14 — all wired). The work only
+   becomes real if custom rulesets / tournaments are implemented, at which point
+   the client's picker sends (rule + parameter) pairs. Pinned by
+   `TestNp1RuleCatalogueShape`, which fails the moment a rule ships WITH
+   operands.
 10. ~~**np_1 type 14 victory conditions**~~ — **done (B-074)**. Subtype 4
     ("reach turn N") covers all 9 shipped conditions. Subtypes 1/2/3 remain
     decoded-but-unimplemented: no shipped record uses them, so there would be

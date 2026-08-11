@@ -228,6 +228,49 @@ const (
 	ParamTypeNoBudgetLimit int32 = 1000
 )
 
+// The 900-930 block is a SECOND namespace: not rules, but the typed OPERANDS
+// rules are composed with. Every one of them is literally named "Paramètre de …"
+// in the client's `ajr_2` enum, and in the shipped data every single instance
+// carries a value (245 of them), while the 13 rule types that appear on coach
+// cards each appear exactly ONCE with an EMPTY parameter array.
+//
+// That is the answer to a question that blocked "enforce the remaining np_1
+// rules" for a long time. The pieces:
+//
+//   - a rule declares how many operands it needs (`np_1.T()`);
+//   - a parameter carries a value and needs none (`aIE`, the only subclass whose
+//     `sp()` is true, with a DYNAMIC type id);
+//   - `np_1.b(a, b)` CONCATENATES a's params with b's until `rg().length >= T()`;
+//   - `je_2.a(np_1[])` walks the array accumulating exactly that way, applying a
+//     rule the moment it has enough operands and then resetting;
+//   - `jk_1` — which registers itself as "coachCardFightParametersManager" —
+//     pairs each under-parameterised rule with every compatible parameter to
+//     build the selectable combinations (`WN`, whose fields are "selected",
+//     "description", "activated", "forbidden": a picker UI).
+//
+// So those empty-parameter rules are a CATALOGUE for composing a custom ruleset,
+// not rules to enforce as shipped — which is why hunting for their missing
+// operands never found any. Enforceable rules arrive already parameterised, from
+// the challenge records (types 10/12/13/14). The counts read like a catalogue
+// too: 14 class parameters (the 14 breeds), 10 spell parameters per breed (every
+// breed has exactly 10 spells), 27 arena ids.
+//
+// Pinned by TestNp1RuleCatalogueShape, which fails if a rule ever ships WITH
+// operands — i.e. the moment this reading stops being true.
+const (
+	ParamTypeArgClass      int32 = 900 // "Paramètre de classe"
+	ParamTypeArgFecaSpell  int32 = 901 // "Paramètre de sort de Féca" (902-912 = the other breeds)
+	ParamTypeArgLowBudget  int32 = 913 // "Paramètre de budget faible"
+	ParamTypeArgSword      int32 = 914 // "Paramètre d'équipement épée" (915-923 = the other slots)
+	ParamTypeArgHighBudget int32 = 924 // "Paramètre de budget élevé"
+	ParamTypeArgGameTurn   int32 = 925 // "Paramètre de tour de jeu"
+	ParamTypeArgTimeMS     int32 = 926 // "Paramètre de temps (en millisecondes)"
+	ParamTypeArgArenaID    int32 = 927 // "Paramètre d'id d'arène"
+	ParamTypeArgFighterNum int32 = 928 // "Paramètre de nombre de combattant"
+	ParamTypeArgRogueSpell int32 = 929 // "Paramètre de sort de Roublard"
+	ParamTypeArgZobalSpell int32 = 930 // "Paramètre de sort de Zobal" — last of the pool
+)
+
 // FirstParam returns params[0] of the first parameter of the given type, and
 // whether one was present. Rules are single-valued in the shipped data, so
 // "first wins" is the whole rule; a caller that needs to sum should iterate.
