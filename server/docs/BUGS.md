@@ -13,93 +13,52 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### The 8000 coach-deck blob probably carries the WRONG ID NAMESPACE
+### Which spell ids belong in the coach action deck
 
-**Found while checking the roadmap's claim that "there is no opcode to play a
-coach action card". That claim is wrong, and chasing it turned up something
-worse.**
+The wrong-namespace half of this is FIXED (B-088): the blob no longer emits card
+ids, and the deck is empty, which is the correct output because nothing in the
+shipped data grants a coach an action spell. What is still unknown is where the
+grant comes from, i.e. what should eventually populate
+`coachActionDeckSpellIDs`.
 
-`writeCoachCardBlob` emits the coach's equipped cards as bare `i32` **CoachCard
-template ids**. The client resolves them through a `ut_0` factory, and both
-`aez_0` and `Te` build the coach's action-card container as:
+Ruled out so far: `zd_2` (the Masqueraider mask picker — only the 5 parented
+spells 471/472/473→462, 474/475→452), `aJt.Qx()` (a SUMMON's spell list —
+`ta_0`'s error string says *"SummonedFighter"*), `agp` (np_1 **type 12**, the
+fight-start effect, already implemented), and `np_1` type 27 *"Ajouter un sort de
+coach"*, which appears on no shipped coach card.
 
-    this.bMQ = new ajO(je_1.Wa(), 8);
+Best remaining leads: **breed 0**, the only non-breed spell group, with **44**
+spells including obvious coach utility (432 = a range-0 heal of 40 for 3 AP); and
+the card record's unread tail after the `np_1[]` (`UH` i16, `UI` u8, `UJ` i32,
+`UK` u8, `tg` i32 — we stop at `Unknown19/20` = `UF`/`UG`), where `eh_2` passes
+`tg` to `xj` as the last constructor argument.
 
-`je_1 extends azk`, and `azk.E(ByteBuffer)` reads an `i32` and looks it up in its
-castable map (`dns.t(id)`). That map is filled by `apS`, which iterates the
-**spell** records (`co_1`, type 220) and registers one `yp_2` per spell under
-`co_12.el()` - the SPELL id. So the deck blob is resolved against the SPELL
-registry, not the card table.
-
-An id that does not resolve yields a null item and the client logs
-*"Erreur lors de la deserialisation d'un StackInventory : impossible d'ajouter
-l'item"* and drops it. Measured: of the 325 coach cards with `HasUsableAction`,
-only **65** have a spell sharing their id - so most equipped action cards would
-be silently dropped rather than rendered.
-
-That also reframes the feature. The deck is exposed to the UI as the field
-**"coachSpellInventory"** (`Te.bMP`), a list of `yp_2` **castables**, and
-selecting a `yp_2` sends **8109 SpellCastRequestMessage** via `alx_2` carrying
-`yp_2.getId()`. So there IS an opcode to play a coach action card - it is the
-ordinary spell cast - and the missing server work is (a) sending ids the client
-can resolve and (b) accepting a cast of a deck card the fighter does not "know".
-
-NB `zd_2` - the `yp_2` subclass with `cooldownInFight` / `linkedSpells` - is NOT
-the deck. It is created only for spells that have a parent (`jd()`), and exactly
-5 shipped spells do: 471/472/473 -> 462 and 474/475 -> 452, the Masqueraider mask
-variants. It is the mask-switch picker.
-
-**Cards and spells are separate registries, which settles it.** The card loader
-`eh_2` builds an `xj` per type-100 record into `la_0.XJ()`; the spell loader `apS`
-builds a `yp_2` per type-220 record into `je_1.Wa()`. The coach deck is built as
-`new ajO(je_1.Wa(), 8)` - the SPELL registry, capacity 8 - so it holds **8 spell
-ids**, and a card id can only ever miss.
-
-**What we do not yet know is which spell ids belong in it.** Leads followed and
-ruled out this session:
-
-- `zd_2` (`cooldownInFight`/`linkedSpells`) is the Masqueraider mask picker, not
-  the deck: it is created only for spells with a parent, and exactly 5 have one
-  (471/472/473 -> 462, 474/475 -> 452), which we already decode as
-  `Spell.ParentID`.
-- `aJt.Qx()` populates a SUMMON's spells, not the coach's - `ta_0`'s own error
-  string says *"SummonedFighter"*.
-- `agp`, the np_1 subclass registered from each card's parameter list, is
-  **type 12** (fight-start effect, already implemented), not a spell link.
-- np_1 type 27 is literally *"Ajouter un sort de coach"*, but it appears on NO
-  shipped coach card - the 13 rule types that do appear are 1,2,3,4,5,10,11,17,
-  19,20,24,29,31.
-
-The most likely pool is **breed 0**, which holds **44 spells** - the only
-non-breed group, and it contains obvious coach-style utility (e.g. spell 432, a
-range-0 heal of 40 for 3 AP). The card record also still has unread tail fields
-after the `np_1[]` (`UH` i16, `UI` u8, `UJ` i32, `UK` u8, `tg` i32; we stop at
-`Unknown19/20` = `UF`/`UG`), and `tg` is an i32 that could carry a reference -
-`eh_2` passes it to `xj` as the last constructor argument.
-
-**Not yet confirmed live** (the deck is empty until action cards are equipped, and
-the equip UI was not located this session). The decisive test: equip an action
-card, start a fight, and grep the client log for "impossible d'ajouter l'item".
-Until then this is code-proven but not behaviour-proven, so it stays here rather
-than in Fixed.
-
-> Full, ranked list with context: [`STATUS.md`](./STATUS.md) §4. Summary:
-
-
+The play path itself is NOT missing: the deck is exposed as `"coachSpellInventory"`
+(a list of `yp_2`) and played with **8109**, the ordinary spell cast. When the
+source is found, the cast handler will also need to accept a deck spell the
+FIGHTER does not know (`fighterKnowsSpell`), since it belongs to the coach.
 
 - **The coach META layer is only PARTLY built.** Slice 1 — XP, morale, fatigue and
   coach reputation — landed in B-065. Still missing: the wound roll, the death roll
   and the drop table, so ~30 of the 78 card-set effects remain inert.
 - **Fighter conditions (type 902) are unmodelled** — wounds never accrue between fights.
   Fully decodable (0 unknown fields); needs the roller `bf_1.b` ported.
-- **Most `np_1` rule types are decoded but not ENFORCED.** Turn duration, sudden death
-  and the bonus-cell multiplier are wired (B-072); budget (incl. type 1000 "no budget
-  limit"), roster limits, banned/allowed spells and equipment, class limits and prices,
-  arena and event-list choice, and victory conditions are carried but inert.
-  **Consult `content.54.<type>` for a rule''s exact semantics before implementing it** —
+- ~~**Most `np_1` rule types are decoded but not ENFORCED.**~~ — **resolved: they are a
+  CATALOGUE, not rules.** Types 1–32 are rules, 900–930 are the typed OPERANDS
+  (`ajr_2` names every one *"Paramètre de …"*), and `np_1.b()` concatenates a rule with
+  following entries until it has `T()` of them. The 13 rule types on coach cards each
+  appear once with zero params — a menu for composing a custom ruleset, which `jk_1`
+  ("coachCardFightParametersManager") pairs with parameters to build the picker. Rules
+  that really apply arrive already parameterised via the challenge records (10/12/13/14,
+  all wired). Pinned by `TestNp1RuleCatalogueShape`.
+  **Consult `content.54.<type>` for a rule's exact semantics before implementing one** —
   it is the authoritative label table, and it is what revealed the timing rules are
   deltas rather than absolutes.
-- **Spell `TargetMasks` / `MaxActive` decoded but not evaluated** (3 and 6 spells).
+- ~~**Spell `TargetMasks` / `MaxActive` decoded but not evaluated.**~~ — `TargetMasks` is
+  enforced (B-081, 3 spells). `MaxActive` is deliberately NOT enforced: its decay window
+  is one turn (`arm_0.lQ(1)`, a literal), which is the granularity `CastMaxPerTarget`
+  already has, and all 6 spells are already bound at least as tightly by an enforced
+  limit. Pinned by `TestMaxActiveIsRedundantInShippedData`.
 - **The evolution debrief PANEL is not yet visually confirmed** — the server side of
   B-065 is verified live, but the panel needs a true evolution fight (client-initiated,
   fight kind 6), which needs a second player.
@@ -107,6 +66,48 @@ than in Fixed.
 ---
 
 ## Fixed
+
+### B-088 - The 8000 coach-deck blob carried the wrong ID NAMESPACE
+
+`writeCoachCardBlob` emitted the coach's equipped cards as bare i32 **CoachCard
+template ids**. That field is a list of **SPELL** ids.
+
+**Proof, end to end in the client.** The coach deserialises the blob with
+
+    public void L(byte[] byArray) {          // aez_0.L, and Te.L identically
+        this.bMQ = new ajO(je_1.Wa(), 8);
+        this.bMQ.b(byArray);
+    }
+
+`je_1 extends azk`, whose `E(ByteBuffer)` reads an i32 and resolves it in its
+castable map. That map is filled ONLY by `apS` - its line 55 is the sole
+registration - which iterates the SPELL records (`co_1`, type 220) and registers
+one `yp_2` per spell under the spell id. Cards are a different registry
+altogether: `eh_2` loads type-100 records into `la_0.XJ()` as `xj`. There is no
+second source that could rescue a card id.
+
+**It was wrong in both directions.** An id that misses is dropped and the client
+logs *"impossible d'ajouter l'item"*. An id that HITS is worse: it renders an
+unrelated spell as a castable action card. Measured: 65 of the 325 cards with
+`HasUsableAction` collide with a real spell id.
+
+**Fix.** `writeCoachActionDeck` replaces it and emits spell ids only.
+`filterCoachDeckSpellIDs` drops anything the client could not resolve, de-dupes,
+and caps at the client's own capacity of 8 (`new ajO(je_1.Wa(), 8)`), so the
+wrong-namespace bug cannot be reintroduced by accident.
+
+**The deck is empty today, and that is the correct output, not a stub.** Nothing
+in the shipped data grants a coach an action spell - see the Open entry "Which
+spell ids belong in the coach action deck" for what is still missing and the
+leads for finding it. Filling in that one source is the only remaining change;
+everything downstream of it is already correct.
+
+**Verified:** `unit` - TestCoachActionDeckNeverEmitsCardIDs (equipped cards whose
+ids deliberately COLLIDE with real spells still produce an empty blob) and
+TestFilterCoachDeckSpellIDs (unknown ids dropped, duplicates collapsed, capped at
+8); both mutation-checked, the first against the old card-id behaviour.
+`live` - a real fight still creates cleanly, placement phase renders, client log
+error-free.
 
 ### B-087 - The AI walked through and onto sudden-death cells
 

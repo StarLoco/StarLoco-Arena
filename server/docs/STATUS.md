@@ -38,6 +38,7 @@ against the client before implementing (§9).
 | # | What |
 |---|---|
 | LIVE | Full 5v4 driven to completion: by round 7 the AI had killed two player fighters and taken ZERO damage (no friendly fire, no Killer-tile suicide), fight ended cleanly, client log error-free |
+| B-088 | The 8000 coach-deck blob carried CARD ids in a SPELL-id field (65 of 325 usable cards collide with a real spell) |
 | B-087 | The AI walked THROUGH and onto sudden-death cells (players were guarded, the AI's own flood was not) |
 | B-086 | The AI FROZE (positioning and casting disagreed about castability); also stopped walking onto Killer tiles |
 | B-085 | The AI would NUKE ITS OWN TEAM with area spells (15 damaging breed spells are AoE; one hits every living fighter) |

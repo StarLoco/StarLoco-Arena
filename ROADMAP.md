@@ -1212,7 +1212,7 @@ is a signing certificate or SignPath); no published Docker image.
     placing traps, cooperative focus-fire, trap-tile and sudden-death awareness,
     diagonal pathfinding, difficulty tiers.
 19. 🟡 **Coach action cards in fight** — **the "no opcode" premise was wrong, and
-    the blob may carry the wrong id namespace.** The deck is exposed to the UI as
+    the id-namespace half is now FIXED (B-088).** The deck is exposed to the UI as
     the field **`"coachSpellInventory"`** (`Te.bMP`), a list of `yp_2`
     **castables**, and selecting a `yp_2` sends **8109 SpellCastRequestMessage**
     via `alx_2` carrying `yp_2.getId()`. So playing a coach card is an ordinary
@@ -1223,6 +1223,9 @@ is a signing certificate or SignPath); no published Docker image.
     **spell** records (type 220) keyed by SPELL id. We emit **CoachCard template
     ids**, and only 65 of the 325 `HasUsableAction` cards share an id with a
     spell — the rest would be dropped with *"impossible d'ajouter l'item"*.
+    We now emit spell ids only, filtered so an unresolvable id can never be sent
+    and capped at the client's own capacity of 8; the deck is EMPTY today, which is
+    the correct output because nothing grants a coach an action spell.
     Cards and spells are **separate registries** — `eh_2` loads type-100 records
     into `la_0.XJ()` as `xj`, `apS` loads type-220 into `je_1.Wa()` as `yp_2` —
     so a card id in that blob can only ever miss.

@@ -1,7 +1,6 @@
 package game
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
@@ -158,27 +157,71 @@ func TestIsAIControlled(t *testing.T) {
 	}
 }
 
-// TestCoachCardBlob verifies the 8000 coach-card blob carries only the coach's
-// EQUIPPED cards (Pos>=1), in equip-slot order, as bare i32 ids behind an i16
-// byte-length prefix (no count) — the ajv_2.d layout the client reads to end.
-func TestCoachCardBlob(t *testing.T) {
+// TestCoachActionDeckNeverEmitsCardIDs locks the id NAMESPACE of the 8000 coach
+// deck blob. It used to carry `CoachCard.TemplateID`, which is wrong: the client
+// deserialises this blob with `new ajO(je_1.Wa(), 8)`, and `je_1`'s castable map
+// is filled only by `apS` from the SPELL records — cards live in a separate
+// registry (`la_0.XJ()`). A card id there either misses (the client logs
+// "impossible d'ajouter l'item" and drops it) or COLLIDES with an unrelated spell
+// and renders it as a castable action card; 65 of the 325 cards with a usable
+// action collide that way.
+//
+// Equipped cards must therefore never reach the blob, no matter how many the
+// coach has.
+func TestCoachActionDeckNeverEmitsCardIDs(t *testing.T) {
 	coach := &domain.Coach{Inventory: []domain.CoachCard{
-		{TemplateID: 101, Pos: 2}, // equipped slot 2
-		{TemplateID: 200, Pos: 0}, // NOT equipped -> excluded
-		{TemplateID: 102, Pos: 1}, // equipped slot 1
+		{TemplateID: 101, Pos: 2},
+		{TemplateID: 200, Pos: 0},
+		{TemplateID: 102, Pos: 1},
 	}}
+	f := &Fight{deps: &Deps{Spells: gamedata.NewSpells(
+		&gamedata.Spell{ID: 101}, // a spell that COLLIDES with an equipped card id
+		&gamedata.Spell{ID: 102},
+	)}}
+
 	w := protocol.NewWriter()
-	writeCoachCardBlob(w, coach)
-	// Sorted by pos: slot1=102, slot2=101; blob = [i16 8][i32 102][i32 101].
-	want := protocol.NewWriter().U16(8).I32(102).I32(101).Bytes()
-	if got := w.Bytes(); !bytes.Equal(got, want) {
-		t.Errorf("coach-card blob = % x, want % x", got, want)
+	writeCoachActionDeck(w, f, coach)
+	if got := w.Bytes(); len(got) != 2 || got[0] != 0 || got[1] != 0 {
+		t.Errorf("deck blob = % x, want 0000 (empty): equipped CARD ids must never "+
+			"be emitted into a SPELL-id field, even when the ids collide", got)
 	}
-	// nil coach / nothing equipped -> empty blob [i16 0].
+
+	// nil coach -> empty blob too.
 	w2 := protocol.NewWriter()
-	writeCoachCardBlob(w2, nil)
+	writeCoachActionDeck(w2, f, nil)
 	if got := w2.Bytes(); len(got) != 2 || got[0] != 0 || got[1] != 0 {
-		t.Errorf("empty coach-card blob = % x, want 0000", got)
+		t.Errorf("empty deck blob = % x, want 0000", got)
+	}
+}
+
+// TestFilterCoachDeckSpellIDs covers the safety net that will matter the day the
+// deck actually has a source: only ids the client can resolve get emitted, deduped
+// and capped at the client's own capacity (`new ajO(je_1.Wa(), 8)`).
+func TestFilterCoachDeckSpellIDs(t *testing.T) {
+	spells := gamedata.NewSpells(
+		&gamedata.Spell{ID: 10}, &gamedata.Spell{ID: 11}, &gamedata.Spell{ID: 12},
+		&gamedata.Spell{ID: 13}, &gamedata.Spell{ID: 14}, &gamedata.Spell{ID: 15},
+		&gamedata.Spell{ID: 16}, &gamedata.Spell{ID: 17}, &gamedata.Spell{ID: 18},
+	)
+	// Unknown ids and 0 are dropped; duplicates collapse.
+	got := filterCoachDeckSpellIDs(spells, []int32{10, 999, 0, 11, 10, 12})
+	want := []int32{10, 11, 12}
+	if len(got) != len(want) {
+		t.Fatalf("filtered = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("filtered = %v, want %v (order preserved)", got, want)
+		}
+	}
+
+	// Capacity: 9 valid ids must be trimmed to the client's 8.
+	all := []int32{10, 11, 12, 13, 14, 15, 16, 17, 18}
+	if got := filterCoachDeckSpellIDs(spells, all); len(got) != coachActionDeckCapacity {
+		t.Errorf("filtered %d ids, want the client cap of %d", len(got), coachActionDeckCapacity)
+	}
+	if got := filterCoachDeckSpellIDs(nil, all); got != nil {
+		t.Errorf("no spell table should yield nil, got %v", got)
 	}
 }
 

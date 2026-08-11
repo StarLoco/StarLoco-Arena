@@ -1,9 +1,8 @@
 package game
 
 import (
-	"sort"
-
 	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
@@ -35,7 +34,7 @@ func buildCreateFight(f *Fight, deckCoach *domain.Coach, spectator bool) ([]byte
 	// aat_2.ac(rest) to parse the body. Do NOT remove this byte (verified by
 	// tracing the dispatcher, July 2026).
 	w.U8(0) // error = OK
-	writeCoachCardBlob(w, deckCoach)
+	writeCoachActionDeck(w, f, deckCoach)
 	w.I32(f.FightType)
 	w.I64(f.Bet)
 	// kind + the id the client resolves challenge metadata with. Both matter for
@@ -143,30 +142,91 @@ func writeFightGrid(w *protocol.Writer, a *arena) {
 	w.U8(0) // cLF team-B default side
 }
 
-// writeCoachCardBlob emits the coach's equipped action-card deck as the 8000
-// coach-card blob (byArray2 in aat_2.ac): [i16 4N][i32 templateID × N] — bare
-// i32 card ids in equip-slot order, NO count/qty (the client's ajv_2.d reads to
-// end). Only equipped cards (CoachCard.Pos >= 1) form the deck; the client copies
-// this blob onto each coach (aoe_2) so its "Cartes d'action" render + are
-// castable (opcode 8110). An empty deck writes [i16 0].
-func writeCoachCardBlob(w *protocol.Writer, coach *domain.Coach) {
-	type deckCard struct {
-		pos int16
-		id  int32
-	}
-	var deck []deckCard
-	if coach != nil {
-		for _, c := range coach.Inventory {
-			if c.Pos >= 1 {
-				deck = append(deck, deckCard{c.Pos, c.TemplateID})
-			}
-		}
-	}
-	sort.Slice(deck, func(i, j int) bool { return deck[i].pos < deck[j].pos })
+// coachActionDeckCapacity is the client's own capacity for the coach action deck:
+// `aez_0.L` builds it as `new ajO(je_1.Wa(), 8)`. Anything past the 8th entry is
+// refused by `ajv_2.a` and logged as a deserialisation failure, so never emit
+// more.
+const coachActionDeckCapacity = 8
+
+// writeCoachActionDeck emits the coach's in-fight action deck as the 8000
+// coach-card blob (byArray2 in aat_2.ac): [i16 4N][i32 id × N] — bare i32 ids,
+// NO count/qty (the client's `ajv_2.d` reads to end). An empty deck writes
+// [i16 0]. The client copies this blob onto each coach (aoe_2), which is why it
+// is built per RECIPIENT (see startFightWithTeams).
+//
+// THE IDS ARE SPELL IDS, NOT CARD IDS. This used to emit `CoachCard.TemplateID`,
+// which is the wrong namespace. The client deserialises the blob with
+//
+//	this.bMQ = new ajO(je_1.Wa(), 8);   // aez_0.L / Te.L
+//
+// and `je_1 extends azk`, whose `E(ByteBuffer)` reads an i32 and resolves it in
+// its castable map. That map is filled ONLY by `apS` (its line 55 is the sole
+// registration), which iterates the SPELL records (`co_1`, type 220) and
+// registers one `yp_2` per spell under the spell id. Cards live in a different
+// registry entirely — `eh_2` loads type-100 records into `la_0.XJ()` as `xj`.
+//
+// So a card id in this blob either misses — the client logs "impossible
+// d'ajouter l'item" and drops it — or, worse, COLLIDES with an unrelated spell
+// and renders it as a castable action card. 65 of the 325 cards with a usable
+// action collide that way, so this was not theoretical.
+//
+// The deck is genuinely EMPTY today, and that is the correct output rather than a
+// stub: nothing in the shipped data grants a coach an action spell. The rule that
+// would (`np_1` type 27, "Ajouter un sort de coach") appears on no coach card —
+// the 13 rule types that do appear are 1,2,3,4,5,10,11,17,19,20,24,29,31, and all
+// of those are catalogue entries with no operands (see parameters.go). When the
+// grant mechanism is found, it feeds coachActionDeckSpellIDs and nothing else
+// here changes.
+func writeCoachActionDeck(w *protocol.Writer, f *Fight, coach *domain.Coach) {
+	deck := coachActionDeckSpellIDs(f, coach)
 	w.U16(uint16(len(deck) * 4))
-	for _, e := range deck {
-		w.I32(e.id)
+	for _, id := range deck {
+		w.I32(id)
 	}
+}
+
+// coachActionDeckSpellIDs returns the SPELL ids forming the coach's action deck,
+// capped at the client's capacity and filtered so an id the client cannot resolve
+// is never emitted.
+//
+// The filter is the important half: it makes it impossible to reintroduce the
+// wrong-namespace bug by accident, because anything that is not a real spell is
+// dropped here rather than shipped to a client that would either error or show an
+// unrelated spell.
+func coachActionDeckSpellIDs(f *Fight, coach *domain.Coach) []int32 {
+	if coach == nil || f == nil || f.deps == nil {
+		return nil
+	}
+	// Source of the coach's action spells. Empty until the grant mechanism is
+	// identified — see writeCoachActionDeck. Everything downstream of here is
+	// already correct, so filling this in is the whole remaining change.
+	var candidates []int32
+	return filterCoachDeckSpellIDs(f.deps.Spells, candidates)
+}
+
+// filterCoachDeckSpellIDs drops any id the client could not resolve, de-dupes,
+// and caps at the client's deck capacity.
+//
+// Split out from coachActionDeckSpellIDs so this safety net is directly testable
+// while the source list is still empty — it is the part that must not be wrong
+// the day someone fills that list in.
+func filterCoachDeckSpellIDs(spells *gamedata.Spells, candidates []int32) []int32 {
+	if spells == nil || len(candidates) == 0 {
+		return nil
+	}
+	out := make([]int32, 0, coachActionDeckCapacity)
+	seen := make(map[int32]bool, coachActionDeckCapacity)
+	for _, id := range candidates {
+		if len(out) >= coachActionDeckCapacity {
+			break
+		}
+		if id == 0 || seen[id] || spells.Get(id) == nil {
+			continue // not in the client's castable registry: never emit it
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }
 
 // writeFightCoachBlock emits the coach block as aez_0.b(bb, 34) reads it. The T
