@@ -692,6 +692,13 @@ since close combat is a flat 5 AP for a flat 5 base damage. Kite is excluded on
 purpose: its plan is to break contact. Before this, a fighter with no castable
 spell did *nothing at all* — the blocker walked adjacent and stood there.
 
+The AI also **never splashes its own team** (`aiWouldHitOwnTeam`): area effects
+land on allies, enemies and the caster alike, and 15 damaging breed spells carry
+an area shape - several the strongest their breed has, including one that hits
+*every living fighter*. Picking by damage rather than by cost made those the
+preferred choice, so the gate is what keeps the repertoire from being a
+downgrade (B-085). Any friendly splash disqualifies the spell outright.
+
 The AI also **never aims a support spell at an enemy** (`aiSpellHarmsEnemy`, a
 whitelist of harmful effect kinds). That is not hypothetical: a real coach's team
 becomes AI-driven the moment the coach drops mid-fight, carrying whatever the
@@ -1149,10 +1156,11 @@ is a signing certificate or SignPath); no published Docker image.
     demons carrying a real breed loadout (1 spell → typically 3–4), positioning
     via the real targeting validator instead of a bare distance window,
     **close combat with leftover AP** (a spell-less fighter used to do nothing
-    whatsoever), and a guard against aiming support spells at enemies (B-084).
-    Still open: healing/buffing allies, summoning, placing traps, cooperative
-    focus-fire, AoE friendly-fire awareness, trap and sudden-death awareness,
-    diagonal pathfinding, difficulty tiers.
+    whatsoever), and two guards that the repertoire itself made necessary —
+    never aiming a support spell at an enemy (B-084) and never splashing its own
+    team with an area spell (B-085). Still open: healing/buffing allies,
+    summoning, placing traps, cooperative focus-fire, trap and sudden-death
+    awareness, diagonal pathfinding, difficulty tiers.
 19. **Coach action cards in fight** — the deck is already rendered by the client
     and is completely unplayable.
 20. **Card staking / bets** on a fight.

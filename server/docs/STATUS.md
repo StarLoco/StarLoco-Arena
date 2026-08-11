@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| B-085 | The AI would NUKE ITS OWN TEAM with area spells (15 damaging breed spells are AoE; one hits every living fighter) |
 | B-084 | The AI would HEAL the enemy it was attacking (a real coach's team goes AI-driven on disconnect, carrying arbitrary spells) |
 | AI | Fighters play from a spell REPERTOIRE (was one fixed spell); demons carry a real breed loadout; close combat with leftover AP (a spell-less fighter did nothing at all); positioning uses the real targeting validator |
 | LIVE | B-083 verified in the retail client: a real fight rendered every fighter, event card 14 drew, the end-of-fight panel and its won-cards row rendered, log error-free |

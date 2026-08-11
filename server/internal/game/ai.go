@@ -256,14 +256,58 @@ func aiSpellHarmsEnemy(sp *gamedata.Spell) bool {
 		return false
 	}
 	for _, ef := range sp.Effects {
-		switch ef.Kind() {
-		case gamedata.KindDamage, gamedata.KindLeech, gamedata.KindPercentHP,
-			gamedata.KindPoison, gamedata.KindScaledAP, gamedata.KindScaledMP,
-			gamedata.KindInstantDeath, gamedata.KindZoneDamage, gamedata.KindLineDamage,
-			gamedata.KindAPLoss, gamedata.KindMPLoss, gamedata.KindAPSteal,
-			gamedata.KindMPSteal, gamedata.KindZoneAPLoss, gamedata.KindZoneMPLoss,
-			gamedata.KindState, gamedata.KindPush, gamedata.KindPull:
+		if aiEffectHarms(ef) {
 			return true
+		}
+	}
+	return false
+}
+
+// aiEffectHarms is the per-effect half of aiSpellHarmsEnemy, so the friendly-fire
+// check can ask the same question of ONE effect: it is the harmful effects whose
+// area must not catch an ally, while a buff or heal riding along in the same
+// spell is fine.
+func aiEffectHarms(ef gamedata.Effect) bool {
+	switch ef.Kind() {
+	case gamedata.KindDamage, gamedata.KindLeech, gamedata.KindPercentHP,
+		gamedata.KindPoison, gamedata.KindScaledAP, gamedata.KindScaledMP,
+		gamedata.KindInstantDeath, gamedata.KindZoneDamage, gamedata.KindLineDamage,
+		gamedata.KindAPLoss, gamedata.KindMPLoss, gamedata.KindAPSteal,
+		gamedata.KindMPSteal, gamedata.KindZoneAPLoss, gamedata.KindZoneMPLoss,
+		gamedata.KindState, gamedata.KindPush, gamedata.KindPull:
+		return true
+	}
+	return false
+}
+
+// aiWouldHitOwnTeam reports whether casting sp at `center` would land a HARMFUL
+// effect on one of the caster's own team, or on the caster itself.
+//
+// Friendly fire is real and authentic here — areaFighters applies an area effect
+// to allies, enemies and the caster alike, and you are meant to position to spare
+// your team. The AI had no idea: it now picks the HARDEST-HITTING affordable
+// spell, and 15 of the damaging breed spells carry an area shape, several of them
+// the strongest their breed has (the Cra's best is a size-3 T, and one Iop spell
+// is shape 32767 = every living fighter). So without this the AI would routinely
+// nuke its own team, and with a 32767 spell, itself.
+//
+// The policy is deliberately strict: any friendly splash disqualifies the spell,
+// rather than trying to weigh ally damage against enemy damage. That is
+// predictable and cheap to reason about; the cost is that the AI declines a cast
+// that a human might judge worth it. Uses the caster's CURRENT position, which is
+// where chooseAISpell is called from, so the directional shapes resolve exactly.
+func (f *Fight) aiWouldHitOwnTeam(caster *FightFighter, sp *gamedata.Spell, center Pos) bool {
+	if caster == nil || sp == nil {
+		return false
+	}
+	for _, ef := range sp.Effects {
+		if !aiEffectHarms(ef) {
+			continue
+		}
+		for _, v := range f.areaFighters(caster, ef, center) {
+			if v != nil && v.HP > 0 && v.TeamID == caster.TeamID {
+				return true
+			}
 		}
 	}
 	return false
@@ -299,6 +343,9 @@ func (f *Fight) chooseAISpell(ff *FightFighter, target *FightFighter) int32 {
 		}
 		if !f.spellTargetValid(ff, sp, target.Pos) {
 			continue
+		}
+		if f.aiWouldHitOwnTeam(ff, sp, target.Pos) {
+			continue // would splash an ally (or itself)
 		}
 		dmg, _, ok := sp.Damage()
 		if !ok {

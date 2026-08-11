@@ -38,6 +38,37 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-085 - The AI would nuke its own team with area spells
+
+**Self-inflicted, same review pass as B-084.** Friendly fire here is real and
+authentic - `areaFighters` lands an area effect on allies, enemies and the caster
+alike, and you are meant to position to spare your team. The AI had no idea it
+existed, which did not matter while it cast one fixed spell chosen by CHEAPEST AP
+(`pickBreedSpell`). Giving it a repertoire changed the selection to
+HARDEST-HITTING, which systematically favours the area spells.
+
+**Measured:** 15 of the damaging breed spells carry an area shape, and several
+are the strongest their breed has - the Cra's best (spell 18, d38, affordable at
+exactly 6 AP) is a size-3 T, and Iop spell 9 is shape 32767, i.e. *every living
+fighter*, which damages the caster's whole team and the caster itself. Both were
+in the live repertoires observed in the retail client.
+
+**Fix.** `aiWouldHitOwnTeam` runs each candidate's HARMFUL effects through the
+real `areaFighters` from the caster's actual cell (so the directional shapes
+resolve exactly) and disqualifies the spell if any living same-team fighter,
+including the caster, falls in the zone. `aiSpellHarmsEnemy` was split so
+`aiEffectHarms` can ask the question per effect - a buff or heal riding along in
+the same spell is not friendly fire.
+
+The policy is deliberately strict: any friendly splash disqualifies the spell
+rather than weighing ally damage against enemy damage. That is predictable and
+cheap to reason about; the cost is declining a cast a human might judge worth it.
+
+**Verified:** `unit` - TestAIAvoidsFriendlyFire (ally in the blast forces the
+weaker single-target spell; ally moved clear or dead restores the AoE) and
+TestAIWillNotNukeItself (a 32767 area is never cast, and no AP is spent trying).
+Both mutation-checked by removing the gate, which reproduces the bug.
+
 ### B-084 - The AI would heal the enemy it was attacking
 
 **Self-inflicted, caught by reviewing my own change before moving on.** Giving
