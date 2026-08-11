@@ -14,7 +14,7 @@ import (
 // archetype is DERIVED from its single spell + stats (there is no behaviour data
 // in the game files), so it stays correct as the underlying spell data changes.
 //
-//   - Blocker    (no spell): walk adjacent to the nearest enemy and body-block.
+//   - Blocker    (no spell): walk adjacent to the nearest enemy and hit it.
 //   - Aggressive (spell damages enemies): close into range and cast until dry.
 //   - Kite       (debuff spell, or lots of MP): cast from range, then retreat.
 //   - Self-buff  (self-targeted buff): cast on self, then block the nearest enemy.
@@ -23,6 +23,10 @@ import (
 // (SummonSpellID), but casting is no longer limited to it: a fighter plays from
 // a repertoire (aiRepertoire) and re-picks the best castable spell before every
 // cast. A summoned creature carries exactly one spell, so it is unaffected.
+//
+// Every archetype except Kite then spends LEFTOVER AP on close combat. Kite is
+// excluded on purpose: its plan is to break contact, and trading blows would
+// undo the retreat it just made.
 
 type aiBehavior int
 
@@ -48,12 +52,17 @@ func (f *Fight) runAITurn(ff *FightFighter) {
 	switch f.classifyAI(ff) {
 	case behaviorSelfBuff:
 		f.playSelfBuffAI(ff)
+		f.closeCombatAI(ff)
 	case behaviorAggressive:
 		f.playAggressiveAI(ff)
+		f.closeCombatAI(ff)
 	case behaviorKite:
+		// No weapon attack: this archetype's plan is to break contact, and
+		// standing to trade blows would undo the retreat it just made.
 		f.playKiteAI(ff)
 	default: // behaviorBlocker
 		f.moveTowardNearestOpponent(ff)
+		f.closeCombatAI(ff)
 	}
 
 	// If the fighter died mid-turn (kamikaze cast / lethal cell) or its cast
@@ -139,6 +148,48 @@ func (f *Fight) playSelfBuffAI(ff *FightFighter) {
 	}
 	if ff.HP > 0 && f.isCurrentTurn(ff.WireID) {
 		f.moveTowardNearestOpponent(ff)
+	}
+}
+
+// adjacentOpponent returns the living enemy on an orthogonally adjacent cell
+// that this fighter should hit, using the same preference as target selection
+// (higher initiative, then a real fighter over a summon) so it stays
+// deterministic.
+func (f *Fight) adjacentOpponent(self *FightFighter) *FightFighter {
+	var best *FightFighter
+	for _, fr := range f.allFighters() {
+		if fr.HP <= 0 || !f.areOpponents(self, fr) || fr.hasState(stateInvisible) {
+			continue
+		}
+		if manhattanDist(self.Pos, fr.Pos) != 1 {
+			continue
+		}
+		if best == nil || aiTargetPreferred(fr, best) {
+			best = fr
+		}
+	}
+	return best
+}
+
+// closeCombatAI spends LEFTOVER AP on weapon attacks against an adjacent enemy.
+//
+// It runs after the archetype has cast, because a spell is almost always the
+// better use of AP — close combat is a flat 5 AP for a flat 5 base damage, while
+// chooseAISpell already picked the hardest-hitting affordable spell. Without
+// this a fighter with no castable spell did NOTHING all fight: the blocker
+// archetype walked adjacent and then just stood there, which is also what
+// happens to any fighter whose loadout is empty.
+func (f *Fight) closeCombatAI(ff *FightFighter) {
+	for ff.HP > 0 && f.isCurrentTurn(ff.WireID) && ff.AP >= closeCombatAP {
+		target := f.adjacentOpponent(ff)
+		if target == nil {
+			return
+		}
+		before := ff.AP
+		f.closeCombat(ff, target.Pos)
+		if ff.AP >= before {
+			return // refused for a reason we did not model: stop rather than spin
+		}
 	}
 }
 
