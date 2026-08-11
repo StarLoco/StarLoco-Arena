@@ -267,3 +267,35 @@ stays completely error-free.
 **It also reproduced the known accent bug**: the opponent name rendered as
 `DÃƒÂ¢fi` for *Défi*. That is the client-side mangling documented above — the
 server's encoding is correct and must not be "fixed" to chase it.
+
+## Live session, 2026-08-11 (second) — verifying the AI spell repertoire
+
+Ran challenge 12 in the retail client to validate the AI repertoire change
+end-to-end. The `/fight` dev dump (`http://127.0.0.1:5599/fight`) is the fastest
+way to see what the AI is actually holding — it prints each fighter's spell list:
+
+```
+side=1 name="Iop"  breed=8 spells=5[165 5 4 166 9]
+side=1 name="Cra"  breed=9 spells=6[18 16 3 168 17 170]
+side=1 name="Feca" breed=1 spells=2[31 137]
+```
+
+Those counts (5 / 6 / 2) match the per-breed damaging-spell counts measured from
+the shipped table exactly, and demons previously carried **one** spell each.
+
+Over four rounds: both the Cra and the Feca ended every turn at `ap=0/6` —
+spending their full AP casting — and the player fighter went from 75 to 19 HP.
+The round-4 event card applied its -15 % fire modifier to all six fighters
+(`stats[fDmg0/-15%]`), and the client log stayed error-free throughout.
+
+**Note for future AI testing:** spell casts are NOT logged server-side, so the
+server log will look idle even while the AI is fighting. Read `/fight` for AP/HP
+deltas instead, or watch the damage numbers in a screenshot.
+
+**Gotcha when testing player-side casting:** the fighters in this run showed
+`spells=0[]` and so could not cast at all. That is NOT a bug — fighter creation
+does not grant spells; they arrive later through the loadout message
+(`decodeLoadoutSpells`, the `Oi`/`en_1` blob of `[i16 slot][i32 spellId]`). A
+fighter recruited straight from the *Nouveau combattant* dialog and thrown into a
+fight is simply unarmed. Assign a loadout first if the test needs the player side
+to cast.
