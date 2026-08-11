@@ -655,8 +655,18 @@ are all bypassed for collision damage specifically.
 - **Summon cap** = `1 + NB_SUMMONS`, raised by action-74 buffs (stored unclamped
   so a summon-steal can drive the cap to 0) and enforced as a cast criterion.
 
-**AI** 🟡 — four archetypes *derived* from the fighter's single spell, because
-there is no behaviour data anywhere in the game files:
+**AI** 🟡 — four archetypes *derived* from the fighter's defining spell, because
+there is no behaviour data anywhere in the game files. The archetype still comes
+from that one spell, but **casting no longer does**: a fighter plays from a
+**repertoire** (`aiRepertoire` = `SummonSpellID` then its `Fighter.Spells`,
+deduped, both exactly what `fighterKnowsSpell` accepts) and re-picks the best
+castable spell — affordable, off cooldown, within frequency limits and passing
+the real targeting validator — before **every** cast, so it reacts to a kill or a
+cooldown mid-turn. Challenge demons now ship a real loadout too
+(`breedSpellRepertoire`: the breed's damaging AP-costing spells, strongest first,
+capped at `maxFighterSpells`); measured, that is 1–7 per breed, typically 3–4,
+where they used to have exactly one. A summoned creature has no `Fighter.Spells`,
+so its repertoire is still a single spell and its behaviour is unchanged.
 
 | Behaviour | Trigger | Turn plan |
 |---|---|---|
@@ -670,10 +680,17 @@ tie-break real fighter over enemy summon (the manual's "summon intelligence"
 rule). Invisible enemies are skipped. Movement scoring is fully deterministic
 despite Go's random map order.
 
-**What the AI cannot do:** use close combat or weapons; use more than one spell;
-heal or buff allies; summon; place traps; focus-fire cooperatively; consider AoE
-friendly fire, traps, special cells or sudden-death safety; move diagonally. There
-are no difficulty tiers. **This is the single biggest gameplay-quality lever left.**
+Positioning asks the **real validator** from each candidate cell
+(`spellTargetValidFrom`), so "can I fire from there?" accounts for the Range-stat
+extension, only-line, free-cell, line-of-sight and target masks. It previously
+used a bare Manhattan window, which both walked closer than necessary and could
+walk somewhere the cast was then refused, wasting the turn.
+
+**What the AI cannot do:** use close combat or weapons; heal or buff allies;
+summon; place traps; focus-fire cooperatively; consider AoE friendly fire, traps,
+special cells or sudden-death safety; move diagonally. There are no difficulty
+tiers. **This remains the biggest gameplay-quality lever left**, though the
+single-spell limit — the largest piece — is now gone.
 
 ### 8.17 Map destruction / sudden death ✅
 
@@ -1115,9 +1132,13 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 2 — real features
 
-18. **AI depth** — the single biggest gameplay-quality lever. Multiple spells per
-    fighter, close combat and weapons, healing/buffing allies, tactical
-    positioning, AoE friendly-fire awareness, trap and sudden-death awareness,
+18. 🟡 **AI depth** — the biggest gameplay-quality lever. **Multiple spells per
+    fighter is done**: fighters play from a repertoire and re-pick the best
+    castable spell before every cast, challenge demons carry a real breed loadout
+    (1 spell → typically 3–4), and positioning now consults the real targeting
+    validator instead of a bare distance window. Still open: close combat and
+    weapons, healing/buffing allies, summoning, placing traps, cooperative
+    focus-fire, AoE friendly-fire awareness, trap and sudden-death awareness,
     diagonal pathfinding, difficulty tiers.
 19. **Coach action cards in fight** — the deck is already rendered by the client
     and is completely unplayable.
