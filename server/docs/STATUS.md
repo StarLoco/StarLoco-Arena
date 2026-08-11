@@ -130,10 +130,17 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    leaves `akV`), and decremented by `amt_2` — which looks like a packet but has
    `TI()==0`, empty serialization bodies and no opcode, i.e. a client-local timeline
    event. It is also **the real stacking cap**: the client never merges buffs, it
-   refuses the cast once the target carries `iT()` live copies. Remaining unknown: the
-   decay window is `arm_0.lQ(1)` = ONE turn, not the buff's duration — enforcing the
-   wrong window would reject casts the client thinks are legal, so it wants a live
-   check first. Small payoff (6 spells).
+   refuses the cast once the target carries `iT()` live copies.
+   ✅ **RESOLVED — deliberately not enforced.** The decay window is **one turn**
+   (`arm_0.lQ(1)`, a literal; the very next line uses `arm_0.lQ(fv2.et())`, a
+   spell-derived duration, so the literal is deliberate), which is exactly the
+   granularity `CastMaxPerTarget` already has. And every shipped MaxActive spell is
+   already capped at least as tightly by a limit we DO enforce: five of six have
+   `CastMaxPerTarget == MaxActive` (15, 46, 141, 167, 173), and the sixth (spell 8) is a
+   range-0 self-cast already limited to one cast per turn. Enforcing it would add a
+   second, subtly different gate that changes no legal cast, while a wrong window would
+   *reject* casts the client believes are legal. Pinned by
+   `TestMaxActiveIsRedundantInShippedData`.
 6. **Tournaments** (types 1000/1001) — currently three hand-built definitions; the real
    rules/rewards/prize tables are in the data. Live-match layer (opponent search
    28609/28611, brackets, admin opcodes) deferred by the user.

@@ -1069,7 +1069,7 @@ is a signing certificate or SignPath); no published Docker image.
 
 **Tier 0 is complete.**
 
-### Tier 1 — cheap concrete wins (8 of 10 resolved: B-079…B-083, two withdrawn)
+### Tier 1 — cheap concrete wins (**COMPLETE**: B-079…B-083 built; four resolved by evidence)
 
 8. ~~**Zone-effect action ids 165 / 166 / 169**~~ — **done (B-079)**, plus 167 and
    168, which the roadmap had missed: `mh_2` shows the family is six members of
@@ -1158,12 +1158,12 @@ is a signing certificate or SignPath); no published Docker image.
     disables). The widening *replaces* the timeout: relaxing the requirement
     ends the search in a match rather than in a give-up, which matters on a
     server with few players online.
-17. 🟡 **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is still
-    decoded-not-enforced, but **the scope question that blocked it is now
-    answered** and it needs no wire work — what is left is one timing detail
-    worth a live check before enforcing. 6 spells carry it (8, 15, 46, 141, 167,
-    173 — buff spells, not summons). The mechanism, from `sH` (the per-fighter
-    cast-history tracker, `gn_0.baS`, reachable via `PN()`):
+17. ✅ **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is
+    decoded-not-enforced **on purpose**: the scope question that blocked it is
+    answered, it needs no wire work, and it turns out it cannot change an outcome
+    in the shipped data. 6 spells carry it (8, 15, 46, 141, 167, 173 — buff
+    spells, not summons). The mechanism, from `sH` (the per-fighter cast-history
+    tracker, `gn_0.baS`, reachable via `PN()`):
     - The counter is `sH.akV`, a map **keyed by spell id**, with `d()`
       incrementing, `e()` decrementing and deleting at zero, and `c()` doing the
       check — it rejects the cast once `count >= iT()` (record field 8).
@@ -1180,12 +1180,20 @@ is a signing certificate or SignPath); no published Docker image.
       no opcode table: it is a purely client-local timeline event.
     So this is a pure server-side legality rule, and it is also **the real
     stacking cap** — the client never merges buffs (see §8.12), it refuses the
-    cast once a target already carries `iT()` live copies. The open detail is the
-    decay window: the client schedules that decrement with `arm_0.lQ(1)`, and
-    `lQ` takes TURNS (`ZT.jt` builds it from the effect's own 2-element duration
-    array, `nArray[0]` turns + `nArray[1]` as the infinite flag) — i.e. one turn,
-    not the buff's duration. Getting that window wrong would make the server
-    reject casts the client thinks are legal, so it wants a live check first.
+    cast once a target already carries `iT()` live copies.
+    **Resolved: deliberately NOT enforced, because in the shipped data it cannot
+    change an outcome.** The decay window is **one turn** — `mv_1` schedules the
+    decrement with `arm_0.lQ(1)`, a literal, and the very next line schedules a
+    different event with `arm_0.lQ(fv2.et())`, a spell-derived duration, so the
+    literal is deliberate. A counter that resets every turn is exactly the
+    granularity `CastMaxPerTarget` already has — and every shipped MaxActive
+    spell is already capped at least as tightly by a limit we DO enforce: five of
+    six have `CastMaxPerTarget == MaxActive` (15, 46, 141, 167, 173) and the
+    sixth (spell 8) is a range-0 self-cast already limited to one cast per turn.
+    Enforcing it would add a second, subtly different gate that changes no legal
+    cast, while a wrong window would *reject* casts the client believes are
+    legal. Pinned by `TestMaxActiveIsRedundantInShippedData`, which fails the
+    moment a spell's MaxActive binds tighter than the limits we enforce.
 
 ### Tier 2 — real features
 
