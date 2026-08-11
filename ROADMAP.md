@@ -544,10 +544,24 @@ whole arena on round 1 (event card 14 is 94+127+128). They are distinct now.
   decrements and removes at zero, `c()` reads the count), so a summon's innate
   root and a spell's root coexist as count 2 and removing one leaves the other.
   Our `States` map holds remaining TURNS, conflating "how long" with "how many
-  sources". That would also fix overlapping *finite* sources, which
-  keeping-infinites does not. NB this is a genuine gap precisely *because* states
-  use the refcounted `Kt` store — it is the one place the client does not simply
-  stack, so it is the one place we must not either.
+  sources", and `stateSrc` remembers only the LAST effect id to set each state.
+  **Measured: not reachable in shipped content, so this stays deliberately
+  unimplemented.** Overlap is certainly real — spell 419 applies five states at
+  duration 63, and spells 147 and 170 each apply `rooted` twice in a single cast
+  (170 with two different durations, 2 and 1). But the divergence is only
+  *observable* if something removes one source of a multi-source state early,
+  and the only mechanism that removes a state by source is action 149. Of the 50
+  action-149 rows in the spell table, exactly **6** target a state effect id, and
+  all six are the three Masqueraider mask spells stripping the other two masks —
+  states whose source is unique in the whole game (173←9192, 174←9193, 175←9194),
+  mutually exclusive by design and self-gated. Every other removal path is
+  wholesale (dispel strips all finite states, death and fight-end clear
+  everything) and so is indifferent to refcounting; natural expiry is correctly
+  served by max(), since a state should last until its longest source ends.
+  Implementing refcounting today would therefore be a behaviour-neutral refactor
+  of the state model — pure risk. The assumption is pinned instead by
+  `TestStatesTargetedBy149AreSingleSourced` (mutation-verified), which fails the
+  moment a 149 targets a state with more than one source.
 - Dispel does not touch poisons, damage-transfer links or auras.
 - **Timed buff/debuff icons are not restored on reconnect or spectate** — the
   server keeps the buffs and they keep working; only the client-side icons are
