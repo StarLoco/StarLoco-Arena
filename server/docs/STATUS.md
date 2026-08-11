@@ -14,6 +14,14 @@ by bugs found in live play. Current theme: **the client's data files are the sin
 of truth** — no hardcoded values, no values ported from v2.04b (a beta whose numbers were
 re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2.70.
 
+**Tier 0 (correctness/anti-cheat) and Tier 1 (cheap concrete wins) are both COMPLETE**
+(see `ROADMAP.md`). Work has moved to Tier 2 features. A recurring result worth knowing
+before picking up an item: **five Tier 1 entries were resolved by evidence rather than
+code** — initiative re-sort, 5203 destructive ops, buff stacking, the np_1 operand hunt
+and `MaxActive` — because the premise was false or the gap was unreachable in shipped
+data. Two of them would have introduced bugs if built as written. Check the premise
+against the client before implementing (§9).
+
 ## 2. Where to look
 
 | Doc | What it answers |

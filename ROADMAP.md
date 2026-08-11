@@ -5,8 +5,10 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** live-verified B-083 in the retail client; buff stacking and the
-state-refcount gap both measured and closed as correct-as-is (Tier 1 8/10)
+· **Latest work:** **Tier 0 and Tier 1 both COMPLETE.** The AI now plays from a spell
+repertoire and was hardened by four bugs found in that work (B-084…B-087, all
+live- or mutation-verified); np_1's operand question and MaxActive both resolved
+by evidence rather than code
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
