@@ -290,6 +290,70 @@ func TestBuffLifecycle(t *testing.T) {
 	}
 }
 
+// TestBuffsStackAndExpireIndependently locks in the stacking semantics against a
+// future "optimisation" into merge/refresh/cap. The retail client STACKS: every
+// running effect it receives is filed in the per-fighter registry alf_1 under a
+// key from xb_2.ahT(), a monotonic counter, so two casts can never collide and
+// the registry's duplicate guard never fires. Its only removal helpers are bulk
+// by-source (dispel/death/fight-end); there is no same-effect eviction anywhere.
+// So a blind append is the wire-correct behaviour, and repeat-casting is bounded
+// by cast frequency (cooldown / max-per-turn / max-per-target), not by merging.
+//
+// Two casts of DIFFERENT magnitude and DIFFERENT duration, so the test also
+// fails if a revert ever credits the wrong instance's delta.
+func TestBuffsStackAndExpireIndependently(t *testing.T) {
+	ff := &FightFighter{WireID: 1, Pos: Pos{X: 5, Y: 5}, HP: 50, MaxHP: 50, AP: 6, MaxAP: 6, MP: 3, MaxMP: 3}
+	f := &Fight{Teams: [2]*FightTeam{{ID: 0, Fighters: []*FightFighter{ff}}}}
+	buff := func(action int32, v float32, dur int32) gamedata.Effect {
+		return gamedata.Effect{ActionID: action, Params: []float32{v}, Duration: []int32{dur, 0}}
+	}
+
+	// +2 AP for 3 turns, then +3 AP for 1 turn: both live, both counted.
+	f.resolveEffect(ff, buff(13, 2, 3), ff.Pos)
+	f.resolveEffect(ff, buff(13, 3, 1), ff.Pos)
+	if len(ff.Buffs) != 2 || ff.MaxAP != 11 || ff.AP != 11 {
+		t.Fatalf("two casts: buffs=%d MaxAP=%d AP=%d want 2/11/11 (stacked, not merged)",
+			len(ff.Buffs), ff.MaxAP, ff.AP)
+	}
+
+	// Tick 1: only the 1-turn +3 expires, and it must give back exactly 3.
+	f.tickBuffs()
+	if len(ff.Buffs) != 1 || ff.MaxAP != 8 || ff.AP != 8 {
+		t.Fatalf("after tick 1: buffs=%d MaxAP=%d AP=%d want 1/8/8 (only the +3 reverted)",
+			len(ff.Buffs), ff.MaxAP, ff.AP)
+	}
+
+	// Ticks 2-3: the 3-turn +2 ages out on its own schedule, back to the base.
+	f.tickBuffs()
+	if len(ff.Buffs) != 1 || ff.MaxAP != 8 {
+		t.Fatalf("after tick 2: buffs=%d MaxAP=%d want 1/8 (+2 still running)", len(ff.Buffs), ff.MaxAP)
+	}
+	f.tickBuffs()
+	if len(ff.Buffs) != 0 || ff.MaxAP != 6 || ff.AP != 6 {
+		t.Fatalf("after tick 3: buffs=%d MaxAP=%d AP=%d want 0/6/6 (fully unwound)",
+			len(ff.Buffs), ff.MaxAP, ff.AP)
+	}
+
+	// The mechanical stat path stacks too: two damage-% buffs sum, and each
+	// reverts its own rolled value.
+	ff2 := &FightFighter{WireID: 2, Pos: Pos{X: 6, Y: 6}, HP: 50, MaxHP: 50, AP: 6, MaxAP: 6}
+	f2 := &Fight{Teams: [2]*FightTeam{{ID: 0, Fighters: []*FightFighter{ff2}}}}
+	f2.resolveEffect(ff2, buff(82, 15, 2), ff2.Pos)
+	f2.resolveEffect(ff2, buff(82, 10, 1), ff2.Pos)
+	if len(ff2.Buffs) != 2 || ff2.Stats.dmgPctAll != 25 {
+		t.Fatalf("two stat buffs: buffs=%d dmgPctAll=%d want 2/25", len(ff2.Buffs), ff2.Stats.dmgPctAll)
+	}
+	f2.tickBuffs()
+	if len(ff2.Buffs) != 1 || ff2.Stats.dmgPctAll != 15 {
+		t.Fatalf("stat buff tick 1: buffs=%d dmgPctAll=%d want 1/15 (only the +10 reverted)",
+			len(ff2.Buffs), ff2.Stats.dmgPctAll)
+	}
+	f2.tickBuffs()
+	if len(ff2.Buffs) != 0 || ff2.Stats.dmgPctAll != 0 {
+		t.Fatalf("stat buff tick 2: buffs=%d dmgPctAll=%d want 0/0", len(ff2.Buffs), ff2.Stats.dmgPctAll)
+	}
+}
+
 func TestCardinalStep(t *testing.T) {
 	cases := []struct{ dx, dy, wx, wy int32 }{
 		{2, 0, 1, 0}, {-3, 0, -1, 0}, {0, 2, 0, 1}, {0, -4, 0, -1},

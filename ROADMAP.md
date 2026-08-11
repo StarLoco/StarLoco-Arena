@@ -521,9 +521,22 @@ whole arena on round 1 (event card 14 is 94+127+128). They are distinct now.
   id, capped by a param — used by the Masqueraider mask-switch spells, which each
   bundle ~15 of these.
 
+- **Stacking is CORRECT as-is — verified against the client.** A fighter carries
+  **two registries with different semantics**, and the client is explicit about
+  both. Buffs live in `gn_0.baO`, an `alf_1`, keyed by `xb_2.je()`; that key is
+  assigned in `aka()` from `xb_2.ahT()`, a **monotonic counter**, because the
+  pluggable key strategy `aes_2` has **no implementor anywhere in the client**
+  (so `bWD` is permanently null). Two casts therefore can never collide, the
+  registry's duplicate guard in `o()` never fires, and its only removal helpers
+  are bulk **by source** (parent effect, fighter, spell, effect type) — there is
+  no same-effect eviction to be found. So the client **stacks**, and our blind
+  append matches it. Repeat-casting is bounded by **cast frequency** (cooldown /
+  max-per-turn / max-per-target, all enforced) and by resource clamping, not by
+  merging. Locked in by `TestBuffsStackAndExpireIndependently`, which
+  mutation-fails against a merge. States are the *other* registry (`gn_0.baR`,
+  an `aLM extends Kt`) and really are reference-counted — see the next bullet.
+
 **Gaps:**
-- **No stacking rules.** Casting the same buff twice appends two independent
-  entries with two independent deltas — nothing merges, refreshes or caps.
 - ~~**Dispel deletes infinite states too**~~ — **fixed (B-077)**: permanent states
   now survive, as permanent buffs always did.
   The **general** fix is still open, and the client shows what it looks like:
@@ -531,8 +544,10 @@ whole arena on round 1 (event card 14 is 94+127+128). They are distinct now.
   decrements and removes at zero, `c()` reads the count), so a summon's innate
   root and a spell's root coexist as count 2 and removing one leaves the other.
   Our `States` map holds remaining TURNS, conflating "how long" with "how many
-  sources" — the same shortcut as the stacking gap above. That would also fix
-  overlapping *finite* sources, which keeping-infinites does not.
+  sources". That would also fix overlapping *finite* sources, which
+  keeping-infinites does not. NB this is a genuine gap precisely *because* states
+  use the refcounted `Kt` store — it is the one place the client does not simply
+  stack, so it is the one place we must not either.
 - Dispel does not touch poisons, damage-transfer links or auras.
 - **Timed buff/debuff icons are not restored on reconnect or spectate** — the
   server keeps the buffs and they keep working; only the client-side icons are
@@ -978,7 +993,7 @@ is a signing certificate or SignPath); no published Docker image.
 
 **Tier 0 is complete.**
 
-### Tier 1 — cheap concrete wins (7 of 10 resolved: B-079…B-083, one withdrawn)
+### Tier 1 — cheap concrete wins (8 of 10 resolved: B-079…B-083, two withdrawn)
 
 8. ~~**Zone-effect action ids 165 / 166 / 169**~~ — **done (B-079)**, plus 167 and
    168, which the roadmap had missed: `mh_2` shows the family is six members of
@@ -1012,7 +1027,21 @@ is a signing certificate or SignPath); no published Docker image.
     902) and is now sent, so wounds survive a reconnect or spectate. Timed spell
     buffs still have no slot in this message; restoring those needs the
     per-effect message the client uses during normal play.
-12. **Buff stacking rules** — merge / refresh / cap instead of blind append.
+12. ~~**Buff stacking rules** — merge / refresh / cap instead of blind append.~~ —
+    **withdrawn: the premise is false, and acting on it would have introduced a
+    resource leak.** The client stacks. Buffs are filed in the per-fighter
+    registry `alf_1` under `xb_2.je()`, assigned from the **monotonic counter**
+    `ahT()` because the pluggable key strategy `aes_2` has no implementor in the
+    client — so two casts can never collide, the duplicate guard never fires, and
+    the only removal helpers are bulk by-source. Blind append is what the client
+    expects. The abuse the item worried about is already bounded by **cast
+    frequency** (cooldown / max-per-turn / max-per-target) and resource clamping;
+    bonus-cell buffs cannot be farmed either, since they fire only at turn start
+    and revert at turn end. Implementing the requested merge and running the new
+    test showed the trap concretely: it tracks one buff after applying two
+    deltas, permanently leaking the second one on revert. Locked in by
+    `TestBuffsStackAndExpireIndependently` (mutation-verified). See §8.12 — the
+    *states* store `Kt` genuinely is refcounted, and that gap remains open.
 13. ~~**Initiative buffs should re-sort the timeline.**~~ — **withdrawn: the
     premise is false.** No shipped spell uses action 76/77 (0 of 533 effect
     rows), the client's timeline interface has no comparator or sort, and no
