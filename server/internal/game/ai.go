@@ -18,6 +18,11 @@ import (
 //   - Aggressive (spell damages enemies): close into range and cast until dry.
 //   - Kite       (debuff spell, or lots of MP): cast from range, then retreat.
 //   - Self-buff  (self-targeted buff): cast on self, then block the nearest enemy.
+//
+// The archetype is still chosen from the fighter's DEFINING spell
+// (SummonSpellID), but casting is no longer limited to it: a fighter plays from
+// a repertoire (aiRepertoire) and re-picks the best castable spell before every
+// cast. A summoned creature carries exactly one spell, so it is unaffected.
 
 type aiBehavior int
 
@@ -137,50 +142,172 @@ func (f *Fight) playSelfBuffAI(ff *FightFighter) {
 	}
 }
 
-// castAISpellRepeatedly casts the fighter's spell at the re-evaluated nearest
-// enemy as many times as AP allows, stopping when a cast fails validation.
-func (f *Fight) castAISpellRepeatedly(ff *FightFighter) {
-	if ff.SummonSpellID == 0 || f.deps == nil || f.deps.Spells == nil {
-		return
+// aiRepertoire returns every spell the AI fighter may cast, in a deterministic
+// order. SummonSpellID comes first — it is the fighter's defining spell, and for
+// a summoned creature it is the ONLY one — followed by any spells its
+// domain.Fighter carries. Both sources are exactly what fighterKnowsSpell
+// accepts, so the AI can never pick something the cast handler will refuse as
+// unowned.
+//
+// A summon (empty Fighter.Spells) therefore still yields a single-spell list and
+// behaves exactly as before.
+func (f *Fight) aiRepertoire(ff *FightFighter) []int32 {
+	if ff == nil {
+		return nil
 	}
-	sp := f.deps.Spells.Get(ff.SummonSpellID)
+	out := make([]int32, 0, 1+maxFighterSpells)
+	seen := make(map[int32]bool, 1+maxFighterSpells)
+	add := func(id int32) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	add(ff.SummonSpellID)
+	if ff.Fighter != nil {
+		for _, sp := range ff.Fighter.Spells {
+			add(sp.SpellID)
+		}
+	}
+	return out
+}
+
+// aiSpellAPCost mirrors castSpellByFighter's cost rule so the AI budgets its AP
+// with the same number the handler will actually charge.
+func aiSpellAPCost(sp *gamedata.Spell) int32 {
 	if sp == nil {
+		return defaultSpellAPCost
+	}
+	if sp.AP > 0 {
+		return int32(sp.AP)
+	}
+	return defaultSpellAPCost
+}
+
+// chooseAISpell picks the best spell to cast at `target` from where the fighter
+// is standing right now, or 0 if nothing is castable. A candidate must be
+// affordable, off cooldown, within its frequency limits and pass the REAL
+// targeting validator from the caster's cell — so a choice is never made that
+// the cast handler would then reject.
+//
+// Ranking is deliberately simple and deterministic: highest raw damage first,
+// then cheaper, then lowest id. Damage is the spell record's own figure, not a
+// simulation — the AI is meant to be competent, not optimal.
+func (f *Fight) chooseAISpell(ff *FightFighter, target *FightFighter) int32 {
+	if ff == nil || target == nil || f.deps == nil || f.deps.Spells == nil {
+		return 0
+	}
+	var bestID, bestDmg, bestCost int32
+	for _, id := range f.aiRepertoire(ff) {
+		sp := f.deps.Spells.Get(id)
+		if sp == nil {
+			continue
+		}
+		cost := aiSpellAPCost(sp)
+		if cost > ff.AP {
+			continue
+		}
+		if !ff.CastHistory.canCast(sp.LimitKeyID(), sp.Cooldown, sp.CastMaxPerTurn,
+			sp.CastMaxPerTarget, f.tableTurn, target.WireID, true) {
+			continue
+		}
+		if !f.spellTargetValid(ff, sp, target.Pos) {
+			continue
+		}
+		dmg, _, ok := sp.Damage()
+		if !ok {
+			dmg = 0
+		}
+		if bestID == 0 || dmg > bestDmg ||
+			(dmg == bestDmg && cost < bestCost) ||
+			(dmg == bestDmg && cost == bestCost && id < bestID) {
+			bestID, bestDmg, bestCost = id, dmg, cost
+		}
+	}
+	return bestID
+}
+
+// castAISpellRepeatedly spends the fighter's AP on the best spell available each
+// time, re-picking both the target and the spell after every cast so it reacts
+// to a kill, a move or a spell going on cooldown mid-turn.
+func (f *Fight) castAISpellRepeatedly(ff *FightFighter) {
+	if f.deps == nil || f.deps.Spells == nil {
 		return
 	}
-	apCost := int32(sp.AP)
-	if apCost <= 0 {
-		apCost = 1
-	}
-	maxCasts := int(ff.AP) + 1 // hard safety cap; castSpellByFighter self-limits
+	maxCasts := int(ff.MaxAP) + 1 // hard safety cap; every cast must spend AP
 	for i := 0; i < maxCasts; i++ {
-		if ff.HP <= 0 || !f.isCurrentTurn(ff.WireID) || ff.AP < apCost {
+		if ff.HP <= 0 || !f.isCurrentTurn(ff.WireID) || ff.AP <= 0 {
 			return
 		}
 		target := f.nearestOpponent(ff)
 		if target == nil {
 			return
 		}
-		if !f.castSpellByFighter(ff, ff.SummonSpellID, target.Pos) {
-			return // out of range / LoS / AP: stop trying
+		spellID := f.chooseAISpell(ff, target)
+		if spellID == 0 {
+			return // nothing castable from here
+		}
+		if !f.castSpellByFighter(ff, spellID, target.Pos) {
+			return // refused for a reason we did not model: stop rather than spin
 		}
 	}
 }
 
+// aiCanFireFrom reports whether ff, standing at `from`, could cast ANY affordable
+// spell in its repertoire at `target`. Uses the real validator, so it accounts
+// for the Range-stat extension, only-line, free-cell, line-of-sight and target
+// masks rather than a bare distance window.
+func (f *Fight) aiCanFireFrom(ff *FightFighter, from Pos, target *FightFighter) bool {
+	if f.deps == nil || f.deps.Spells == nil {
+		return false
+	}
+	for _, id := range f.aiRepertoire(ff) {
+		sp := f.deps.Spells.Get(id)
+		if sp == nil || aiSpellAPCost(sp) > ff.AP {
+			continue
+		}
+		if f.spellTargetValidFrom(ff, from, sp, target.Pos) {
+			return true
+		}
+	}
+	return false
+}
+
+// aiFiringGap is how far `from` is outside the range window of the repertoire
+// spell it comes CLOSEST to being able to fire — a "how much closer do I need to
+// get" proxy used to pick a direction when nothing is castable yet.
+func (f *Fight) aiFiringGap(ff *FightFighter, from Pos, target *FightFighter) int32 {
+	best := int32(-1)
+	if f.deps == nil || f.deps.Spells == nil {
+		return best
+	}
+	for _, id := range f.aiRepertoire(ff) {
+		sp := f.deps.Spells.Get(id)
+		if sp == nil || aiSpellAPCost(sp) > ff.AP {
+			continue
+		}
+		g := firingGap(from, target.Pos, int32(sp.RangeMin), spellEffectiveMaxRange(ff, sp))
+		if best < 0 || g < best {
+			best = g
+		}
+	}
+	return best
+}
+
 // moveIntoSpellRange walks the fighter (MP-limited) to the nearest reachable cell
-// from which it can hit `target` with its spell. For a melee (range-1) spell this
-// is the same as getting adjacent. No-op if it can already fire or can't improve.
+// from which it can hit `target` with SOMETHING in its repertoire. No-op if it
+// can already fire or cannot improve.
 func (f *Fight) moveIntoSpellRange(ff, target *FightFighter) {
 	if f.deps == nil || f.deps.Spells == nil {
 		f.moveTowardNearestOpponent(ff)
 		return
 	}
-	sp := f.deps.Spells.Get(ff.SummonSpellID)
-	if sp == nil {
+	if len(f.aiRepertoire(ff)) == 0 {
 		f.moveTowardNearestOpponent(ff)
 		return
 	}
-	rMin, rMax := int32(sp.RangeMin), int32(sp.RangeMax)
-	if f.canHitFrom(ff.Pos, target.Pos, rMin, rMax, sp.TestLoS) {
+	if f.aiCanFireFrom(ff, ff.Pos, target) {
 		return // already able to fire
 	}
 	if ff.MP <= 0 || ff.hasState(stateRooted) {
@@ -188,14 +315,14 @@ func (f *Fight) moveIntoSpellRange(ff, target *FightFighter) {
 	}
 	var bestPath []Pos
 	bestCanFire := false
-	bestScore := firingGap(ff.Pos, target.Pos, rMin, rMax)
+	bestScore := f.aiFiringGap(ff, ff.Pos, target)
 	bestLen := 0
 	for _, path := range f.orderedReachablePaths(ff, ff.MP) {
 		cell := path[len(path)-1]
-		canFire := f.canHitFrom(cell, target.Pos, rMin, rMax, sp.TestLoS)
-		score := firingGap(cell, target.Pos, rMin, rMax)
+		canFire := f.aiCanFireFrom(ff, cell, target)
+		score := f.aiFiringGap(ff, cell, target)
 		better := (canFire && !bestCanFire) ||
-			(canFire == bestCanFire && score < bestScore) ||
+			(canFire == bestCanFire && score >= 0 && (bestScore < 0 || score < bestScore)) ||
 			(canFire == bestCanFire && score == bestScore && bestPath != nil && len(path) < bestLen)
 		if better {
 			bestPath, bestCanFire, bestScore, bestLen = path, canFire, score, len(path)
@@ -282,19 +409,6 @@ func (f *Fight) orderedReachablePaths(ff *FightFighter, mp int32) [][]Pos {
 		return la.Y < lb.Y
 	})
 	return paths
-}
-
-// canHitFrom reports whether a caster at `from` could cast a spell of the given
-// range at `to` (Manhattan range window + optional line-of-sight).
-func (f *Fight) canHitFrom(from, to Pos, rMin, rMax int32, testLOS bool) bool {
-	d := manhattanDist(from, to)
-	if d < rMin || d > rMax {
-		return false
-	}
-	if testLOS && !f.Arena().hasLineOfSight(from, to) {
-		return false
-	}
-	return true
 }
 
 // firingGap is how many cells `from` is outside the spell's [rMin,rMax] range

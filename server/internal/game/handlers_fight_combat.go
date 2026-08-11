@@ -262,6 +262,41 @@ func (f *Fight) cellHeldByOther(c Pos, self *FightFighter) bool {
 //
 // The client enforces the same rules, so a genuine cast always passes.
 func (f *Fight) spellTargetValid(caster *FightFighter, sp *gamedata.Spell, target Pos) bool {
+	return f.spellTargetValidFrom(caster, caster.Pos, sp, target)
+}
+
+// spellEffectiveMaxRange is a spell's maximum range for this caster.
+//
+// The caster's Range characteristic extends a spell whose base max is > 1,
+// UNLESS the spell is flagged range-not-boostable — and that flag suppresses
+// only a positive boost, exactly as the client gates it:
+//
+//	if (!(maxRange <= 1 || boost >= 0 && eD())) maxRange += boost
+//
+// Shared with the AI so its idea of where it can stand and fire from cannot
+// drift from what the validator will accept.
+func spellEffectiveMaxRange(caster *FightFighter, sp *gamedata.Spell) int32 {
+	maxRange := int32(sp.RangeMax)
+	if caster == nil {
+		return maxRange
+	}
+	if maxRange > 1 && !(caster.Range >= 0 && sp.RangeNotBoostable) {
+		maxRange += caster.Range
+		if maxRange < int32(sp.RangeMin) {
+			maxRange = int32(sp.RangeMin)
+		}
+	}
+	return maxRange
+}
+
+// spellTargetValidFrom is spellTargetValid evaluated from an ARBITRARY origin
+// rather than the caster's current cell, so the AI can ask "could I cast this if
+// I stood there?" while planning a move and get the SAME answer the validator
+// will give once it arrives. The AI used to approximate this with a bare
+// Manhattan range window, which ignored the Range-stat extension, only-line,
+// free-cell and target masks — so it both walked closer than it needed to and
+// sometimes walked somewhere its cast was then refused, wasting the turn.
+func (f *Fight) spellTargetValidFrom(caster *FightFighter, from Pos, sp *gamedata.Spell, target Pos) bool {
 	// A spell can only ever be aimed at a real, walkable arena cell. This was
 	// missing (B-048): NeedFreeCell only tested for FIGHTERS, so nothing stopped a
 	// cast — including a displacement spell like the Iop's Bond — from targeting a
@@ -269,28 +304,18 @@ func (f *Fight) spellTargetValid(caster *FightFighter, sp *gamedata.Spell, targe
 	if !f.Arena().walkable(target.X, target.Y) || f.cellDestroyed(target.X, target.Y) {
 		return false
 	}
-	dist := manhattanDist(caster.Pos, target)
-	maxRange := int32(sp.RangeMax)
-	// The caster's Range characteristic extends a spell whose base max is > 1,
-	// UNLESS the spell is flagged range-not-boostable — and that flag suppresses
-	// only a positive boost, exactly as the client gates it:
-	//   if (!(maxRange <= 1 || boost >= 0 && eD())) maxRange += boost
-	if maxRange > 1 && !(caster.Range >= 0 && sp.RangeNotBoostable) {
-		maxRange += caster.Range
-		if maxRange < int32(sp.RangeMin) {
-			maxRange = int32(sp.RangeMin)
-		}
-	}
+	dist := manhattanDist(from, target)
+	maxRange := spellEffectiveMaxRange(caster, sp)
 	if dist < int32(sp.RangeMin) || dist > maxRange {
 		return false
 	}
-	if sp.OnlyLine && target.X != caster.Pos.X && target.Y != caster.Pos.Y {
+	if sp.OnlyLine && target.X != from.X && target.Y != from.Y {
 		return false
 	}
 	if sp.NeedFreeCell && f.cellOccupied(target) {
 		return false
 	}
-	if sp.TestLoS && !f.Arena().hasLineOfSight(caster.Pos, target) {
+	if sp.TestLoS && !f.Arena().hasLineOfSight(from, target) {
 		return false
 	}
 	if !f.spellTargetMaskAllows(caster, sp, target) {
