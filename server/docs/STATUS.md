@@ -29,6 +29,7 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| LIVE | Full 5v4 driven to completion: by round 7 the AI had killed two player fighters and taken ZERO damage (no friendly fire, no Killer-tile suicide), fight ended cleanly, client log error-free |
 | B-086 | The AI FROZE (positioning and casting disagreed about castability); also stopped walking onto Killer tiles |
 | B-085 | The AI would NUKE ITS OWN TEAM with area spells (15 damaging breed spells are AoE; one hits every living fighter) |
 | B-084 | The AI would HEAL the enemy it was attacking (a real coach's team goes AI-driven on disconnect, carrying arbitrary spells) |
@@ -108,8 +109,20 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    array (dumped 2026-08-10). They read like per-rule template cards. Anything actually
    parameterised lives in type 13, type 10 or the 900-930 block. Find where the operand
    comes from before writing an enforcer that would index `params[0]` on an empty slice.
-5. **Spell `TargetMasks` + `MaxActive`** — decoded, not evaluated. Needs the client's
-   `aLc` evaluator / a live-instance counter. Small payoff (3 and 6 spells).
+5. **`MaxActive`** — decoded, not enforced. `TargetMasks` is **done** (B-081, 3 spells;
+   a mask carrying a bit we cannot represent is skipped whole rather than guessed).
+   For `MaxActive` the SCOPE question that blocked it is now answered and it needs **no
+   wire work**: the counter is `sH.akV` on the per-fighter cast-history tracker, keyed
+   by spell id, checked **on the TARGET** (`mv_1` runs cooldown/per-turn against the
+   caster's `sH` but calls the max-active check on `gn_03`, which the next line proves
+   is the target), surviving turn boundaries (`yB()` clears the per-turn buckets and
+   leaves `akV`), and decremented by `amt_2` — which looks like a packet but has
+   `TI()==0`, empty serialization bodies and no opcode, i.e. a client-local timeline
+   event. It is also **the real stacking cap**: the client never merges buffs, it
+   refuses the cast once the target carries `iT()` live copies. Remaining unknown: the
+   decay window is `arm_0.lQ(1)` = ONE turn, not the buff's duration — enforcing the
+   wrong window would reject casts the client thinks are legal, so it wants a live
+   check first. Small payoff (6 spells).
 6. **Tournaments** (types 1000/1001) — currently three hand-built definitions; the real
    rules/rewards/prize tables are in the data. Live-match layer (opponent search
    28609/28611, brackets, admin opcodes) deferred by the user.

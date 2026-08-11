@@ -299,3 +299,37 @@ does not grant spells; they arrive later through the loadout message
 fighter recruited straight from the *Nouveau combattant* dialog and thrown into a
 fight is simply unarmed. Assign a loadout first if the test needs the player side
 to cast.
+
+## Driving a whole fight fast with /script
+
+The 30 s player turn clock makes a full fight impractical to watch through the
+GUI: five fighters is ~150 s per round. `/script` removes that entirely — it
+posts each step to the fight actor and waits, so rounds take milliseconds and the
+client still receives every real broadcast.
+
+The useful idiom is `goto <wire> ai`, which advances turns until that fighter is
+current, force-ending the player turns it passes and letting session-less
+fighters actually PLAY their AI turn. Cycling it over the AI team runs the fight:
+
+```powershell
+$demons = @(1099511640072,1099511640073,1099511640074,1099511640075)
+$cmds = @(); foreach ($d in $demons) { $cmds += "goto $d ai" }
+$q = [System.Uri]::EscapeDataString(($cmds -join ";"))
+Invoke-WebRequest "http://127.0.0.1:5599/script?cmds=$q" -UseBasicParsing
+```
+
+Poll `/fight` between batches and stop on `active fights: 0`. Watch for
+`cap reached; target never became current` — that means the target died or the
+timeline changed, which is itself information.
+
+**A full 5v4 run, 2026-08-11.** By round 7 the AI team had killed two of the
+player's fighters and taken **zero** damage: all four demons still at full HP
+after seven rounds of four clustered casters using area spells. That is the
+end-to-end evidence for the friendly-fire gate (B-085) and the Killer-tile filter
+— in the run BEFORE those landed, a Xelor killed itself on a Killer tile. The
+fight then ended naturally (`fight ended winnerTeam=1`) with an error-free client
+log.
+
+**Reading AI health from `/fight`:** `mp=3/3` and `ap=6/6` on a fighter whose turn
+has passed means it did NOTHING, which is how the B-086 freeze was spotted. A
+working AI shows spent MP while closing and spent AP once in range.
