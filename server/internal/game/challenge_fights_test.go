@@ -1,7 +1,6 @@
 package game
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
@@ -11,10 +10,7 @@ import (
 // the data files are absent — the repo convention for real-data tests.
 func openChallengeData(t *testing.T) *gamedata.Challenges {
 	t.Helper()
-	st, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	st := openRealGameData(t)
 	defs, err := st.LoadChallenges()
 	if err != nil {
 		t.Fatalf("LoadChallenges: %v", err)
@@ -161,10 +157,7 @@ func TestChallengeOpponentBreeds(t *testing.T) {
 // real card templates, or a victory would grant phantom inventory rows the
 // client cannot render.
 func TestChallengeRewardsResolveToRealCards(t *testing.T) {
-	st, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	st := openRealGameData(t)
 	defs, err := st.LoadChallenges()
 	if err != nil {
 		t.Fatalf("LoadChallenges: %v", err)
@@ -256,10 +249,7 @@ func TestChallengeOpponentNaming(t *testing.T) {
 // the pick must be stable across runs (map iteration order must not leak) and
 // must actually be a damaging spell of that breed.
 func TestPickBreedSpellDeterministic(t *testing.T) {
-	st, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	st := openRealGameData(t)
 	spells, err := st.LoadSpells()
 	if err != nil {
 		t.Fatalf("LoadSpells: %v", err)
@@ -297,10 +287,7 @@ func TestPickBreedSpellDeterministic(t *testing.T) {
 // on: a session-less team (so it is pre-marked ready and AI-driven), distinct
 // wire ids, live HP, and a spell so the AI is not a statue.
 func TestBuildChallengeTeamIsAIReady(t *testing.T) {
-	st, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	st := openRealGameData(t)
 	spells, err := st.LoadSpells()
 	if err != nil {
 		t.Fatalf("LoadSpells: %v", err)

@@ -2,7 +2,6 @@ package game
 
 import (
 	"fmt"
-	"path/filepath"
 	"testing"
 
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
@@ -162,10 +161,7 @@ func TestNoVictoryConditionLeavesFightsAlone(t *testing.T) {
 // server implements. If a future field-order slip changes any of it, this fails
 // loudly rather than silently disabling the mechanic.
 func TestShippedTimeChallengesResolveToSurvivalRules(t *testing.T) {
-	gd, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	gd := openRealGameData(t)
 	defs, err := gd.LoadChallenges()
 	if err != nil {
 		t.Fatalf("LoadChallenges: %v", err)
@@ -202,10 +198,7 @@ func TestShippedTimeChallengesResolveToSurvivalRules(t *testing.T) {
 // Challenges 29/30/31 each grant +40 dodge for the whole fight to real fighters
 // only (target mask 1024 = "breed is not 0").
 func TestShippedFightStartEffectsResolve(t *testing.T) {
-	gd, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	gd := openRealGameData(t)
 	defs, err := gd.LoadChallenges()
 	if err != nil {
 		t.Fatalf("LoadChallenges: %v", err)

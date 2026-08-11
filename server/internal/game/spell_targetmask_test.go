@@ -1,7 +1,6 @@
 package game
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
@@ -113,10 +112,7 @@ func TestSpellTargetMaskUnrepresentableBitStaysPermissive(t *testing.T) {
 // future data set enforces masks on more spells, or with bits this evaluator
 // cannot decide, this fails loudly rather than silently changing what casts.
 func TestShippedEnforcedMasksAreTheThreeWeExpect(t *testing.T) {
-	gd, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	gd := openRealGameData(t)
 	spells, err := gd.LoadSpells()
 	if err != nil {
 		t.Fatalf("LoadSpells: %v", err)

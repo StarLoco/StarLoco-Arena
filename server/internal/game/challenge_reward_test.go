@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
@@ -18,10 +17,7 @@ func challengeRewardDeps(t *testing.T) (*Deps, uint) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	gd, err := gamedata.Open(filepath.Join("..", "..", "data"))
-	if err != nil {
-		t.Skipf("game data not available: %v", err)
-	}
+	gd := openRealGameData(t)
 	defs, err := gd.LoadChallenges()
 	if err != nil {
 		t.Fatalf("LoadChallenges: %v", err)
