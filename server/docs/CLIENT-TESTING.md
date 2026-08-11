@@ -223,3 +223,47 @@ Use them together: `output.log` says "did anything break", the screenshot says
   gamedata unit tests instead.
 
 Only **new** ERROR lines (not on this list) indicate a real problem.
+
+## Live session, 2026-08-11 — driving a fight from a cold database
+
+Recorded because two steps here cost real time and are not obvious from the code.
+
+**A 6006 roster push only lands while the team panel is the ACTIVE frame.** A
+fighter created while the world was in front (here, by injecting `6001` through
+`/c2s`) is persisted correctly and the server re-pushes the roster, but the
+client drops it: `adY.atu()` stayed empty and the team grid stayed empty across
+a full relog. Creating the fighter with the panel already open populated both
+immediately. If the roster looks empty after a create, that is why.
+
+**The client refuses to start a fight with an empty team, before any packet is
+sent** — *"Il faut au moins un combattant dans ton équipe pour lancer le
+combat !"*. So a fighter must be in a TEAM SLOT, not merely in the roster.
+The reliable route is entirely in the GUI: team emblem → **Recruter** on a slot →
+the *Nouveau combattant* dialog (name field, camp, one of the 14 class icons) →
+**Valider**. That places the fighter in the slot and the budget counter moves
+(600/6000 for a bare Iop).
+
+Full working sequence from a database with no coach at all:
+
+1. `arena_up`, `arena_login` → the coach-creation screen; click the name field,
+   type, **Valider** (all canvas clicks — they work; see the retraction above).
+2. Team emblem **(490, 652)**.
+3. **Recruter** on the first slot **(141, 293)** → fill the dialog → **Valider**
+   **(625, 660)**.
+4. **TESTER (608, 344)** → the fight starts (it launches challenge 12, not a
+   sparring dummy).
+5. **PRÊT (483, 735)** → placement ends and the action phase begins.
+6. End it fast with GM chat rather than playing it out — opcode `3151`, arch 3,
+   payload `012A` + `[u8 len]` + the command:
+   `curl "http://127.0.0.1:5599/c2s?opcode=3151&arch=3&hex=012A092F454E444649474854"`
+   (that hex is `/ENDFIGHT`).
+
+**What this run confirmed:** fighters render in the placement phase (which is the
+real test of any change to the CREATE_FIGHT fighter blob — a wrong byte makes
+`gn_0.b` underflow and the fighter silently disappears), round 1 draws event card
+14, the end-of-fight panel renders with its won-cards row, and the client log
+stays completely error-free.
+
+**It also reproduced the known accent bug**: the opponent name rendered as
+`DÃƒÂ¢fi` for *Défi*. That is the client-side mangling documented above — the
+server's encoding is correct and must not be "fixed" to chase it.

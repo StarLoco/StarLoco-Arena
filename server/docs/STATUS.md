@@ -155,6 +155,11 @@ second player, and the client HUD renders fully once *the client* starts the fig
 - ~~Clicks reach AWT/Swing dialogs only, not the GLCanvas.~~ **False** — retracted in
   `CLIENT-TESTING.md` and confirmed again on 2026-08-10, when coach creation was driven
   entirely by canvas clicks. `ControlAgent` targets the GLCanvas deliberately.
+- **Verified live on 2026-08-11** (see §11 for the session): the CREATE_FIGHT change
+  that added the conditions list (B-083) deserializes correctly — a real client-driven
+  fight rendered every fighter, which is exactly what a wrong byte would have broken.
+  Also re-confirmed: round 1 draws event card 14, the end-of-fight panel renders with
+  the won-cards blob, and the client log stays error-free start to finish.
 - **B-074 is server-verified, not visually verified.** The victory-condition chain is
   proven over a real socket (`test/e2e/victory_condition_test.go` drives a real
   challenge fight to the condition and asserts END_FIGHT names the coach; the server
