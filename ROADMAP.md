@@ -670,7 +670,7 @@ so its repertoire is still a single spell and its behaviour is unchanged.
 
 | Behaviour | Trigger | Turn plan |
 |---|---|---|
-| Blocker | no spell / no spell data | walk adjacent to nearest enemy, body-block |
+| Blocker | no spell / no spell data | walk adjacent to nearest enemy, then hit it |
 | Aggressive | damaging spell, MP < 4 | close into range, cast until dry |
 | Kite | damaging spell with MP ≥ 4, or a debuff spell | close, cast, retreat |
 | Self-buff | buff on a self-range spell | cast on self, then block |
@@ -686,11 +686,23 @@ extension, only-line, free-cell, line-of-sight and target masks. It previously
 used a bare Manhattan window, which both walked closer than necessary and could
 walk somewhere the cast was then refused, wasting the turn.
 
-**What the AI cannot do:** use close combat or weapons; heal or buff allies;
-summon; place traps; focus-fire cooperatively; consider AoE friendly fire, traps,
-special cells or sudden-death safety; move diagonally. There are no difficulty
-tiers. **This remains the biggest gameplay-quality lever left**, though the
-single-spell limit — the largest piece — is now gone.
+Every archetype except Kite then spends **leftover AP on close combat**
+(`closeCombatAI`), after casting — a spell is almost always the better use of AP,
+since close combat is a flat 5 AP for a flat 5 base damage. Kite is excluded on
+purpose: its plan is to break contact. Before this, a fighter with no castable
+spell did *nothing at all* — the blocker walked adjacent and stood there.
+
+The AI also **never aims a support spell at an enemy** (`aiSpellHarmsEnemy`, a
+whitelist of harmful effect kinds). That is not hypothetical: a real coach's team
+becomes AI-driven the moment the coach drops mid-fight, carrying whatever the
+player equipped, and only 3 shipped spells have an enforced ally-only mask — so
+without the gate the AI would cheerfully heal the enemy it was attacking (B-084).
+
+**What the AI cannot do:** heal or buff allies; summon; place traps; focus-fire
+cooperatively; consider AoE friendly fire, traps, special cells or sudden-death
+safety; move diagonally. There are no difficulty tiers. Still the biggest
+gameplay-quality lever left, but the two largest pieces — the single-spell limit
+and never attacking — are now gone.
 
 ### 8.17 Map destruction / sudden death ✅
 
@@ -1132,12 +1144,13 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 2 — real features
 
-18. 🟡 **AI depth** — the biggest gameplay-quality lever. **Multiple spells per
-    fighter is done**: fighters play from a repertoire and re-pick the best
-    castable spell before every cast, challenge demons carry a real breed loadout
-    (1 spell → typically 3–4), and positioning now consults the real targeting
-    validator instead of a bare distance window. Still open: close combat and
-    weapons, healing/buffing allies, summoning, placing traps, cooperative
+18. 🟡 **AI depth** — the biggest gameplay-quality lever. **Done so far:** multiple
+    spells per fighter (a repertoire, re-picked before every cast), challenge
+    demons carrying a real breed loadout (1 spell → typically 3–4), positioning
+    via the real targeting validator instead of a bare distance window,
+    **close combat with leftover AP** (a spell-less fighter used to do nothing
+    whatsoever), and a guard against aiming support spells at enemies (B-084).
+    Still open: healing/buffing allies, summoning, placing traps, cooperative
     focus-fire, AoE friendly-fire awareness, trap and sudden-death awareness,
     diagonal pathfinding, difficulty tiers.
 19. **Coach action cards in fight** — the deck is already rendered by the client
