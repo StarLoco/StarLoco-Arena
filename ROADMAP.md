@@ -319,7 +319,7 @@ with a 64-slot mailbox, so no fight state is ever touched under a lock.
 | Spell cast | 8109 → 8110 | 🟡 | AP cost → target validity → cast criteria → frequency limits → fumble roll → crit roll → debit AP → resolve effects → flush → end check |
 | Close combat ("corps-à-corps") | 8111 → 8112 | ✅ | Uniform 5 AP / 5 dmg (7 crit) of the breed's element, verified against the client's `xq` table. Weapon-independent, always available |
 | Weapon / equipment use | 8107 → 8108 | ✅ | Ownership check, usable-while-carried flag, same targeting rules as spells (B-055) |
-| Coach action-card play in fight | — | ⬜ | **The deck is serialized into 8000 so the client renders it, but there is no opcode to play it** |
+| Coach action-card play in fight | — | ⬜ | The deck IS castable: exposed as `"coachSpellInventory"` (a list of `yp_2`) and played with **8109**, the ordinary spell cast. But the blob resolves against the SPELL registry (`new ajO(je_1.Wa(), 8)`) while we emit card ids — see Tier 2 item 19 |
 
 **Targeting validation:** walkable + not destroyed, Manhattan range window, Range
 stat boost only when base `RangeMax > 1` and the spell is not
@@ -1211,8 +1211,26 @@ is a signing certificate or SignPath); no published Docker image.
     not walking onto Killer tiles. Still open: healing/buffing allies, summoning,
     placing traps, cooperative focus-fire, trap-tile and sudden-death awareness,
     diagonal pathfinding, difficulty tiers.
-19. **Coach action cards in fight** — the deck is already rendered by the client
-    and is completely unplayable.
+19. 🟡 **Coach action cards in fight** — **the "no opcode" premise was wrong, and
+    the blob may carry the wrong id namespace.** The deck is exposed to the UI as
+    the field **`"coachSpellInventory"`** (`Te.bMP`), a list of `yp_2`
+    **castables**, and selecting a `yp_2` sends **8109 SpellCastRequestMessage**
+    via `alx_2` carrying `yp_2.getId()`. So playing a coach card is an ordinary
+    spell cast.
+    The catch: both `aez_0` and `Te` build that container as
+    `new ajO(je_1.Wa(), 8)`, and `je_1 extends azk`, whose `E(ByteBuffer)` reads
+    an `i32` and resolves it against the castable map `apS` fills from the
+    **spell** records (type 220) keyed by SPELL id. We emit **CoachCard template
+    ids**, and only 65 of the 325 `HasUsableAction` cards share an id with a
+    spell — the rest would be dropped with *"impossible d'ajouter l'item"*.
+    So the work is: find the CoachCard→spell link (the record's fields 19–26 are
+    still unread — field 19 is the `np_1[]`), emit resolvable ids, and let the
+    cast handler accept a deck card the fighter does not "know". See BUGS.md
+    *"The 8000 coach-deck blob probably carries the WRONG ID NAMESPACE"* for the
+    live test that would confirm it.
+    NB `zd_2` (`cooldownInFight`/`linkedSpells`) is **not** the deck — it exists
+    only for the 5 spells with a parent (471/472/473→462, 474/475→452), i.e. the
+    Masqueraider mask picker.
 20. **Card staking / bets** on a fight.
 21. **Evolution per-fighter death chance** (currently: all downed fighters die).
 22. **Fusion recipe table** — decode record type 1100 and replace the flat 60 % roll.

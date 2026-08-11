@@ -13,6 +13,48 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
+### The 8000 coach-deck blob probably carries the WRONG ID NAMESPACE
+
+**Found while checking the roadmap's claim that "there is no opcode to play a
+coach action card". That claim is wrong, and chasing it turned up something
+worse.**
+
+`writeCoachCardBlob` emits the coach's equipped cards as bare `i32` **CoachCard
+template ids**. The client resolves them through a `ut_0` factory, and both
+`aez_0` and `Te` build the coach's action-card container as:
+
+    this.bMQ = new ajO(je_1.Wa(), 8);
+
+`je_1 extends azk`, and `azk.E(ByteBuffer)` reads an `i32` and looks it up in its
+castable map (`dns.t(id)`). That map is filled by `apS`, which iterates the
+**spell** records (`co_1`, type 220) and registers one `yp_2` per spell under
+`co_12.el()` - the SPELL id. So the deck blob is resolved against the SPELL
+registry, not the card table.
+
+An id that does not resolve yields a null item and the client logs
+*"Erreur lors de la deserialisation d'un StackInventory : impossible d'ajouter
+l'item"* and drops it. Measured: of the 325 coach cards with `HasUsableAction`,
+only **65** have a spell sharing their id - so most equipped action cards would
+be silently dropped rather than rendered.
+
+That also reframes the feature. The deck is exposed to the UI as the field
+**"coachSpellInventory"** (`Te.bMP`), a list of `yp_2` **castables**, and
+selecting a `yp_2` sends **8109 SpellCastRequestMessage** via `alx_2` carrying
+`yp_2.getId()`. So there IS an opcode to play a coach action card - it is the
+ordinary spell cast - and the missing server work is (a) sending ids the client
+can resolve and (b) accepting a cast of a deck card the fighter does not "know".
+
+NB `zd_2` - the `yp_2` subclass with `cooldownInFight` / `linkedSpells` - is NOT
+the deck. It is created only for spells that have a parent (`jd()`), and exactly
+5 shipped spells do: 471/472/473 -> 462 and 474/475 -> 452, the Masqueraider mask
+variants. It is the mask-switch picker.
+
+**Not yet confirmed live** (the deck is empty until action cards are equipped, and
+the equip UI was not located this session). The decisive test: equip an action
+card, start a fight, and grep the client log for "impossible d'ajouter l'item".
+Until then this is code-proven but not behaviour-proven, so it stays here rather
+than in Fixed.
+
 > Full, ranked list with context: [`STATUS.md`](./STATUS.md) §4. Summary:
 
 
