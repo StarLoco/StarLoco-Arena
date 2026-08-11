@@ -705,6 +705,12 @@ becomes AI-driven the moment the coach drops mid-fight, carrying whatever the
 player equipped, and only 3 shipped spells have an enforced ally-only mask — so
 without the gate the AI would cheerfully heal the enemy it was attacking (B-084).
 
+Its movement flood also **skips cells sudden death has destroyed** - players
+were already guarded by `validateFightMove`, but the AI walks on paths from
+`reachableCells`, which was not, so it could stop on one (instant death at the
+next shrink) or walk THROUGH cells the client has flagged movement-blocked
+(B-087).
+
 The AI also **will not end a move on a Killer tile** (`aiCellIsSuicide`), which
 kills whoever starts a turn on it. Watched live: a Xelor closing on the player's
 team stepped onto one and was dead the next turn, because movement scoring only
@@ -713,7 +719,7 @@ and the Trap tile is deliberately not avoided, since 10 HP is a cost to weigh
 rather than certain death.
 
 **What the AI cannot do:** heal or buff allies; summon; place traps; focus-fire
-cooperatively; consider trap tiles or sudden-death safety; move diagonally. There are no difficulty tiers. Still the biggest
+cooperatively; consider trap tiles; move diagonally. There are no difficulty tiers. Still the biggest
 gameplay-quality lever left, but the two largest pieces — the single-spell limit
 and never attacking — are now gone.
 

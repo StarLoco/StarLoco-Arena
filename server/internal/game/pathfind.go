@@ -16,8 +16,20 @@ var cardinalDirs = [4][2]int32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 // keyed by (x,y) to the shortest origin-excluded path reaching that cell. The
 // start cell itself is not included. Cells occupied by a living fighter other
 // than `mover` are impassable (a fighter cannot walk through another), and only
-// real walkable arena cells are traversed. Altitude is not gated here — the
-// client animates whatever contiguous walkable path the server sends.
+// real walkable, UNDESTROYED arena cells are traversed. Altitude is not gated
+// here — the client animates whatever contiguous walkable path the server sends.
+//
+// The sudden-death check is not optional. A human's move is validated by
+// validateFightMove, which rejects any path touching a destroyed cell, but the
+// AI calls applyFighterMove directly on a path from here — so without it the AI
+// got a move no player could make. Two consequences, and the second is the
+// serious one:
+//
+//   - it could END its move on a destroyed cell, and shrinkArena kills whoever
+//     stands on one outright (HP set to 0, no save);
+//   - it could PATH THROUGH destroyed cells, which the client has flagged
+//     movement-blocked (asF.bV), i.e. the server would animate a walk the client
+//     believes is impossible.
 func (f *Fight) reachableCells(mover *FightFighter, start Pos, maxMP int32) map[[2]int32][]Pos {
 	out := make(map[[2]int32][]Pos)
 	if maxMP <= 0 {
@@ -45,7 +57,7 @@ func (f *Fight) reachableCells(mover *FightFighter, start Pos, maxMP int32) map[
 			if visited[key] {
 				continue
 			}
-			if !f.Arena().walkable(nx, ny) {
+			if !f.Arena().walkable(nx, ny) || f.cellDestroyed(nx, ny) {
 				continue
 			}
 			cell := Pos{X: nx, Y: ny, Z: f.Arena().altitudeAt(nx, ny)}

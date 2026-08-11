@@ -38,6 +38,34 @@ decompiled client, no runtime).
 
 ## Fixed
 
+### B-087 - The AI walked through and onto sudden-death cells
+
+Found by auditing the movement flood after the Killer-tile fix, on the theory
+that if one lethal-cell class was unmodelled another might be. It was.
+
+There are TWO movement paths and only one was guarded. A human's move goes
+through `validateFightMove`, which rejects any path touching a cell sudden death
+has removed. The AI calls `applyFighterMove` DIRECTLY on a path from
+`reachableCells`, which checked `walkable` and occupancy but not `cellDestroyed` -
+so the AI got a move no player could make.
+
+Two consequences, and the second is the serious one:
+
+- it could END its move on a destroyed cell, and `shrinkArena` kills whoever
+  stands on one outright (HP to 0, no save, no resist);
+- it could PATH THROUGH destroyed cells, which the client has flagged
+  movement-blocked (`asF.bV`) - i.e. the server animating a walk the client
+  believes is impossible.
+
+**Fix.** `reachableCells` now skips destroyed cells, which is the shared source
+for every AI movement behaviour and for the `/script` move command, and brings it
+in line with what `validateFightMove` already enforced for players.
+
+**Verified:** `unit` - TestPathfindAvoidsDestroyedCells asserts the cell is gone
+as a destination AND that nothing routes through it, plus the end-to-end case
+that the AI does not land on one. Mutation-checked: without the guard the flood
+offers the destroyed cell and three separate paths route straight over it.
+
 ### B-086 - The AI froze: positioning and casting disagreed about what was castable
 
 **Third self-inflicted bug from the repertoire work, found by watching a live
