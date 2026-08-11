@@ -29,6 +29,8 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 
 | # | What |
 |---|---|
+| LIVE | B-083 verified in the retail client: a real fight rendered every fighter, event card 14 drew, the end-of-fight panel and its won-cards row rendered, log error-free |
+| RE | Buff stacking + the state-refcount gap both MEASURED and closed as correct-as-is; `MaxActive` scope answered (per TARGET, client-local, no wire) |
 | B-083 | Fighter conditions (wounds) now in CREATE_FIGHT; the other id list is the SPHERE BOARD, not buffs |
 | B-082 | Matchmaking rating band that widens with waiting (configurable; 0 disables) |
 | B-081 | Spell-level target masks now enforced (3 spells); MaxActive documented as scope-blocked |
@@ -204,6 +206,19 @@ distribution** across all records. A mis-assigned field shows up instantly as an
 implausible histogram (spell cooldown: 97/203 on field 10 vs 6 on field 8). Finish with a
 real-data canary test asserting the population size, so a future field-order slip fails
 loudly instead of silently zeroing a mechanic.
+
+**The counterpart, which now pays just as often: check a backlog item's PREMISE against
+the client before implementing it.** Four items in a row turned out to rest on false
+premises (initiative re-sort, 5203 destructive ops, buff stacking, the state-refcount
+gap), and two of them would have introduced bugs if implemented as written — the
+requested buff "merge" applies both deltas but tracks one, leaking the second on every
+revert. The reliable shape of that check is: find the client structure that owns the
+behaviour, read how it is KEYED, and grep for whether the discriminating code path exists
+at all. A strategy interface with no implementor (`aes_2`), an effect list keyed by a
+monotonic counter, a message class with empty serialization bodies (`amt_2`) — each of
+those settles a design question outright. When the answer is "the gap is real but not
+reachable in shipped content", write the **guard test** that pins the data property
+instead of writing the feature.
 
 ## 10. Distribution — the server as a product
 

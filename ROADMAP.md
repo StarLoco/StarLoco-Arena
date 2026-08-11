@@ -5,7 +5,8 @@ wire-compatible with the retail **DofusArena 2.70** client (Feb-2012, rev 72909)
 plus the reverse-engineering tooling around it.
 
 **Updated:** 2026-08-10 · **Released version:** 0.4.0 · **Branch:** `v2.70`
-· **Latest work:** B-083 (fighter conditions on the fight wire) — **Tier 0 complete**
+· **Latest work:** live-verified B-083 in the retail client; buff stacking and the
+state-refcount gap both measured and closed as correct-as-is (Tier 1 8/10)
 
 This document answers two questions: *what actually works*, and *what is left*.
 It is deliberately granular — "the fight system" is not one line item, it is
@@ -1084,11 +1085,33 @@ is a signing certificate or SignPath); no published Docker image.
     ends the search in a match rather than in a give-up, which matters on a
     server with few players online.
 17. 🟡 **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is still
-    decoded-not-enforced: 6 spells carry it (8, 15, 46, 141, 167, 173 — buff
-    spells, not summons), and the blocker is its SCOPE — whether the cap counts
-    live instances per caster, per target or across the fight. The client side is
-    a runtime counter `apS` passes into `yp_2`, not something the record states,
-    so enforcing it against a guessed scope would change which casts are legal.
+    decoded-not-enforced, but **the scope question that blocked it is now
+    answered** and it needs no wire work — what is left is one timing detail
+    worth a live check before enforcing. 6 spells carry it (8, 15, 46, 141, 167,
+    173 — buff spells, not summons). The mechanism, from `sH` (the per-fighter
+    cast-history tracker, `gn_0.baS`, reachable via `PN()`):
+    - The counter is `sH.akV`, a map **keyed by spell id**, with `d()`
+      incrementing, `e()` decrementing and deleting at zero, and `c()` doing the
+      check — it rejects the cast once `count >= iT()` (record field 8).
+    - **Scope is PER TARGET, not per caster.** `mv_1.a(caster, spell, target)`
+      runs the cooldown / per-turn / per-target checks on the *caster's* `sH`
+      (`sH2 = gn_02.PN()`) but calls the max-active check on `gn_03.PN().c()` —
+      and `gn_03` is proven to be the target by the very next line, which passes
+      it as the `aOf` of the per-target-cap check.
+    - It **survives turn boundaries**: `sH.yB()` clears the per-turn buckets
+      `akT`/`akU` and deliberately leaves `akV` alone.
+    - **No server message is involved.** The decrement is driven by `amt_2`,
+      which looks like a packet (it extends `yd_2`) but has `TI()` returning 0
+      and *empty* `A(ByteBuffer)` / `c(ahh_0, ByteBuffer)` bodies, and appears in
+      no opcode table: it is a purely client-local timeline event.
+    So this is a pure server-side legality rule, and it is also **the real
+    stacking cap** — the client never merges buffs (see §8.12), it refuses the
+    cast once a target already carries `iT()` live copies. The open detail is the
+    decay window: the client schedules that decrement with `arm_0.lQ(1)`, and
+    `lQ` takes TURNS (`ZT.jt` builds it from the effect's own 2-element duration
+    array, `nArray[0]` turns + `nArray[1]` as the infinite flag) — i.e. one turn,
+    not the buff's duration. Getting that window wrong would make the server
+    reject casts the client thinks are legal, so it wants a live check first.
 
 ### Tier 2 — real features
 
