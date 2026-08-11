@@ -373,6 +373,54 @@ func (d *Deps) awardChallengeRewards(coachID uint, sess *Session, challengeID in
 	return granted
 }
 
+// breedSpellRepertoire is the spell loadout an AI-controlled challenge fighter of
+// this breed fights with, strongest first, capped like a real coach fighter's.
+//
+// A demon used to carry exactly ONE spell (pickBreedSpell) and cast it for the
+// whole fight, which made every challenge predictable. A real fighter of the same
+// breed picks up to maxFighterSpells, so giving demons the same budget is both
+// more authentic and the point of the AI repertoire work.
+//
+// Same filter as pickBreedSpell — the breed's spells that deal damage and cost
+// AP — so the two can never disagree about what is usable. Ordered by damage
+// descending, ties by id, so the cap keeps the most useful spells and the result
+// is deterministic. Measured against the shipped table, breeds have 1-7 such
+// spells (typically 3-4), so the cap only ever trims breed 11.
+func breedSpellRepertoire(spells *gamedata.Spells, breedID uint8) []domain.FighterSpell {
+	if spells == nil {
+		return nil
+	}
+	type cand struct {
+		id  int32
+		dmg int32
+	}
+	var cands []cand
+	for id, sp := range spells.All() {
+		if sp == nil || sp.BreedID != int32(breedID) || sp.AP <= 0 {
+			continue
+		}
+		dmg, _, ok := sp.Damage()
+		if !ok {
+			continue
+		}
+		cands = append(cands, cand{id: id, dmg: dmg})
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].dmg != cands[j].dmg {
+			return cands[i].dmg > cands[j].dmg
+		}
+		return cands[i].id < cands[j].id
+	})
+	if len(cands) > maxFighterSpells {
+		cands = cands[:maxFighterSpells]
+	}
+	out := make([]domain.FighterSpell, 0, len(cands))
+	for i, c := range cands {
+		out = append(out, domain.FighterSpell{Slot: int16(i), SpellID: c.id})
+	}
+	return out
+}
+
 // pickBreedSpell chooses the spell an AI-controlled challenge fighter of this
 // breed casts. The AI derives its whole behaviour from this one spell
 // (classifyAI: a damaging spell -> aggressive/kite, none -> a passive blocker),
@@ -432,7 +480,14 @@ func (d *Deps) buildChallengeTeam(side uint8, cells []Pos, challengeID int32, mi
 		// Name each opponent by its breed ("Iop", "Crâ") so the fight is legible;
 		// the demon teams have no duplicate breeds, so these stay distinct. The
 		// coach block carries the demon's own name (challengeOpponentName).
-		fr := &domain.Fighter{Name: fighterBreedName(breedID), BreedID: breedID}
+		fr := &domain.Fighter{
+			Name:    fighterBreedName(breedID),
+			BreedID: breedID,
+			// The AI's full repertoire (see ai.go). SummonSpellID below still
+			// selects the ARCHETYPE from the cheapest damaging spell, exactly as
+			// before; this widens what it may actually cast during the turn.
+			Spells: breedSpellRepertoire(d.Spells, breedID),
+		}
 		st := computeFighterStats(fr, nil) // no equipped cards: breed base only
 		ff := &FightFighter{
 			// Distinct from both real fighters (fighter id * 16) and the sparring

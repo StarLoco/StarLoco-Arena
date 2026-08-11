@@ -352,6 +352,18 @@ func TestBuildChallengeTeamIsAIReady(t *testing.T) {
 		if ff.isSummon() {
 			t.Errorf("fighter %d: must not look like a summon (Father set)", i)
 		}
+		// A demon fights from a repertoire, not one spell. Every breed in the
+		// shipped table has at least two damaging spells, and the loadout is
+		// capped like a real fighter's.
+		if n := len(ff.Fighter.Spells); n < 2 || n > maxFighterSpells {
+			t.Errorf("fighter %d (breed %d): %d spells, want 2..%d",
+				i, ff.Fighter.BreedID, n, maxFighterSpells)
+		}
+		// The archetype spell must be castable too, or classifyAI and the
+		// repertoire would disagree about what this fighter does.
+		if !fighterKnowsSpell(ff, ff.SummonSpellID) {
+			t.Errorf("fighter %d: does not know its own SummonSpellID %d", i, ff.SummonSpellID)
+		}
 	}
 	// Wire ids must not collide with a different challenge's team.
 	other := d.buildChallengeTeam(1, practiceArena.startCells(1), 32, 2)
