@@ -63,7 +63,7 @@ objects.
 | 902 | 111 | `ahm_1` → `aiz_2` | **Fighter conditions** — the persistent wound/blessing layer | ❌ | — |
 | 1000 | 22 | `aub` → — | Tournament definitions (rules, rewards, prizes) | ❌ | hand-built in `tournaments.go` |
 | 1001 | 4 | `ek_2` → — | Tournament level list | ❌ | — |
-| 1100 | 30 | `ajd_0` → `abe_1` | Fusion-laboratory definitions | ❌ | hand-built |
+| 1100 | 30 | `ajd_0` → `abe_1` | Fusion-laboratory definitions | ✅ 4/4 | `LoadFusionLabs` |
 | 1400 | 2 | `cb_2` → `atk_0` | Pro League definitions | ❌ | served empty |
 | 1500 | 148 | `atF` → `ana_2` | NPC dialog replies | ❌ | — |
 | 1600 | 29 | `mw_0` → — | Per-map metadata (music/background refs) | ❌ | — |
@@ -71,6 +71,31 @@ objects.
 Declared in `atr_0` but **absent from this store** (9): 110, 231, 232, 500, 600, 1101,
 1102, 1200, 1300. Type **200** (`Ht`, the effect row) is never a standalone record — it is
 embedded in 100/210/220/230/250/902 and is decoded by `effects.go`.
+
+### Type 1100 - Fusion labs (`ajd_0`) - 4 of 4 fields, complete
+
+12 bytes: `[i64 id][i16 power][u8 quality][u8 slotsPlusOne]`, from `ajd_0`'s own
+`a(ByteBuffer,int,short)` and confirmed against its writer `cr()`.
+
+30 records, ids 2-31, and the values are a clean tiered table - power runs
+1/5/10/15/20...120/150, quality 1/2/5/8/10...45/50, and the rendered slot count
+(`azi() - 1`) is 2-5. Power and quality rise together, which is what makes a
+field-order slip obvious: any other reading produces noise.
+
+**These four numbers ARE the fusion mechanic.** The client's fusion panel
+(`ajt_1`) exposes exactly:
+
+| property | value |
+|---|---|
+| `slotCount` | `lab.azi() - 1` |
+| `labPower` | `lab.tz()` |
+| `kardsPower` | Σ inputs' `RequiredLevel` - target's `FusionPower` |
+| `quality` | `lab.tA()` |
+| `canFusion` | inputs >= 2 |
+
+So fusion is a power-threshold mechanic against a **player-chosen target card**,
+not a recipe lookup. There is no recipe table anywhere in the client:
+`contentLoader.recipe` is a declared i18n key with no loader and no record type.
 
 ### Type 101 — Card sets (`yp_0`) — 2 of 2 fields ✅ complete
 `[i32 setId][u8 n + akw_0 effects]`. Membership runs the other way, from each coach
