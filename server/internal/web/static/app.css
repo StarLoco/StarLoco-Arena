@@ -157,7 +157,12 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
 
 main { flex: 1 0 auto; position: relative; }
 
-.section { position: relative; padding: 4rem 0; }
+/* Sections host the decorative blobs, which are deliberately positioned past
+   their own edges. They MUST clip: a blob at a negative `right` otherwise
+   widens the document and gives the whole page a horizontal scrollbar. The
+   same is true of .hero, .panel and .site-footer, which all clip already. */
+.section, .section-tight { position: relative; overflow: hidden; }
+.section { padding: 4rem 0; }
 .section-tight { padding: 2.5rem 0; }
 
 /* The signature section label: a short amber rule, then small uppercase
@@ -479,13 +484,26 @@ main { flex: 1 0 auto; position: relative; }
 
 /* --------------------------------------------------------------- Features */
 
+/* The items are direct grid children so the two rows share their heights; see
+   the note in index.html. */
+.feature-grid { column-gap: 2.5rem; }
+
 .feature {
   display: flex;
   gap: 1.25rem;
   padding: 1.25rem 0;
   border-bottom: 1px solid var(--border);
 }
-.feature:last-child { border-bottom: 0; }
+
+/* Separators run under the top row only, so the rule has to know the layout:
+   with two columns the bottom row is the last TWO items, but once the grid
+   collapses to one column it is just the final one. */
+.feature-grid .feature:nth-last-child(-n+2) { border-bottom: 0; }
+
+@media (max-width: 620px) {
+  .feature-grid .feature:nth-last-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .feature-grid .feature:last-child { border-bottom: 0; }
+}
 .feature-num {
   font-family: var(--font-heading);
   font-size: 2.5rem;

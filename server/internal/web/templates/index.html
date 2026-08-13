@@ -71,41 +71,41 @@
     <h2>What makes Arena special</h2>
     <p class="lede mb-4">The tactical depth that made DofusArena worth preserving.</p>
 
-    <div class="grid grid-2">
-      <div>
-        <div class="feature">
-          <div class="feature-num">01</div>
-          <div>
-            <h3>Pure strategy</h3>
-            <p>Every decision counts. No farming, no levelling, no gear treadmill — you and your
-              opponent start on equal terms and the better tactician wins.</p>
-          </div>
-        </div>
-        <div class="feature">
-          <div class="feature-num">02</div>
-          <div>
-            <h3>Ranked ladder</h3>
-            <p>Face opponents near your own rating and climb. Every result moves you, and the
-              <a href="/ladder">leaderboard</a> is public.</p>
-          </div>
+    {{/* The four items are DIRECT children of the grid on purpose. Nesting them
+         as two columns of two let each column stack independently, so 02 and 04
+         drifted apart by however much 01's and 03's text lengths differed. As
+         grid items they share row heights and line up. */}}
+    <div class="grid grid-2 feature-grid">
+      <div class="feature">
+        <div class="feature-num">01</div>
+        <div>
+          <h3>Pure strategy</h3>
+          <p>Every decision counts. No farming, no levelling, no gear treadmill — you and your
+            opponent start on equal terms and the better tactician wins.</p>
         </div>
       </div>
-      <div>
-        <div class="feature">
-          <div class="feature-num">03</div>
-          <div>
-            <h3>Your own team</h3>
-            <p>Recruit fighters, equip them, and find the synergies nobody else has spotted.
-              Teams are yours to build and rebuild at will.</p>
-          </div>
+      <div class="feature">
+        <div class="feature-num">02</div>
+        <div>
+          <h3>Ranked ladder</h3>
+          <p>Face opponents near your own rating and climb. Every result moves you, and the
+            <a href="/ladder">leaderboard</a> is public.</p>
         </div>
-        <div class="feature">
-          <div class="feature-num">04</div>
-          <div>
-            <h3>The real thing</h3>
-            <p>This runs the original 2012 client against a server rebuilt from scratch to match
-              it exactly — not a remake, but the game as it actually was.</p>
-          </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">03</div>
+        <div>
+          <h3>Your own team</h3>
+          <p>Recruit fighters, equip them, and find the synergies nobody else has spotted.
+            Teams are yours to build and rebuild at will.</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">04</div>
+        <div>
+          <h3>The real thing</h3>
+          <p>This runs the original 2012 client against a server rebuilt from scratch to match
+            it exactly — not a remake, but the game as it actually was.</p>
         </div>
       </div>
     </div>
