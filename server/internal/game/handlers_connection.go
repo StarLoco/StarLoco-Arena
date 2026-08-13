@@ -105,26 +105,33 @@ func handleAuthentication(s *Session, f *protocol.C2SFrame) error {
 
 	acc, err := s.deps.Store.Accounts.FindByName(auth.Login)
 	if errors.Is(err, store.ErrNotFound) {
-		// Auto-register on first login (dev convenience). Dev/preservation
-		// server: grant admin so GM commands (/WORLD, /TP, …) are usable
-		// out of the box.
-		acc, err = s.deps.Store.Accounts.CreateAccount(auth.Login, auth.Password, true)
+		// Auto-register on first login (dev convenience). The very first
+		// account on a fresh server becomes the administrator, so a brand new
+		// install always has someone who can run GM commands and open the web
+		// portal's admin console; everybody after that is an ordinary player.
+		//
+		// This used to grant admin to *every* auto-created account, and the
+		// branch below used to promote every existing account on login. That
+		// made is_admin meaningless as a privilege check — which was harmless
+		// while it only gated chat commands, but the web portal now hangs
+		// account deletion and impersonation off the same flag.
+		first := false
+		if n, cErr := s.deps.Store.Accounts.Count(); cErr != nil {
+			s.log.Error("account count failed", "err", cErr)
+		} else {
+			first = n == 0
+		}
+		acc, err = s.deps.Store.Accounts.CreateAccount(auth.Login, auth.Password, first)
 		if err != nil {
 			return err
 		}
-		s.log.Info("account auto-created", "login", auth.Login, "admin", true)
+		s.log.Info("account auto-created", "login", auth.Login, "admin", first)
 	} else if err != nil {
 		return err
 	} else if !s.deps.Store.Accounts.VerifyPassword(acc, auth.Password) {
 		result, _ := handshake.EncodeAuthResult(protocol.AuthInvalidLogin)
 		_ = s.Send(result)
 		return nil
-	} else if !acc.IsAdmin {
-		// Dev/preservation server: promote existing accounts so GM commands
-		// work without a manual reseed.
-		if err := s.deps.Store.Accounts.SetAdmin(acc.ID, true); err == nil {
-			acc.IsAdmin = true
-		}
 	}
 
 	// Kick any existing live session for this account (reconnect / dup login),

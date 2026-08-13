@@ -64,6 +64,24 @@ web:
   # min_login_length: 3
   # min_password_length: 6
 
+  # Keeps players logged in to the website across server restarts.
+  #
+  # Leave this empty and the server makes up a new random key every time it
+  # starts, which works fine but signs everyone out whenever you restart. Set it
+  # to a long random string (40+ characters) to avoid that. Treat it like a
+  # password: anyone who knows it can forge a login for any account, so do not
+  # share it or commit it anywhere public. You can also supply it out-of-band
+  # with the ARENA_WEB_SESSION_SECRET environment variable instead of writing it
+  # here.
+  # session_secret: ""
+
+  # Turn this on ONLY when the website is served over https, e.g. behind a
+  # reverse proxy with a certificate. It tells browsers to send the login cookie
+  # over encrypted connections only. Switching it on for a plain http:// server
+  # makes logging in impossible - the browser will quietly refuse to send the
+  # cookie back - so it stays off by default.
+  # secure_cookies: false
+
 
 # -----------------------------------------------------------------------------
 #  Game data - the card, spell and map files copied out of the game client.

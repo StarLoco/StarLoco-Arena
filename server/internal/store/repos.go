@@ -36,6 +36,21 @@ func (r *AccountRepo) FindByName(name string) (*domain.Account, error) {
 	return &acc, nil
 }
 
+// FindByID loads an account (and its coach) by primary key. The web portal
+// re-loads the account behind a session cookie on every request rather than
+// trusting the cookie's contents, so this is on its hot path.
+func (r *AccountRepo) FindByID(id uint) (*domain.Account, error) {
+	var acc domain.Account
+	err := r.db.Preload("Coach").First(&acc, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &acc, nil
+}
+
 // Count returns the number of accounts on the server. Used to detect a brand
 // new install, where the first account registered becomes the owner.
 func (r *AccountRepo) Count() (int64, error) {
@@ -400,6 +415,15 @@ func (r *CoachRepo) DeleteCoach(coachID uint) error {
 			}
 			if err := tx.Where("fighter_id IN ?", fighterIDs).
 				Delete(&domain.FighterObject{}).Error; err != nil {
+				return err
+			}
+			// Persistent wounds/conditions are fighters' third child table.
+			// Like the two above, the schema already cascades this at the DB
+			// level; it is deleted explicitly for the same belt-and-braces
+			// reason, so the three siblings stay consistent and none of them
+			// depends on the SQLite foreign-key pragma being on.
+			if err := tx.Where("fighter_id IN ?", fighterIDs).
+				Delete(&domain.FighterCondition{}).Error; err != nil {
 				return err
 			}
 			if err := tx.Where("id IN ?", fighterIDs).

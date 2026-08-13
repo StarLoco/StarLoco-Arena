@@ -72,6 +72,36 @@ belongs to the coach.
 
 ## Fixed
 
+### B-090 - Every player who logged in became a server administrator
+
+`handleAuthentication` auto-created unknown logins with `admin=true` **and**
+promoted every existing non-admin account to admin on each successful login:
+
+```go
+} else if !acc.IsAdmin {
+    // Dev/preservation server: promote existing accounts so GM commands
+    // work without a manual reseed.
+    if err := s.deps.Store.Accounts.SetAdmin(acc.ID, true); err == nil {
+```
+
+That was a deliberate convenience, and while `is_admin` only gated chat GM
+commands on a LAN server it was merely generous. It stopped being harmless the
+moment the web portal hung **account deletion, admin granting and
+impersonation** off the same flag: every player who had ever logged in would
+have arrived at the site already holding the keys to everyone else's account.
+
+Fixed by making the flag mean something: only the **first** account on a fresh
+server is created as admin (matching what the web portal already did for web
+sign-ups), and logging in never changes the flag. Admin is granted afterwards by
+`seedaccount --admin` or the console's own grant button.
+
+**Operator note:** accounts already promoted by the old code keep `is_admin` in
+an existing database — the fix stops the bleeding, it does not rewrite history.
+`SELECT id, name, is_admin FROM accounts WHERE is_admin = 1;` shows who has it,
+and the console's *Revoke admin* button removes it.
+
+*Verified:* unit (`TestLoginDoesNotGrantAdmin`, `TestFirstAccountBecomesAdmin`).
+
 ### B-089 - Fusion consumed the player's CHOSEN card as fuel
 
 The 5490 request is `[i32 count]{i32 cardId}` and the handler read every id as

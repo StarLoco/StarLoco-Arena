@@ -75,6 +75,16 @@ type WebConfig struct {
 	// that (see AGENTS.md constraint 4), only links to it. Empty hides the
 	// link entirely.
 	ClientDownloadURL string `yaml:"client_download_url"`
+	// SessionSecret keys the HMAC that signs login-session cookies and CSRF
+	// tokens. Leave it empty and the server invents a random one at startup,
+	// which is fine for a local game but logs everybody out on every restart.
+	// Set it to a long random string to keep sessions across restarts.
+	SessionSecret string `yaml:"session_secret"`
+	// SecureCookies marks session cookies "Secure", so browsers only ever send
+	// them over HTTPS. Turn it on once the portal is behind TLS; leaving it on
+	// for a plain-HTTP server makes logging in silently impossible, because the
+	// browser accepts the cookie and then refuses to send it back.
+	SecureCookies bool `yaml:"secure_cookies"`
 }
 
 // UpdateCheckConfig configures the startup "a newer release exists" notice.
@@ -239,6 +249,15 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("ARENA_WEB_CLIENT_DOWNLOAD_URL"); v != "" {
 		c.Web.ClientDownloadURL = v
+	}
+	// Deliberately env-overridable: a session secret is the one web setting
+	// that is a real credential, and operators should be able to inject it
+	// without writing it into a config file that ends up in a backup.
+	if v := os.Getenv("ARENA_WEB_SESSION_SECRET"); v != "" {
+		c.Web.SessionSecret = v
+	}
+	if v, ok := envBool("ARENA_WEB_SECURE_COOKIES"); ok {
+		c.Web.SecureCookies = v
 	}
 	if v, ok := envBool("ARENA_UPDATE_CHECK_ENABLED"); ok {
 		c.UpdateCheck.Enabled = v

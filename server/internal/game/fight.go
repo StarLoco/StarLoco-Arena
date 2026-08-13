@@ -481,6 +481,15 @@ func NewFightManager() *FightManager {
 }
 
 // Create registers a new fight for two coaches.
+// Count returns the number of fights currently running. Safe to call from any
+// goroutine — the web portal's status page reads it straight from its HTTP
+// handler.
+func (m *FightManager) Count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.byID)
+}
+
 func (m *FightManager) Create(f *Fight) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
