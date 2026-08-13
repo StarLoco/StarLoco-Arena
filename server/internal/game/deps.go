@@ -15,12 +15,16 @@ type Deps struct {
 	CardSets *gamedata.CardSets // card-set (panoplie) bonuses; nil if data files absent
 	// FusionLabs is the type-1100 altar table (power / quality / slot count). The
 	// 5490 request names no altar, so the fusion handler uses FusionLabs.Default().
-	FusionLabs    *gamedata.FusionLabs    // nil if data files absent
-	Conditions    *gamedata.Conditions    // persistent fighter conditions/wounds (type 902); nil if data files absent
-	Spells        *gamedata.Spells        // nil if data files absent
-	FighterCards  *gamedata.FighterCards  // nil if data files absent
-	Summonings    *gamedata.Summonings    // summon-creature templates; nil if data files absent
-	StaticEffects *gamedata.StaticEffects // trap/glyph (type-210) templates; nil if data files absent
+	FusionLabs *gamedata.FusionLabs // nil if data files absent
+	// TournamentDefs is the type-1000/1001 tournament table. Read-only reference
+	// data: the standing tournaments the server actually runs are built in
+	// tournaments.go and validated against this.
+	TournamentDefs *gamedata.Tournaments   // nil if data files absent
+	Conditions     *gamedata.Conditions    // persistent fighter conditions/wounds (type 902); nil if data files absent
+	Spells         *gamedata.Spells        // nil if data files absent
+	FighterCards   *gamedata.FighterCards  // nil if data files absent
+	Summonings     *gamedata.Summonings    // summon-creature templates; nil if data files absent
+	StaticEffects  *gamedata.StaticEffects // trap/glyph (type-210) templates; nil if data files absent
 	// ChallengeDefs is the type-400 challenge TABLE (PvE definitions behind the
 	// overworld's DemonChallenge / BreedMaster elements); nil if data files
 	// absent. Not to be confused with Challenges below, which is the live

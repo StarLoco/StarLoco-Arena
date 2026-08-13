@@ -61,8 +61,8 @@ objects.
 | 900 | 15 | `bg_0` → `Ei` | Sphere Board headers (per breed/season) | ❌ | — |
 | 901 | **17 527** | `aeI` → `ayr_0` | Sphere Board nodes (xp cost, spell, cards) | ❌ | — |
 | 902 | 111 | `ahm_1` → `aiz_2` | **Fighter conditions** — the persistent wound/blessing layer | ❌ | — |
-| 1000 | 22 | `aub` → — | Tournament definitions (rules, rewards, prizes) | ❌ | hand-built in `tournaments.go` |
-| 1001 | 4 | `ek_2` → — | Tournament level list | ❌ | — |
+| 1000 | 22 | `aub` → — | Tournament definitions (rules, rewards, prizes) | ✅ 12/12 | `LoadTournaments` |
+| 1001 | 4 | `ek_2` → — | Tournament level list | ✅ 1/1 | `Tournaments.Levels()` |
 | 1100 | 30 | `ajd_0` → `abe_1` | Fusion-laboratory definitions | ✅ 4/4 | `LoadFusionLabs` |
 | 1400 | 2 | `cb_2` → `atk_0` | Pro League definitions | ❌ | served empty |
 | 1500 | 148 | `atF` → `ana_2` | NPC dialog replies | ❌ | — |
@@ -71,6 +71,35 @@ objects.
 Declared in `atr_0` but **absent from this store** (9): 110, 231, 232, 500, 600, 1101,
 1102, 1200, 1300. Type **200** (`Ht`, the effect row) is never a standalone record — it is
 embedded in 100/210/220/230/250/902 and is decoded by `effects.go`.
+
+### Type 1000/1001 - Tournaments (`aub` / `ek_2`) - complete
+
+Type 1000, from `aub`'s `a(ByteBuffer,int,short)` and its writer `cr()`:
+
+    [i16 id][u8][u8][u8 teamType][i32][i32]
+    [u8 n] np_1 x n                              // the tournament's fight ruleset
+    [i16][i32 inscriptionCard][i32 rewardCard][u8 flag]
+    5 x ( [u8 n] x { [u8 key][i32 value] } )     // five prize maps
+
+22 definitions (ids 1, 4-24). Type 1001 is a single `u8` per record; the four
+records read `[1 2 5 3]`.
+
+Names come from the client's own property strings (`qr_0`): `qo()` is
+**"tournamentInscriptionCard"** - `aug.registerTournament` looks that card up in
+the player's inventory to let them enter - and `aHi()` is
+**"tournamentRewards"**. `aHh()` is the team type, branched on in `agz_1`
+against `aql_0`: 1 classique 1v1, 2 evolution, 3 cimetiere, 4 legendaire.
+
+Five fields have NO consumer in the client (`aHe`, `aHf`, `aHg`, `aHj`,
+`aHk`, the last being the prize maps). That is expected rather than suspicious -
+the client reads only what it displays and the rest is server-side configuration -
+so they are decoded and kept by position rather than skipped.
+
+**Cross-checks that make the decode trustworthy:** every `teamType` lands inside
+`aql_0`'s 0-4; every non-zero inscription/reward card id resolves to a real
+card (16, 808, 26, 544); and the three hand-built standing tournaments turn out
+to reference defIDs whose decoded team types match their names - defID 17, our
+"Tournoi du Cimetiere", really is teamType 3 (cimetiere).
 
 ### Type 1100 - Fusion labs (`ajd_0`) - 4 of 4 fields, complete
 

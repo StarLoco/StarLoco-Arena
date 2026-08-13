@@ -289,6 +289,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		events        *gamedata.Events
 		cardSets      *gamedata.CardSets
 		fusionLabs    *gamedata.FusionLabs
+		tournDefs     *gamedata.Tournaments
 		conditions    *gamedata.Conditions
 	)
 
@@ -346,11 +347,14 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		if fusionLabs, err = gdStore.LoadFusionLabs(); err != nil {
 			log.Warn("fusion-lab load failed", "err", err)
 		}
+		if tournDefs, err = gdStore.LoadTournaments(); err != nil {
+			log.Warn("tournament-definition load failed", "err", err)
+		}
 		log.Debug("game data loaded", "cards", cardsLen(cards), "spells", spellsLen(spells),
 			"fighterCards", fighterCardsLen(fighterCards), "summonings", summoningsLen(summonings),
 			"staticEffects", staticEffectsLen(staticEffects), "challenges", challengeDefs.Len(),
 			"eventCards", events.Len(), "cardSets", cardSets.Len(),
-			"conditions", conditions.Len(), "fusionLabs", fusionLabs.Len())
+			"conditions", conditions.Len(), "fusionLabs", fusionLabs.Len(), "tournamentDefs", tournDefs.Len())
 	}
 
 	// Fair pairing: coaches are matched within a strength band that widens the
@@ -359,26 +363,27 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 	mm.SetRatingBand(int32(cfg.World.MatchBand), int32(cfg.World.MatchBandGrowth))
 
 	return &game.Deps{
-		Store:         st,
-		World:         game.NewRegistry(cfg.World.AoIRadius),
-		Cards:         cards,
-		Exchanges:     game.NewExchangeManager(),
-		Spells:        spells,
-		FighterCards:  fighterCards,
-		Summonings:    summonings,
-		ChallengeDefs: challengeDefs,
-		FightMaps:     fightMaps,
-		Events:        events,
-		CardSets:      cardSets,
-		FusionLabs:    fusionLabs,
-		Conditions:    conditions,
-		StaticEffects: staticEffects,
-		Matchmaker:    mm,
-		Challenges:    game.NewChallengeManager(),
-		Fights:        game.NewFightManager(),
-		Sessions:      game.NewSessionRegistry(),
-		Tournaments:   game.NewTournamentManager(),
-		Log:           log,
+		Store:          st,
+		World:          game.NewRegistry(cfg.World.AoIRadius),
+		Cards:          cards,
+		Exchanges:      game.NewExchangeManager(),
+		Spells:         spells,
+		FighterCards:   fighterCards,
+		Summonings:     summonings,
+		ChallengeDefs:  challengeDefs,
+		FightMaps:      fightMaps,
+		Events:         events,
+		CardSets:       cardSets,
+		FusionLabs:     fusionLabs,
+		TournamentDefs: tournDefs,
+		Conditions:     conditions,
+		StaticEffects:  staticEffects,
+		Matchmaker:     mm,
+		Challenges:     game.NewChallengeManager(),
+		Fights:         game.NewFightManager(),
+		Sessions:       game.NewSessionRegistry(),
+		Tournaments:    game.NewTournamentManager(),
+		Log:            log,
 	}, loc
 }
 

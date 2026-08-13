@@ -151,9 +151,16 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    second, subtly different gate that changes no legal cast, while a wrong window would
    *reject* casts the client believes are legal. Pinned by
    `TestMaxActiveIsRedundantInShippedData`.
-6. **Tournaments** (types 1000/1001) — currently three hand-built definitions; the real
-   rules/rewards/prize tables are in the data. Live-match layer (opponent search
-   28609/28611, brackets, admin opcodes) deferred by the user.
+6. **Tournaments** — types 1000/1001 are now **decoded** (22 definitions + the level
+   list). The three standing tournaments stay hand-built but are validated against the
+   real table (TestStandingTournamentsMatchRealDefinitions: the defID must exist and
+   must carry no inscription card).
+   ⏭ **Next step, agreed with the user: tournament MANAGEMENT through the web admin
+   panel** — create/schedule/edit standing tournaments from the web portal instead of
+   the compiled-in standingTournamentTable, using the decoded definitions as the
+   reference list an admin picks a defID from. **Not started.**
+   The live-match layer (opponent search 28609/28611, brackets, admin opcodes) remains
+   deferred by the user.
 7. **Sphere Board** (types 900/901, 17 542 records) — largest unimplemented system.
 8. **2v2 / multi-coach fights** — deferred by the user.
 8. ~~**e2e residual flake**~~ — **fixed** (B-064): the tests assumed "client A == side 0",

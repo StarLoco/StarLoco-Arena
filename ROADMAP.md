@@ -1253,8 +1253,24 @@ is a signing certificate or SignPath); no published Docker image.
     slots 2-5), which the client reads from each element's descriptor and we
     already carried as `worldElement.arg`. **Still open:** the success
     probability curve, which no client code reveals.
-23. **Tournament definitions** — decode types 1000/1001 and replace the three
-    hand-built entries.
+23. 🟡 **Tournament definitions** — **decoded (types 1000 + 1001, complete)**. 22
+    definitions and the 4-entry level list, with the field names taken from the
+    client's own property strings: `qo()` is "tournamentInscriptionCard" (the
+    entry ticket `aug.registerTournament` looks up in the inventory), `aHi()` is
+    "tournamentRewards", and `aHh()` is the team type branched on in `agz_1`
+    against `aql_0` (1 classique 1v1, 2 évolution, 3 cimetière, 4 légendaire).
+    The three hand-built standing tournaments are **not** replaced — they are now
+    *validated* against the real table by
+    `TestStandingTournamentsMatchRealDefinitions`, which turns two prose comments
+    into checked invariants: the defID must exist, and its inscription card must
+    be 0 because we neither grant nor honour entry tickets. Pleasingly, the
+    decoded team types corroborate the hand-picked names — defID 17, our "Tournoi
+    du Cimetière", really is teamType 3.
+    **Next step (agreed, not started): tournament MANAGEMENT via the web admin
+    panel** — creating/scheduling/editing the standing tournaments from
+    `cmd/server`'s web portal instead of the compiled-in
+    `standingTournamentTable`, with the decoded definitions as the reference list
+    an admin picks a defID from. The decode above is the input that work needs.
 24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and
     retire the hand-transcribed table.
 25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)
