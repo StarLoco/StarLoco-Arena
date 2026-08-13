@@ -128,11 +128,41 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 	return s.sendFusionResult(fusionResultOK, 0, target, recovered)
 }
 
-// fusionLab returns the altar a fusion runs on. The 5490 request carries no
-// altar id, so the server picks deterministically (lowest id).
+// fusionLab returns the altar this fusion runs on: the fusion-lab element
+// NEAREST the coach in its current world.
+//
+// Which altar you use matters — the six in-world altars are six different tiers
+// (ids 2-7 of the type-1100 table: power 1/10/20/30/5/15, slots 2/3/4/5/2/3) —
+// and the client resolves it exactly this way. `xx_2` is the fusion-altar
+// interactive element, and its `gi()` parses the element's descriptor as a single
+// parameter, the lab-definition id, then looks it up with `CN.by(id)`. Our
+// element table already carries that value as `worldElement.arg`.
+//
+// The 5490 request itself names no altar (the client opens the panel locally on
+// interaction and never tells the server which one), so position is the only
+// signal available. Nearest wins rather than requiring adjacency: a legitimate
+// client is always standing at the altar it opened, and a hard distance gate
+// would risk refusing real fusions over a stale coordinate.
 func (s *Session) fusionLab() *gamedata.FusionLab {
-	if s.deps == nil || s.deps.FusionLabs == nil {
+	if s.deps == nil || s.deps.FusionLabs == nil || s.Coach == nil {
 		return nil
+	}
+	var best *worldElement
+	var bestDist int32
+	for i := range worldElements[s.currentWorld] {
+		e := &worldElements[s.currentWorld][i]
+		if e.kind != kindFusionLab {
+			continue
+		}
+		d := abs32(e.cellX-s.Coach.PosX) + abs32(e.cellY-s.Coach.PosY)
+		if best == nil || d < bestDist || (d == bestDist && e.arg < best.arg) {
+			best, bestDist = e, d
+		}
+	}
+	if best != nil {
+		if lab := s.deps.FusionLabs.Get(int64(best.arg)); lab != nil {
+			return lab
+		}
 	}
 	return s.deps.FusionLabs.Default()
 }

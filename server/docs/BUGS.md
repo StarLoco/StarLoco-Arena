@@ -103,10 +103,23 @@ hard `kardsPower >= labPower` gate would be WRONG: 543 of the 907 cards have
 `RequiredLevel` 0, so most fusions would become impossible. Left as a flat
 chance, documented, rather than guessed.
 
+**The altar is chosen by POSITION.** The six in-world altars are six different
+TIERS of the type-1100 table (ids 2-7: power 1/10/20/30/5/15, slots 2/3/4/5/2/3),
+so which one you use decides how many cards may be fed in. The client resolves it
+that way - `xx_2`, the fusion-altar element, parses its own descriptor as a
+single parameter, the lab-definition id, and looks it up with `CN.by(id)` - and
+our element table already carried that value as `worldElement.arg` (2,6,4,3,7,5
+for the six altars). The handler now picks the nearest fusion altar in the coach's
+world instead of a fixed default. Nearest wins rather than requiring adjacency: a
+legitimate client is always standing at the altar it opened, and a hard distance
+gate would risk refusing real fusions over a stale coordinate.
+
 **Verified:** `e2e` - the three fusion tests now send the real 3-id layout and
 assert the chosen target is what comes back, and that a failed roll names it.
 Both mutation-checked: reading the id from the wrong end yields `obtained 700,
 want the chosen target 702`, and dropping the notObtained report is caught too.
+`unit` - TestFusionLabPickedByPosition, mutation-checked against the fixed-default
+behaviour.
 
 ### B-088 - The 8000 coach-deck blob carried the wrong ID NAMESPACE
 

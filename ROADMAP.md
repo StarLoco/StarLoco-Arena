@@ -1248,8 +1248,11 @@ is a signing certificate or SignPath); no published Docker image.
     gives the formula (kardsPower = Σ inputs' RequiredLevel − target's
     FusionPower). B-089 fixed the wire bug this exposed — the 5490 payload's
     LAST id is that target, which the server had been consuming as fuel — so the
-    outcome is now the chosen card and a failed roll names it. **Still open:** the
-    success probability curve, which no client code reveals.
+    outcome is now the chosen card and a failed roll names it. The **altar** is
+    resolved by position too — the six in-world altars are six tiers (lab ids 2-7,
+    slots 2-5), which the client reads from each element's descriptor and we
+    already carried as `worldElement.arg`. **Still open:** the success
+    probability curve, which no client code reveals.
 23. **Tournament definitions** — decode types 1000/1001 and replace the three
     hand-built entries.
 24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and
