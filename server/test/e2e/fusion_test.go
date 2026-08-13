@@ -18,7 +18,54 @@ func fusionCatalog() *gamedata.Cards {
 		&gamedata.CoachCard{ID: 701, CardSet: 5, Price: map[uint8]int32{1: 10}},
 		&gamedata.CoachCard{ID: 702, CardSet: 5, Price: map[uint8]int32{1: 10}},
 		&gamedata.CoachCard{ID: 900, CardSet: 9, Price: map[uint8]int32{1: 10}},
+		// An EXPENSIVE target, like the 7 real ones (all type 27 / set 149):
+		// costs 30 fusion power and needs an altar of quality 30. The inputs
+		// above are RequiredLevel 0, so they can never cover it.
+		&gamedata.CoachCard{ID: 703, CardSet: 5, Price: map[uint8]int32{1: 10},
+			FusionPower: 30, FusionQuality: 30},
 	)
+}
+
+// TestFusionTargetCostIsEnforced covers the target's own cost, which is the
+// client's formula: kardsPower = Σ inputs' RequiredLevel − target's FusionPower.
+// Only 7 cards in the game carry a non-zero FusionPower/FusionQuality, so for
+// everything else this is a no-op — which is what makes it safe. Here the target
+// costs 30 and the inputs are level 0, so it must be refused, and refused by
+// NAMING the target (notObtained) so the client says which card was missed.
+func TestFusionTargetCostIsEnforced(t *testing.T) {
+	game.SeedFusionRand(3) // a seed that would otherwise SUCCEED
+	st, addr := testServerWithDeps(t, func(d *game.Deps) { d.Cards = fusionCatalog() })
+	a, aID := dialLogin(t, addr, "fus_d", "FusD")
+	reachWorld(t, a)
+	a.DrainReceived(200 * time.Millisecond)
+
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1, Flag: domain.CardCursed})
+	q700Before := ownedQty(t, st, uint(aID), 700)
+
+	// inputs 700+701 (level 0), target 703 (costs 30) -> unaffordable.
+	req := testclient.NewW().I32(3).I32(700).I32(701).I32(703).Bytes()
+	_ = a.Send(3, testclient.OpFusionRequest, req)
+
+	f, _, err := a.WaitFor(testclient.OpFusionResult, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no FusionResult(5491): %v", err)
+	}
+	res, obtained, notObtained, _ := parseFusion(f.Payload)
+	if res != 0 {
+		t.Fatalf("fusion result = %d, want 0", res)
+	}
+	if obtained != 0 {
+		t.Errorf("obtained %d: an unaffordable target must not be granted", obtained)
+	}
+	if notObtained != 703 {
+		t.Errorf("notObtained = %d, want the refused target 703", notObtained)
+	}
+	// Nothing may be consumed for a fusion that was never legal.
+	time.Sleep(150 * time.Millisecond)
+	if q := ownedQty(t, st, uint(aID), 700); q != q700Before {
+		t.Errorf("card 700 qty changed on an unaffordable fusion: %d -> %d", q700Before, q)
+	}
 }
 
 // parseFusion reads a FusionResult(5491): [i8 result][i32 obt][i32 notObt][i32 rec].

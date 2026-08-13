@@ -96,7 +96,15 @@ Failure now also reports the target as **notObtained**, which is what makes the
 client show *"fusionRecipeFailed"* naming the card that was missed instead of a
 bare *"fusionFailed"* (`cp_0`, case 5491).
 
-**Still approximated:** the success probability. The panel shows "labPower"
+**The target's own COST is enforced**, straight out of the client's formula:
+`kardsPower` = Σ inputs' `RequiredLevel` − target's `FusionPower` must not go
+negative, and the altar's quality must reach the target's `FusionQuality`. Only
+7 cards in the game carry those (all type 27, set 149: power 5/15/30/50, quality
+5/15/30) - for the other 900 both are 0 and the checks are no-ops, which is
+exactly why they are safe to add. A refused fusion consumes nothing and names the
+target as `notObtained`.
+
+**Still approximated:** the success probability CURVE. The panel shows "labPower"
 beside "kardsPower" (Σ inputs' `RequiredLevel` − target's `FusionPower`) and
 "quality", but the server owns the roll and no client code reveals the curve. A
 hard `kardsPower >= labPower` gate would be WRONG: 543 of the 907 cards have

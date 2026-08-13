@@ -95,13 +95,27 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 		return s.sendFusionResult(fusionResultOK, 0, 0, 0)
 	}
 
-	// Roll the altar. The probability curve is the one piece of this mechanic the
-	// data does not settle: the panel shows "labPower" beside "kardsPower"
-	// (Σ inputs' RequiredLevel − target's FusionPower) and "quality", but the
-	// server owns the roll and no client code reveals it. A hard
-	// kardsPower >= labPower gate would be wrong: 543 of the 907 cards have
-	// RequiredLevel 0, so most fusions would become impossible. Left as a flat
-	// chance until the real curve is known — see docs/DATA-COVERAGE.md.
+	// The target's own COST, straight out of the client's formula. Only 7 cards in
+	// the game carry these (all type 27, set 149): FusionPower 5/15/30/50 and
+	// FusionQuality 5/15/30. For the other 900 both are 0 and these two checks are
+	// no-ops, which is exactly why they are safe to apply — ordinary fusion is
+	// unchanged, and the handful of expensive targets now actually cost something.
+	//
+	//	kardsPower = Σ inputs' RequiredLevel − target's FusionPower   (must cover the cost)
+	//	the altar's quality must reach the target's FusionQuality
+	if kards := s.kardsPower(inputs, tc); kards < 0 {
+		return s.sendFusionResult(fusionResultOK, 0, target, 0) // cannot afford it
+	}
+	if lab := s.fusionLab(); lab != nil && int32(lab.Quality) < int32(tc.FusionQuality) {
+		return s.sendFusionResult(fusionResultOK, 0, target, 0) // altar not fine enough
+	}
+
+	// Roll the altar. The probability CURVE is the one piece of this mechanic the
+	// data does not settle: the panel shows "labPower" beside "kardsPower" and
+	// "quality", but the server owns the roll and no client code reveals how they
+	// combine. A hard kardsPower >= labPower gate would be wrong — 543 of the 907
+	// cards have RequiredLevel 0, so most fusions would become impossible. Left as
+	// a flat chance until the real curve is known.
 	if fusionRand.Intn(100) < fusionSuccessPercent {
 		if err := s.deps.Store.Coaches.ConsumeAndGrant(s.Coach.ID, inputs, target); err != nil {
 			if errors.Is(err, store.ErrCardNotOwned) {
@@ -126,6 +140,22 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 	s.refreshAndPushInventory()
 	s.log.Info("fusion failed", "coach", s.Coach.Name, "missed", target, "recovered", recovered)
 	return s.sendFusionResult(fusionResultOK, 0, target, recovered)
+}
+
+// kardsPower is the client's own "kardsPower": the summed RequiredLevel of the
+// input cards minus the target's FusionPower (`ajt_1`, property cCB). Negative
+// means the inputs do not cover the target's cost.
+func (s *Session) kardsPower(inputs []int32, target *gamedata.CoachCard) int32 {
+	var total int32
+	for _, id := range inputs {
+		if c := s.deps.Cards.Get(id); c != nil {
+			total += c.RequiredLevel
+		}
+	}
+	if target != nil {
+		total -= int32(target.FusionPower)
+	}
+	return total
 }
 
 // fusionLab returns the altar this fusion runs on: the fusion-lab element
