@@ -189,6 +189,22 @@ MySQL; pass one with `--config configs/config.postgres.yaml`.
 Open the **web portal** address the server printed and fill in the form. The
 **first account created becomes the administrator**.
 
+That portal is also where you run the server from day to day. Signed in, every
+player sees everything stored about them — coach, ladder record, fighters,
+teams, cards, friends. As the administrator you additionally get a console:
+search every account (by account *or* coach name), open a deep view of any of
+them, create accounts, grant or revoke admin, delete an account and all its
+data, view the site as any player to reproduce a bug they are reporting, and a
+monitoring page with live runtime stats and Go's profiler. There is also a
+public `/status` page and a public `/ladder`, both safe to share.
+
+Full details: [`server/docs/WEB-PORTAL.md`](./server/docs/WEB-PORTAL.md).
+
+> Two settings matter once the server is public: set **`web.session_secret`** to
+> a long random string (otherwise everyone is signed out whenever you restart),
+> and only turn on **`web.secure_cookies`** if you actually serve the site over
+> `https://` — on plain HTTP it makes signing in silently impossible.
+
 Prefer the command line, or scripting a lot of accounts? The seed tool still
 works — open a **second** terminal in the `server` folder:
 

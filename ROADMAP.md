@@ -58,7 +58,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
 | Achievements | ⬜ | 350 records, zero code |
 | Guilds / clans, 2v2 | ⬜ | Structurally blocked (see §8.16) |
-| Ops: config, releases, Docker, web portal | ✅ | Self-configuring, auto-released, one-page sign-up portal |
+| Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
 
 ---
@@ -1011,7 +1011,7 @@ implemented**.
 | Env overrides | 🟡 | 14 keys; 3 fields have no override and that drift is unguarded |
 | Game-data discovery | ✅ | Walks configured → exe-relative → cwd → per-OS install locations, and will combine halves found in *different* roots |
 | Bundled server data | ✅ | `server/data-dist/` (~2.5 MB, records only) ships in git, every release archive and the Docker image — zero setup for fights |
-| Web portal | 🟡 | One embedded page, no JS, no external assets. Self-registration, **first account becomes admin**, per-IP rate limit, CSP + same-origin checks, port ladder 80→8080→8090→3000→5000→any. **No admin UI, no login/session, no TLS** |
+| Web portal | OK | Full account site, no JS, no external assets, all embedded. Landing / public status / public ladder / sign-in / sign-up; account area showing every stored datum; admin console (search, deep view, create, delete, grant-admin, impersonate) + in-process pprof. HMAC sessions, CSRF, two rate limiters, script-free CSP. **TLS still left to a reverse proxy** |
 | Update check | ✅ | One anonymous GET at startup, notify-only, silent on every failure, skipped on dev builds |
 | CI | 🟡 | Build/vet/test on Linux **and** Windows, gofmt, `go mod tidy` check, 5-target cross-compile. **No `-race` job, no linter, no coverage, no vulnerability scan, no frontend build** |
 | Releases | ✅ | Conventional Commits → release-please → GoReleaser, 5 targets + checksums, data + docs bundled |
@@ -1293,7 +1293,14 @@ is a signing certificate or SignPath); no published Docker image.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. **Versioned schema migrations** — replace `AutoMigrate` before the first
     destructive schema change.
-35. **Web admin panel** — auth, sessions, account management, TLS.
+35. [x] **Web admin panel** — DONE. Ported from v2.04 onto the 2.70 store and
+    restyled: HMAC-signed sessions, CSRF, a player account area showing every
+    stored datum, an admin console (searchable account list, deep per-account
+    view, create/delete/grant-admin, impersonation), a public status page and
+    leaderboard, and in-process pprof behind the admin gate. See
+    `server/docs/WEB-PORTAL.md`. TLS is still left to a reverse proxy — the
+    server does not terminate it, but `web.secure_cookies` exists for when it
+    sits behind one.
 
 ### Deliberately out of scope ⛔
 

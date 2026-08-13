@@ -363,11 +363,21 @@ neither (now only `server/data/`, the local dev scratch copy). `AGENTS.md` gaine
 a constraint (5) so a future pass does not "clean up" the link thinking it is an
 oversight, and pins the raw URL to four places on purpose, not scattered further.
 
-**Web portal** (`internal/web`) — single embedded page, no JS, no external assets.
-Players self-register; **the first account created becomes admin** (a release archive has
-no `seedaccount`, so there must be some path to a GM). Rate-limited per IP, same-origin
-checked, bcrypt via the existing store. Port ladder: 80 → 8080 → 8090 → 3000 → 5000 → any
-free port, so it always starts even unprivileged.
+**Web portal** (`internal/web`) — a full account site, no JS, no external assets, all
+embedded in the binary. See [`WEB-PORTAL.md`](./WEB-PORTAL.md) for the page list, the
+security model and the theme.
+
+Public: landing, `/status` (totals only, no names), `/ladder`, sign in/up. Signed in:
+`/account` shows every datum the server holds about you, plus a password change. Admin:
+dashboard, searchable account list, per-account deep view, create/delete/grant-admin,
+impersonation, and a monitoring page serving this process's own pprof profiles.
+
+**The first account created becomes admin** (a release archive has no `seedaccount`, so
+there must be some path to a GM); nothing else ever grants it implicitly — see B-090,
+where logging in used to. Rate-limited per IP (separately for sign-up and sign-in),
+same-origin checked, CSRF-tokened, HMAC-signed sessions, bcrypt via the existing store.
+Port ladder: 80 → 8080 → 8090 → 3000 → 5000 → any free port, so it always starts even
+unprivileged.
 
 **Update check** (`internal/update`) — one anonymous GET of GitHub's `/releases/latest` at
 startup; prints a notice if newer. Never downloads or installs. Silent on every failure
