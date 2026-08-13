@@ -288,6 +288,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		challengeDefs *gamedata.Challenges
 		events        *gamedata.Events
 		cardSets      *gamedata.CardSets
+		fusionLabs    *gamedata.FusionLabs
 		conditions    *gamedata.Conditions
 	)
 
@@ -342,11 +343,14 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		if conditions, err = gdStore.LoadConditions(); err != nil {
 			log.Warn("fighter-condition load failed", "err", err)
 		}
+		if fusionLabs, err = gdStore.LoadFusionLabs(); err != nil {
+			log.Warn("fusion-lab load failed", "err", err)
+		}
 		log.Debug("game data loaded", "cards", cardsLen(cards), "spells", spellsLen(spells),
 			"fighterCards", fighterCardsLen(fighterCards), "summonings", summoningsLen(summonings),
 			"staticEffects", staticEffectsLen(staticEffects), "challenges", challengeDefs.Len(),
 			"eventCards", events.Len(), "cardSets", cardSets.Len(),
-			"conditions", conditions.Len())
+			"conditions", conditions.Len(), "fusionLabs", fusionLabs.Len())
 	}
 
 	// Fair pairing: coaches are matched within a strength band that widens the
@@ -366,6 +370,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		FightMaps:     fightMaps,
 		Events:        events,
 		CardSets:      cardSets,
+		FusionLabs:    fusionLabs,
 		Conditions:    conditions,
 		StaticEffects: staticEffects,
 		Matchmaker:    mm,

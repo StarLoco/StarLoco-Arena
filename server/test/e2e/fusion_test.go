@@ -43,8 +43,10 @@ func TestFusionSuccess(t *testing.T) {
 	// Snapshot the pre-fusion set-5 total (starter grants may add copies).
 	before := setTotal(t, st, uint(aID))
 
-	// 5490: [i32 count]{i32 cardId}.
-	req := testclient.NewW().I32(2).I32(700).I32(701).Bytes()
+	// 5490: [i32 count]{i32 cardId}. The LAST id is the TARGET the player chose
+	// ("fusionCard"); the client puts it there by inserting it at index 0 and
+	// then reversing in encode(). Here: inputs 700+701, target 702.
+	req := testclient.NewW().I32(3).I32(700).I32(701).I32(702).Bytes()
 	_ = a.Send(3, testclient.OpFusionRequest, req)
 
 	f, _, err := a.WaitFor(testclient.OpFusionResult, testclient.DefaultTimeout)
@@ -59,8 +61,9 @@ func TestFusionSuccess(t *testing.T) {
 		t.Fatalf("expected an obtained card on success, got obt=%d notObt=%d rec=%d",
 			obtained, notObtained, recovered)
 	}
-	if obtained != 700 && obtained != 701 && obtained != 702 {
-		t.Errorf("obtained %d not in set 5", obtained)
+	// The outcome must be the card the PLAYER chose, not a random one from the set.
+	if obtained != 702 {
+		t.Errorf("obtained %d, want the chosen target 702", obtained)
 	}
 
 	// Net change: two inputs consumed, one obtained granted => set total -1.
@@ -99,19 +102,24 @@ func TestFusionFailureLeftovers(t *testing.T) {
 	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1, Flag: domain.CardCursed})
 	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1, Flag: domain.CardCursed})
 
-	req := testclient.NewW().I32(2).I32(700).I32(701).Bytes()
+	req := testclient.NewW().I32(3).I32(700).I32(701).I32(702).Bytes()
 	_ = a.Send(3, testclient.OpFusionRequest, req)
 
 	f, _, err := a.WaitFor(testclient.OpFusionResult, testclient.DefaultTimeout)
 	if err != nil {
 		t.Fatalf("no FusionResult(5491): %v", err)
 	}
-	res, obtained, _, recovered := parseFusion(f.Payload)
+	res, obtained, notObtained, recovered := parseFusion(f.Payload)
 	if res != 0 {
 		t.Fatalf("fusion result = %d, want 0", res)
 	}
 	if obtained != 0 {
 		t.Errorf("failure should not obtain a card, got %d", obtained)
+	}
+	// The client renders notObtained as "fusionRecipeFailed" - it names the card
+	// that was missed, so a bare failure would lose that message.
+	if notObtained != 702 {
+		t.Errorf("notObtained = %d, want the missed target 702", notObtained)
 	}
 	if recovered == 0 {
 		t.Error("failure should recover leftovers")
@@ -132,8 +140,8 @@ func TestFusionMixedSetsFails(t *testing.T) {
 	q700Before := ownedQty(t, st, uint(aID), 700)
 	q900Before := ownedQty(t, st, uint(aID), 900)
 
-	// 700 (set 5) + 900 (set 9) -> incompatible.
-	req := testclient.NewW().I32(2).I32(700).I32(900).Bytes()
+	// 700 (set 5) + 900 (set 9) -> incompatible inputs, target 702.
+	req := testclient.NewW().I32(3).I32(700).I32(900).I32(702).Bytes()
 	_ = a.Send(3, testclient.OpFusionRequest, req)
 
 	f, _, err := a.WaitFor(testclient.OpFusionResult, testclient.DefaultTimeout)

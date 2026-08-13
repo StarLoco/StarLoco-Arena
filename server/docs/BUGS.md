@@ -72,6 +72,42 @@ belongs to the coach.
 
 ## Fixed
 
+### B-089 - Fusion consumed the player's CHOSEN card as fuel
+
+The 5490 request is `[i32 count]{i32 cardId}` and the handler read every id as
+an input. The LAST one is the target.
+
+The client builds the array as the input list with the chosen card inserted at
+index 0 (`add.java`: `jg_02.v(0, ajt_16.azv())`) and `ahg_0.encode()` then
+writes it REVERSED, so the chosen card lands last on the wire. `azv()` is
+`cCr`, which the fusion panel exposes as the property **"fusionCard"** - the
+card the player is trying to MAKE.
+
+So the server was fusing the player's target away as fuel and then handing back a
+RANDOM card from the set, ignoring their choice entirely.
+
+**Fix.** The last id is parsed as the target and the outcome IS that card. It is
+still constrained to the inputs' CardSet - a player-supplied target with no
+constraint would let anyone name the best card in the game and fuse two commons
+into it. The altar's slot count now bounds the input count too
+(`"slotCount" = lab.azi() - 1`, from the newly decoded type 1100).
+
+Failure now also reports the target as **notObtained**, which is what makes the
+client show *"fusionRecipeFailed"* naming the card that was missed instead of a
+bare *"fusionFailed"* (`cp_0`, case 5491).
+
+**Still approximated:** the success probability. The panel shows "labPower"
+beside "kardsPower" (Σ inputs' `RequiredLevel` − target's `FusionPower`) and
+"quality", but the server owns the roll and no client code reveals the curve. A
+hard `kardsPower >= labPower` gate would be WRONG: 543 of the 907 cards have
+`RequiredLevel` 0, so most fusions would become impossible. Left as a flat
+chance, documented, rather than guessed.
+
+**Verified:** `e2e` - the three fusion tests now send the real 3-id layout and
+assert the chosen target is what comes back, and that a failed roll names it.
+Both mutation-checked: reading the id from the wrong end yields `obtained 700,
+want the chosen target 702`, and dropping the notObtained report is caught too.
+
 ### B-088 - The 8000 coach-deck blob carried the wrong ID NAMESPACE
 
 `writeCoachCardBlob` emitted the coach's equipped cards as bare i32 **CoachCard

@@ -120,7 +120,7 @@ value checked so far turned out wrong in 2.70.
 | 800/801/802 | 332/5/13 | Achievements + categories | A whole client tab |
 | 1500 | 148 | NPC dialog replies | Needed for dialog trees |
 | 360 | 42 | Interactive-element rendering | We hand-author elements instead |
-| 1100 | 30 | Fusion-laboratory definitions | We approximate fusion with a flat 60 % roll |
+| 1100 | 30 | Fusion-laboratory definitions | ✅ decoded (B-089) — altars, not recipes |
 | 1600 | 29 | Per-map metadata (music/background) | Cosmetic |
 | 1000/1001 | 22/4 | Tournament definitions + level list | We hand-build 3 tournaments |
 | 251 | 11 | Equipment pools from Sphere Board nodes | Blocked on 901 |
@@ -241,7 +241,7 @@ decompiled client.
 | Card Master shop (201 → 5401) | ✅ | Prices from real card data (845/907 cards priced); stock from the element's card list |
 | Token purchase (5450 → 5403/5200) | ✅ | Transactional debit + grant |
 | Card-for-card barter (5400) | ✅ | Enforces the client's own rule `Σ(given.value × qty) ≥ wanted.value` |
-| Fusion Lab (5490 → 5491) | 🟡 | **Approximated:** the ~100 real recipes are in undecoded type 1100. We roll a flat 60 % on ≥2 cards of one set |
+| Fusion Lab (5490 → 5491) | 🟡 | **There are no recipes.** Type 1100 is the 30 ALTARS (decoded). The target card comes from the request's last id and the slot count from the altar (B-089); only the success CURVE is still a flat roll |
 | Card exchange / trading (5101–5112) | ✅ | Dupe-safe: staging resets both ready flags, commit re-validates every card, full rollback |
 | Bound / undestructible enforcement | ✅ | 171 + 65 of the 907 cards cannot be traded |
 | Mail (539, 15000–15007, 15506/15507) | ✅ | List, send, delete, attachments, capacity 20, 10 attachments, rune-safe truncation, online toast |
@@ -1242,7 +1242,14 @@ is a signing certificate or SignPath); no published Docker image.
     for the full elimination trail.
 20. **Card staking / bets** on a fight.
 21. **Evolution per-fighter death chance** (currently: all downed fighters die).
-22. **Fusion recipe table** — decode record type 1100 and replace the flat 60 % roll.
+22. 🟡 **Fusion** — **there is no recipe table; type 1100 is the ALTARS.** Decoded
+    (4/4 fields: power / quality / slots): 30 tiered altars. The mechanic is a
+    power check against a **player-chosen target**, and the client's own panel
+    gives the formula (kardsPower = Σ inputs' RequiredLevel − target's
+    FusionPower). B-089 fixed the wire bug this exposed — the 5490 payload's
+    LAST id is that target, which the server had been consuming as fuel — so the
+    outcome is now the chosen card and a failed roll names it. **Still open:** the
+    success probability curve, which no client code reveals.
 23. **Tournament definitions** — decode types 1000/1001 and replace the three
     hand-built entries.
 24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and

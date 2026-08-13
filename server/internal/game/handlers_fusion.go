@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/rand"
 
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
@@ -33,16 +34,27 @@ func registerFusionHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpFusionRequest, handleFusionRequest)
 }
 
-// handleFusionRequest (5490 C2S: [i32 count]{i32 cardId}, ids reversed by the
-// client) runs the Fusion Lab: it consumes same-set input cards and, on a
-// success roll, grants a random other card from that set. Replies with
-// FusionResult(5491) carrying [obtained][notObtained][recovered] card ids and,
-// on any inventory change, pushes the updated inventory (5200).
+// handleFusionRequest (5490 C2S: [i32 count]{i32 cardId}) runs the Fusion Lab.
 //
-// Fusion rule (a faithful approximation — the original's ~100 recipes are not in
-// the decoded gamedata): the inputs must be >=2 cards of a single CardSet the
-// coach owns. Success -> obtain a random other card of that set. Failure ->
-// recover one input card as leftovers.
+// THE LAST ID IS THE TARGET, NOT AN INPUT. The client builds the array as the
+// input list with the chosen card inserted at index 0 (`add.java`:
+// `jg_02.v(0, ajt_16.azv())`), and `ahg_0.encode()` then writes it REVERSED, so
+// the player's chosen card lands last on the wire. `azv()` is `cCr`, which the
+// fusion panel exposes as the property "fusionCard" — the card the player is
+// trying to MAKE. Reading every id as an input, as this used to, both consumed
+// the player's chosen card as fuel and threw away their choice.
+//
+// The outcome is therefore the CHOSEN card, not a random one. It is still
+// constrained to the inputs' CardSet: the target being player-supplied means an
+// unconstrained server would let anyone name the best card in the game and fuse
+// two commons into it.
+//
+// Replies with FusionResult(5491) carrying [obtained][notObtained][recovered],
+// which the client renders as four distinct outcomes (`cp_0`, case 5491):
+// obtained -> "fusionSuccess", notObtained -> "fusionRecipeFailed", recovered ->
+// "fusionLeftovers", none -> "fusionFailed". Sending the target back as
+// notObtained on a failed roll is what makes the client name the card that was
+// missed instead of showing a bare failure.
 func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
@@ -52,43 +64,58 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	if n < 2 || n > maxFusionInputs || s.deps.Cards == nil {
+	// >= 3: the target plus the client's own minimum of two inputs
+	// (`ajt_1`'s "canFusion" is `cCq.size() >= 2`).
+	if n < 3 || n > maxFusionInputs || s.deps.Cards == nil {
 		return s.sendFusionResult(fusionResultError, 0, 0, 0)
 	}
-	inputs := make([]int32, 0, n)
+	ids := make([]int32, 0, n)
 	for i := int32(0); i < n; i++ {
 		id, err := r.I32()
 		if err != nil {
 			return err
 		}
-		inputs = append(inputs, id)
+		ids = append(ids, id)
+	}
+	target := ids[len(ids)-1]
+	inputs := ids[:len(ids)-1]
+
+	// The altar bounds how many cards may be fed in ("slotCount" = azi() - 1).
+	if lab := s.fusionLab(); lab != nil && len(inputs) > int(lab.Slots) {
+		return s.sendFusionResult(fusionResultError, 0, 0, 0)
 	}
 
-	// All inputs must belong to a single, non-zero CardSet.
+	// The target must be a real card in the same set as the inputs.
 	set, ok := s.commonCardSet(inputs)
 	if !ok {
-		return s.sendFusionResult(fusionResultOK, 0, 0, 0) // no recipe -> plain fail
+		return s.sendFusionResult(fusionResultOK, 0, 0, 0) // mixed sets -> plain fail
+	}
+	tc := s.deps.Cards.Get(target)
+	if tc == nil || tc.CardSet != set {
+		return s.sendFusionResult(fusionResultOK, 0, 0, 0)
 	}
 
-	// Roll the altar.
-	success := fusionRand.Intn(100) < fusionSuccessPercent
-	if success {
-		obtained := s.pickFusionOutput(set, inputs)
-		if obtained == 0 {
-			return s.sendFusionResult(fusionResultOK, 0, 0, 0)
-		}
-		if err := s.deps.Store.Coaches.ConsumeAndGrant(s.Coach.ID, inputs, obtained); err != nil {
+	// Roll the altar. The probability curve is the one piece of this mechanic the
+	// data does not settle: the panel shows "labPower" beside "kardsPower"
+	// (Σ inputs' RequiredLevel − target's FusionPower) and "quality", but the
+	// server owns the roll and no client code reveals it. A hard
+	// kardsPower >= labPower gate would be wrong: 543 of the 907 cards have
+	// RequiredLevel 0, so most fusions would become impossible. Left as a flat
+	// chance until the real curve is known — see docs/DATA-COVERAGE.md.
+	if fusionRand.Intn(100) < fusionSuccessPercent {
+		if err := s.deps.Store.Coaches.ConsumeAndGrant(s.Coach.ID, inputs, target); err != nil {
 			if errors.Is(err, store.ErrCardNotOwned) {
 				return s.sendFusionResult(fusionResultOK, 0, 0, 0)
 			}
 			return err
 		}
 		s.refreshAndPushInventory()
-		s.log.Info("fusion success", "coach", s.Coach.Name, "obtained", obtained)
-		return s.sendFusionResult(fusionResultOK, obtained, 0, 0)
+		s.log.Info("fusion success", "coach", s.Coach.Name, "obtained", target)
+		return s.sendFusionResult(fusionResultOK, target, 0, 0)
 	}
 
-	// Failure: consume the inputs but return one as leftovers (recovered).
+	// Failure: consume the inputs, return one as leftovers, and name the card
+	// that was missed so the client can say so.
 	recovered := inputs[0]
 	if err := s.deps.Store.Coaches.ConsumeAndGrant(s.Coach.ID, inputs, recovered); err != nil {
 		if errors.Is(err, store.ErrCardNotOwned) {
@@ -97,8 +124,17 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 	s.refreshAndPushInventory()
-	s.log.Info("fusion failed (leftovers)", "coach", s.Coach.Name, "recovered", recovered)
-	return s.sendFusionResult(fusionResultOK, 0, 0, recovered)
+	s.log.Info("fusion failed", "coach", s.Coach.Name, "missed", target, "recovered", recovered)
+	return s.sendFusionResult(fusionResultOK, 0, target, recovered)
+}
+
+// fusionLab returns the altar a fusion runs on. The 5490 request carries no
+// altar id, so the server picks deterministically (lowest id).
+func (s *Session) fusionLab() *gamedata.FusionLab {
+	if s.deps == nil || s.deps.FusionLabs == nil {
+		return nil
+	}
+	return s.deps.FusionLabs.Default()
 }
 
 // commonCardSet returns the shared non-zero CardSet of the inputs, or ok=false
@@ -117,29 +153,6 @@ func (s *Session) commonCardSet(inputs []int32) (int32, bool) {
 		}
 	}
 	return set, set != 0
-}
-
-// pickFusionOutput chooses a random card from the set that isn't one of the
-// inputs (so fusion produces something new). Falls back to any set card.
-func (s *Session) pickFusionOutput(set int32, inputs []int32) int32 {
-	inSet := s.deps.Cards.CardsInSet(set)
-	if len(inSet) == 0 {
-		return 0
-	}
-	isInput := make(map[int32]bool, len(inputs))
-	for _, id := range inputs {
-		isInput[id] = true
-	}
-	candidates := make([]int32, 0, len(inSet))
-	for _, id := range inSet {
-		if !isInput[id] {
-			candidates = append(candidates, id)
-		}
-	}
-	if len(candidates) == 0 {
-		candidates = inSet // set had only the input cards; allow any
-	}
-	return candidates[fusionRand.Intn(len(candidates))]
 }
 
 // sendFusionResult replies with FusionResult(5491):
