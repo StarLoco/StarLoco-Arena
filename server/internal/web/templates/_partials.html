@@ -1,0 +1,200 @@
+{{/* Shared fragments. Parsed into every page, rendered by name. */}}
+
+{{/* ---------------------------------------------------------------- Admin nav */}}
+{{define "admin_tabs"}}
+<div class="tabs">
+  <a class="tab {{if eq .AdminTab "overview"}}is-current{{end}}" href="/admin">Overview</a>
+  <a class="tab {{if eq .AdminTab "accounts"}}is-current{{end}}" href="/admin/accounts">Accounts</a>
+  <a class="tab {{if eq .AdminTab "monitoring"}}is-current{{end}}" href="/admin/monitoring">Monitoring</a>
+</div>
+{{end}}
+
+{{/* ------------------------------------------------ Everything about one account
+
+     Rendered on the player's own page AND the admin console's detail view, so
+     the two can never drift: an admin sees exactly what the player sees.
+     The dot is `.` = an *accountDetail.                                       */}}
+{{define "account_data"}}
+
+<div class="grid grid-4 mb-4">
+  <div class="tile">
+    <div class="tile-value">{{if .HasCoach}}{{.CardCount}}{{else}}0{{end}}</div>
+    <div class="tile-label">Cards owned</div>
+  </div>
+  <div class="tile">
+    <div class="tile-value">{{len .Fighters}}</div>
+    <div class="tile-label">Fighters</div>
+  </div>
+  <div class="tile">
+    <div class="tile-value">{{len .Teams}}</div>
+    <div class="tile-label">Teams</div>
+  </div>
+  <div class="tile">
+    <div class="tile-value">{{if .HasCoach}}{{if .Rank}}#{{.Rank}}{{else}}—{{end}}{{else}}—{{end}}</div>
+    <div class="tile-label">Ladder rank</div>
+  </div>
+</div>
+
+{{if not .HasCoach}}
+  <div class="card mb-4">
+    <div class="card-title">No character yet</div>
+    <p class="mb-0">This account has not created a coach. Sign in with the game client and make one —
+      everything below fills in once you do.</p>
+  </div>
+{{else}}
+
+<div class="grid grid-2 mb-4">
+  <div class="card">
+    <div class="card-title">Coach</div>
+    <dl class="deflist">
+      <dt>Name</dt><dd><strong>{{.Coach.Name}}</strong></dd>
+      <dt>Appearance</dt><dd>{{sexLabel .Coach.Sex}} · hair {{.Coach.Hair}} · skin {{.Coach.Skin}}</dd>
+      <dt>Position</dt><dd>{{.Coach.PosX}}, {{.Coach.PosY}} (map {{.Coach.PosZ}})</dd>
+      <dt>Standing</dt><dd>{{.Coach.Standing}}</dd>
+      <dt>Created</dt><dd>{{formatDate .Coach.CreatedAt}}</dd>
+    </dl>
+  </div>
+  <div class="card">
+    <div class="card-title">Record</div>
+    <dl class="deflist">
+      <dt>Rating</dt><dd><strong>{{.Coach.Strength}}</strong> <span class="muted">({{rankLabel .Coach.Strength}})</span></dd>
+      <dt>Fights</dt><dd>{{.Coach.StatFights}}</dd>
+      <dt>Won / lost</dt><dd>{{.Coach.StatWins}} / {{.Coach.StatLosses}}</dd>
+      <dt>Streak</dt><dd>{{if .Coach.ConsecutiveWins}}{{.Coach.ConsecutiveWins}} win(s){{else if .Coach.ConsecutiveLosses}}{{.Coach.ConsecutiveLosses}} loss(es){{else}}—{{end}}</dd>
+      <dt>Time in fight</dt><dd>{{formatUptime .Coach.TimeInFightSecs}}</dd>
+      <dt>Time played</dt><dd>{{formatUptime .Coach.TotalPlaySecs}}</dd>
+    </dl>
+  </div>
+</div>
+
+{{if .Wallet}}
+<div class="card mb-4">
+  <div class="card-title">Wallet</div>
+  <div class="pill-list">
+    {{range .Wallet}}<span class="chip">Currency {{.CurrencyType}}: {{.Amount}}</span>{{end}}
+  </div>
+</div>
+{{end}}
+
+<div class="card mb-4">
+  <div class="card-title">Fighters <span class="chip chip-muted">{{len .Fighters}}</span></div>
+  {{if .Fighters}}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Breed</th><th>State</th><th class="num">XP</th>
+        <th class="num">Tired</th><th class="num">Morale</th><th>Spells</th><th>Items</th><th>Wounds</th>
+      </tr></thead>
+      <tbody>
+      {{range .Fighters}}
+        <tr>
+          <td><strong>{{.Name}}</strong>{{if .Evolution}} <span class="chip">Evolution</span>{{end}}</td>
+          <td>{{.BreedID}}</td>
+          <td><span class="chip chip-muted">{{fighterStateLabel .State}}</span></td>
+          <td class="num">{{.XP}}</td>
+          <td class="num">{{.Tiredness}}</td>
+          <td class="num">{{.Morale}}</td>
+          <td class="num">{{len .Spells}}</td>
+          <td class="num">{{len .Objects}}</td>
+          <td class="num">{{if .Conditions}}<span class="chip chip-danger">{{len .Conditions}}</span>{{else}}—{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="empty">No fighters recruited yet.</div>{{end}}
+</div>
+
+<div class="card mb-4">
+  <div class="card-title">Teams <span class="chip chip-muted">{{len .Teams}}</span></div>
+  {{if .Teams}}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th class="num">Type</th><th class="num">Mode</th><th class="num">Members</th></tr></thead>
+      <tbody>
+      {{range .Teams}}
+        <tr>
+          <td><strong>{{.Name}}</strong></td>
+          <td class="num">{{.Type}}</td>
+          <td class="num">{{.GameMode}}</td>
+          <td class="num">{{len .Members}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="empty">No teams saved yet.</div>{{end}}
+</div>
+
+<div class="grid grid-2 mb-4">
+  <div class="card">
+    <div class="card-title">Equipped <span class="chip chip-muted">{{len .Equipped}}</span></div>
+    {{if .Equipped}}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Slot</th><th class="num">Card</th><th class="num">Qty</th><th>Flags</th></tr></thead>
+        <tbody>
+        {{range .Equipped}}
+          <tr><td>{{slotLabel .Pos}}</td><td class="num">{{.TemplateID}}</td><td class="num">{{.Quantity}}</td><td class="tiny">{{cardFlagLabel .Flag}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}<div class="empty">Nothing equipped.</div>{{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-title">Bag <span class="chip chip-muted">{{len .Bag}}</span></div>
+    {{if .Bag}}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">Card</th><th class="num">Qty</th><th>Flags</th></tr></thead>
+        <tbody>
+        {{range .Bag}}
+          <tr><td class="num">{{.TemplateID}}</td><td class="num">{{.Quantity}}</td><td class="tiny">{{cardFlagLabel .Flag}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}<div class="empty">The bag is empty.</div>{{end}}
+  </div>
+</div>
+
+<div class="grid grid-2 mb-4">
+  <div class="card">
+    <div class="card-title">Friends <span class="chip chip-muted">{{len .Friends}}</span></div>
+    {{if .Friends}}
+      <div class="pill-list">
+        {{range .Friends}}
+          <span class="chip {{if .Online}}chip-online{{else}}chip-muted{{end}}">{{if .Name}}{{.Name}}{{else}}(deleted){{end}}</span>
+        {{end}}
+      </div>
+    {{else}}<div class="empty">No friends added.</div>{{end}}
+  </div>
+  <div class="card">
+    <div class="card-title">Ignored <span class="chip chip-muted">{{len .Ignored}}</span></div>
+    {{if .Ignored}}
+      <div class="pill-list">
+        {{range .Ignored}}<span class="chip chip-muted">{{if .Name}}{{.Name}}{{else}}(deleted){{end}}</span>{{end}}
+      </div>
+    {{else}}<div class="empty">Nobody ignored.</div>{{end}}
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-title">Mail</div>
+    <p class="mb-0">{{.MailCount}} message(s) in the inbox.</p>
+  </div>
+  <div class="card">
+    <div class="card-title">Statistics <span class="chip chip-muted">{{len .Stats}}</span></div>
+    {{if .Stats}}
+      <div class="pill-list">
+        {{range .Stats}}<span class="chip chip-muted">#{{.StatID}}: {{.Value}}</span>{{end}}
+      </div>
+    {{else}}<div class="empty">No statistics recorded.</div>{{end}}
+  </div>
+</div>
+
+{{end}}
+{{end}}

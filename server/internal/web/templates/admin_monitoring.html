@@ -1,0 +1,68 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow">Console</div>
+    <h1>Monitoring</h1>
+    {{template "admin_tabs" .}}
+
+    <div class="grid grid-4 mb-4">
+      <div class="tile">
+        <div class="tile-value" style="font-size:1.35rem;padding-top:.35rem">{{formatUptime .UptimeSeconds}}</div>
+        <div class="tile-label">Uptime</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{.Goroutines}}</div>
+        <div class="tile-label">Goroutines</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{printf "%.1f" .HeapAllocMB}}</div>
+        <div class="tile-label">Heap in use (MB)</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{.NumGC}}</div>
+        <div class="tile-label">GC cycles</div>
+      </div>
+    </div>
+
+    <div class="grid grid-2 mb-4">
+      <div class="card">
+        <div class="card-title">Runtime</div>
+        <dl class="deflist">
+          <dt>Go version</dt><dd>{{.GoVersion}}</dd>
+          <dt>Server version</dt><dd>{{.Version}}</dd>
+          <dt>CPUs</dt><dd>{{.NumCPU}}</dd>
+          <dt>Heap reserved</dt><dd>{{printf "%.1f" .HeapSysMB}} MB</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <div class="card-title">Game</div>
+        <dl class="deflist">
+          <dt>Players online</dt><dd>{{.PlayersOnline}}</dd>
+          <dt>Active fights</dt><dd>{{.ActiveFights}}</dd>
+          <dt>Accounts</dt><dd>{{thousands .TotalAccounts}}</dd>
+          <dt>Marked connected</dt><dd>{{.Connected}}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Profiler</div>
+      <p class="small">
+        Go's built-in profiles, taken from this running server. They open as plain text;
+        for a real investigation, feed the same URL to
+        <code>go tool pprof</code> with <code>?debug=0</code> appended for the binary form.
+      </p>
+      <div class="grid grid-auto mt-2">
+        {{range .Profiles}}
+          <a class="card card-hover" href="/admin/monitoring/pprof/{{.Name}}" style="padding:1rem">
+            <div style="font-family:var(--font-heading);font-weight:700;color:var(--accent)">{{.Name}}</div>
+            <div class="tiny muted mt-1">{{.Desc}}</div>
+          </a>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}

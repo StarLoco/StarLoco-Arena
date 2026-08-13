@@ -1,18 +1,16 @@
-// Package web serves the small browser portal bundled with the server, so
-// players can create their own accounts without the operator running a command
-// for each of them.
+// Package web serves the browser portal bundled with the server: the public
+// site players land on, the account area where they see everything the server
+// stores about them, and the admin console operators run the game from.
 //
-// It is intentionally tiny: one page, one form, no JavaScript, no external
-// assets. Everything is embedded in the binary, so it works on a machine with
-// no internet access.
+// Everything ships inside the Go binary — templates, stylesheet, fonts,
+// favicon — so the portal works on a machine with no internet access and needs
+// no build step, no Node toolchain and no CDN.
 package web
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
@@ -25,13 +23,7 @@ import (
 
 	"github.com/StarLoco/arena-2.70/internal/config"
 	"github.com/StarLoco/arena-2.70/internal/store"
-	"github.com/StarLoco/arena-2.70/internal/version"
 )
-
-//go:embed assets/page.html
-var assetsFS embed.FS
-
-var pageTmpl = template.Must(template.ParseFS(assetsFS, "assets/page.html"))
 
 // maxLoginLen caps account names. The column holds 64, but a shorter, stricter
 // bound keeps names typeable in the game client's login box.
@@ -45,23 +37,45 @@ const maxPasswordLen = 72
 // windows-1252 wire encoding unchanged.
 var loginRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
+// accountsPerPage is the admin console's page size.
+const accountsPerPage = 25
+
+// Live exposes the running game server's counters to the portal. Every field is
+// optional — a nil func reads zero — so tests and a server started without a
+// world can construct the portal without stubbing anything.
+type Live struct {
+	// PlayersOnline is the number of coaches currently in the world.
+	PlayersOnline func() int
+	// ActiveFights is the number of fights in progress.
+	ActiveFights func() int
+}
+
 // Server is the portal. Construct it with New and hand Handler() to net/http.
 type Server struct {
 	store *store.Store
 	cfg   config.WebConfig
 	log   *slog.Logger
 
-	// gameAddr is the configured game listen address, used to tell players what
-	// to put in their client config.
+	// gameAddr is the configured game listen address, used to tell players
+	// what to put in their client config.
 	gameAddr string
-	// online reports the number of connected players; may be nil.
-	online func() int
+	live     Live
 
-	limiter *limiter
+	codec *sessionCodec
+	tmpl  *templateSet
+
+	// limiter caps account creation, loginLimiter caps sign-in attempts. They
+	// are separate because the right allowance differs by an order of
+	// magnitude: creating ten accounts an hour from one address is already
+	// suspicious, whereas mistyping a password ten times in an evening is not.
+	limiter      *limiter
+	loginLimiter *limiter
+	started      time.Time
 }
 
-// New builds the portal. online may be nil.
-func New(st *store.Store, cfg config.WebConfig, gameAddr string, online func() int, log *slog.Logger) *Server {
+// New builds the portal. It fails only on a programming error — a template
+// that does not parse — so a caller can treat an error as fatal.
+func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log *slog.Logger) (*Server, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -71,71 +85,116 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, online func() i
 	if cfg.MinPasswordLength <= 0 {
 		cfg.MinPasswordLength = 6
 	}
+
+	codec, ephemeral, err := newSessionCodec(cfg.SessionSecret)
+	if err != nil {
+		return nil, err
+	}
+	if ephemeral {
+		log.Warn("web: no session secret configured, using a random one — " +
+			"everybody will be signed out when the server restarts " +
+			"(set web.session_secret to avoid this)")
+	}
+
+	tmpl, err := parseTemplates()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Server{
 		store:    st,
 		cfg:      cfg,
 		log:      log,
 		gameAddr: gameAddr,
-		online:   online,
+		live:     live,
+		codec:    codec,
+		tmpl:     tmpl,
 		// A generous allowance for a household or guild sharing one address,
 		// but low enough that the form cannot be used to hammer the database.
 		limiter: newLimiter(10, time.Hour),
-	}
+		// Brute-force guard. Passwords are bcrypt-hashed, so an online guess
+		// already costs ~100ms of CPU; this stops that CPU being the whole
+		// server's.
+		loginLimiter: newLimiter(20, 15*time.Minute),
+		started:      time.Now(),
+	}, nil
 }
 
 // Handler returns the portal's routes.
+//
+// Go 1.22 method+path patterns let GET and POST on the same URL map to
+// different handlers, so no handler starts with a method switch.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+
+	// Embedded assets: stylesheet, fonts, favicon.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(staticFileServer())))
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
+	})
+
+	// Public.
 	mux.HandleFunc("GET /{$}", s.handleIndex) // {$} = exactly "/", not a catch-all
-	mux.HandleFunc("POST /register", s.handleRegister)
+	mux.HandleFunc("GET /status", s.handleStatus)
+	mux.HandleFunc("GET /ladder", s.handleLadder)
+	mux.HandleFunc("GET /login", s.handleLoginForm)
+	mux.HandleFunc("POST /login", s.handleLoginSubmit)
+	mux.HandleFunc("GET /register", s.handleRegisterForm)
+	mux.HandleFunc("POST /register", s.handleRegisterSubmit)
+	mux.HandleFunc("POST /logout", s.handleLogout)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// Signed in (any account).
+	mux.HandleFunc("GET /account", s.requireUser(s.handleAccount))
+	mux.HandleFunc("GET /account/password", s.requireUser(s.handlePasswordForm))
+	mux.HandleFunc("POST /account/password", s.requireUser(s.handlePasswordSubmit))
+
+	// Admin console. Starting impersonation is admin-gated; stopping it is
+	// not, so somebody who is impersonating can always get back to themselves
+	// even if their admin rights were revoked while they were away.
+	mux.HandleFunc("GET /admin", s.requireAdmin(s.handleAdminDashboard))
+	mux.HandleFunc("GET /admin/accounts", s.requireAdmin(s.handleAdminAccounts))
+	mux.HandleFunc("GET /admin/accounts/new", s.requireAdmin(s.handleAdminCreateForm))
+	mux.HandleFunc("POST /admin/accounts/new", s.requireAdmin(s.handleAdminCreateSubmit))
+	mux.HandleFunc("GET /admin/accounts/{id}", s.requireAdmin(s.handleAdminAccountDetail))
+	mux.HandleFunc("POST /admin/accounts/{id}/delete", s.requireAdmin(s.handleAdminDelete))
+	mux.HandleFunc("POST /admin/accounts/{id}/toggle-admin", s.requireAdmin(s.handleAdminToggleAdmin))
+	mux.HandleFunc("POST /admin/accounts/{id}/impersonate", s.requireAdmin(s.handleImpersonateStart))
+	mux.HandleFunc("GET /admin/monitoring", s.requireAdmin(s.handleAdminMonitoring))
+	mux.HandleFunc("GET /admin/monitoring/pprof/{profile}", s.requireAdmin(s.handleAdminPprof))
+	mux.HandleFunc("POST /impersonate/stop", s.handleImpersonateStop)
+
 	return securityHeaders(mux)
 }
 
-// pageData is the template model.
-type pageData struct {
-	ServerName          string
-	Version             string
-	GameAddress         string
-	PlayersOnline       int
-	RegistrationEnabled bool
-	ClientDownloadURL   string
-	MinLogin            int
-	MinPassword         int
-
-	Error        string
-	CreatedLogin string
-	CreatedAdmin bool
-	FormLogin    string
-
-	// FirstAccount marks a server with no accounts yet, where whoever registers
-	// next becomes the owner.
-	FirstAccount bool
+// serverName is the branding shown in the header and the page titles.
+func (s *Server) serverName() string {
+	if n := strings.TrimSpace(s.cfg.ServerName); n != "" {
+		return n
+	}
+	return "DofusArena"
 }
 
-func (s *Server) newPageData(r *http.Request) pageData {
-	n := 0
-	if s.online != nil {
-		n = s.online()
+func (s *Server) playersOnline() int {
+	if s.live.PlayersOnline == nil {
+		return 0
 	}
-	first := false
-	if count, err := s.store.Accounts.Count(); err == nil {
-		first = count == 0
+	return s.live.PlayersOnline()
+}
+
+func (s *Server) activeFights() int {
+	if s.live.ActiveFights == nil {
+		return 0
 	}
-	return pageData{
-		ServerName:          "DofusArena Arena Server",
-		Version:             version.Short(),
-		GameAddress:         s.gameAddress(r),
-		PlayersOnline:       n,
-		RegistrationEnabled: s.cfg.RegistrationEnabled,
-		ClientDownloadURL:   s.cfg.ClientDownloadURL,
-		MinLogin:            s.cfg.MinLoginLength,
-		MinPassword:         s.cfg.MinPasswordLength,
-		FirstAccount:        first,
-	}
+	return s.live.ActiveFights()
+}
+
+// uptimeSeconds is how long the portal (and so the server) has been running.
+func (s *Server) uptimeSeconds() int64 {
+	return int64(time.Since(s.started) / time.Second)
 }
 
 // gameAddress works out what players should type into their client. The
@@ -170,92 +229,8 @@ func isWildcard(host string) bool {
 	return host == "" || host == "0.0.0.0" || host == "::" || host == "[::]"
 }
 
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusOK, s.newPageData(r))
-}
-
-func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	data := s.newPageData(r)
-
-	if !s.cfg.RegistrationEnabled {
-		data.Error = "Registration is closed on this server."
-		s.render(w, r, http.StatusForbidden, data)
-		return
-	}
-	// Reject cross-site form posts. The portal's own form sends either no
-	// Origin or its own; anything else is a third-party page driving the
-	// visitor's browser.
-	if !sameOrigin(r) {
-		data.Error = "That request did not come from this page. Please try again."
-		s.render(w, r, http.StatusForbidden, data)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		data.Error = "The form could not be read. Please try again."
-		s.render(w, r, http.StatusBadRequest, data)
-		return
-	}
-
-	login := strings.TrimSpace(r.PostFormValue("login"))
-	password := r.PostFormValue("password")
-	data.FormLogin = login
-
-	if err := s.validate(login, password); err != nil {
-		data.Error = err.Error()
-		s.render(w, r, http.StatusBadRequest, data)
-		return
-	}
-	// Rate-limit only once the input is well-formed, so a player fumbling the
-	// form does not burn their allowance.
-	if !s.limiter.allow(clientIP(r)) {
-		data.Error = "Too many accounts created from your address recently. Please try again later."
-		s.render(w, r, http.StatusTooManyRequests, data)
-		return
-	}
-
-	if _, err := s.store.Accounts.FindByName(login); err == nil {
-		data.Error = "That account name is already taken."
-		s.render(w, r, http.StatusConflict, data)
-		return
-	} else if !errors.Is(err, store.ErrNotFound) {
-		s.log.Error("web: account lookup failed", "err", err)
-		data.Error = "The server could not reach its database. Please try again."
-		s.render(w, r, http.StatusInternalServerError, data)
-		return
-	}
-
-	// A brand new server has no owner yet, so the first account registered
-	// becomes the administrator — otherwise nobody could ever run a GM command
-	// on a machine where only the release binary is installed. Every later
-	// account is an ordinary player.
-	first := false
-	if n, err := s.store.Accounts.Count(); err != nil {
-		s.log.Error("web: account count failed", "err", err)
-	} else {
-		first = n == 0
-	}
-
-	if _, err := s.store.Accounts.CreateAccount(login, password, first); err != nil {
-		// The unique index is the real guard; a duplicate here means someone
-		// took the name between the check above and now.
-		if isDuplicate(err) {
-			data.Error = "That account name is already taken."
-			s.render(w, r, http.StatusConflict, data)
-			return
-		}
-		s.log.Error("web: account creation failed", "err", err)
-		data.Error = "The account could not be created. Please try again."
-		s.render(w, r, http.StatusInternalServerError, data)
-		return
-	}
-
-	s.log.Info("account registered via web portal", "login", login, "admin", first)
-	data.CreatedLogin = login
-	data.CreatedAdmin = first
-	data.FormLogin = ""
-	s.render(w, r, http.StatusOK, data)
-}
-
+// validate applies the sign-up policy shared by public registration and the
+// admin console's create form.
 func (s *Server) validate(login, password string) error {
 	switch {
 	case login == "":
@@ -274,24 +249,35 @@ func (s *Server) validate(login, password string) error {
 	return nil
 }
 
-func (s *Server) render(w http.ResponseWriter, _ *http.Request, status int, data pageData) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := pageTmpl.Execute(w, data); err != nil {
-		// The response is already committed; all we can do is record it.
-		s.log.Error("web: render failed", "err", err)
-	}
+// redirect sends a see-other, the correct code after a successful POST: it
+// makes the browser follow up with a GET, so a refresh cannot re-submit.
+func redirect(w http.ResponseWriter, r *http.Request, to string) {
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
-// securityHeaders applies a conservative baseline. The portal serves only its
-// own inline CSS, so the policy can be strict.
+// securityHeaders applies a conservative baseline.
+//
+// The portal serves only its own assets and has no inline scripts, so the
+// policy can forbid scripts outright. That is a real mitigation rather than a
+// formality: it means a stored-XSS bug in, say, a coach name could not execute.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+			"default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "+
+				"font-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cacheStatic lets browsers keep the stylesheet and fonts. The URLs are stable
+// across builds, so the window is a day rather than a year: long enough to skip
+// the requests, short enough that an upgraded server looks right by tomorrow.
+func cacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -332,6 +318,15 @@ func isDuplicate(err error) bool {
 	return strings.Contains(msg, "unique constraint") || // sqlite
 		strings.Contains(msg, "duplicate key") || // postgres
 		strings.Contains(msg, "duplicate entry") // mysql
+}
+
+// idParam reads a {id} path value.
+func idParam(r *http.Request) (uint, bool) {
+	n, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil || n == 0 {
+		return 0, false
+	}
+	return uint(n), true
 }
 
 // ---------------------------------------------------------------------------

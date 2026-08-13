@@ -1,0 +1,64 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow"><a href="/admin/accounts">Accounts</a></div>
+    <div class="flex-between mb-3">
+      <div>
+        <h1 class="mb-0">
+          {{.Detail.Account.Name}}
+          {{if .Detail.Account.IsAdmin}}<span class="chip chip-admin">Admin</span>{{end}}
+          {{if .Detail.Account.Connected}}<span class="chip chip-online">Online</span>{{end}}
+        </h1>
+        <p class="small muted mb-0">
+          Account #{{.Detail.Account.ID}} · created {{formatDate .Detail.Account.CreatedAt}}
+        </p>
+      </div>
+    </div>
+
+    {{template "admin_tabs" .}}
+
+    <div class="card mb-4">
+      <div class="card-title">Moderation</div>
+
+      {{if .IsSelf}}
+        <p class="small muted">
+          This is the account you are signed in as. Deleting it, changing its rights or
+          impersonating yourself are all blocked — that is what stops a one-admin server
+          locking itself out of its own console.
+        </p>
+      {{else}}
+      <div class="btn-row">
+        <form method="post" action="/admin/accounts/{{.Detail.Account.ID}}/toggle-admin">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <button class="btn btn-secondary" type="submit">
+            {{if .Detail.Account.IsAdmin}}Revoke administrator{{else}}Make administrator{{end}}
+          </button>
+        </form>
+
+        <form method="post" action="/admin/accounts/{{.Detail.Account.ID}}/impersonate">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <button class="btn btn-secondary" type="submit">View the site as this player</button>
+        </form>
+
+        <form method="post" action="/admin/accounts/{{.Detail.Account.ID}}/delete"
+              onsubmit="return confirm('Delete {{.Detail.Account.Name}} and every fighter, team and card they own? This cannot be undone.')">
+          <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+          <button class="btn btn-danger" type="submit"
+                  {{if .Detail.Account.Connected}}disabled title="This account is connected. Ask them to log out first."{{end}}>
+            Delete account
+          </button>
+        </form>
+      </div>
+      <p class="small muted mt-2 mb-0">
+        Deleting removes the account, its coach, and every fighter, team, card and received
+        message it owns. A connected account cannot be deleted.
+      </p>
+      {{end}}
+    </div>
+
+    {{template "account_data" .Detail}}
+  </div>
+</section>
+{{end}}

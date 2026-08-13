@@ -1,0 +1,138 @@
+{{define "content"}}
+
+<section class="hero">
+  <div class="grid-texture" aria-hidden="true"></div>
+  <div class="blob blob-accent" style="width:520px;height:520px;right:-140px;top:-200px" aria-hidden="true"></div>
+  <div class="blob blob-yellow" style="width:380px;height:380px;left:-120px;bottom:-180px" aria-hidden="true"></div>
+
+  <div class="container hero-inner">
+    <div class="badge-pill reveal">
+      <span class="dot{{if not .PlayersOnline}} dot-off{{end}}" aria-hidden="true"></span>
+      {{if .PlayersOnline}}
+        {{.PlayersOnline}} player{{if ne .PlayersOnline 1}}s{{end}} online now
+      {{else}}
+        Server online — be the first one in
+      {{end}}
+    </div>
+
+    <div class="eyebrow reveal reveal-1">The return of</div>
+    <h1 class="reveal reveal-1">
+      DofusArena
+      <span class="hero-accent">2.70</span>
+    </h1>
+    <p class="lede reveal reveal-2">
+      The legendary tactical PvP game from the Dofus universe, brought back and kept alive.
+      Build a team, learn the ground, and win on skill alone — there is nothing to farm and
+      nothing to grind.
+    </p>
+
+    <div class="btn-row mt-3 reveal reveal-3">
+      {{if .RegistrationEnabled}}
+        <a class="btn btn-primary btn-lg" href="/register">Create your account</a>
+      {{end}}
+      {{if .ClientDownloadURL}}
+        <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">Download the game</a>
+      {{else}}
+        <a class="btn btn-secondary btn-lg" href="/status">Server status</a>
+      {{end}}
+    </div>
+
+    <p class="small muted mt-3 mb-0 reveal reveal-4">
+      Already have an account? Point your client at <code class="accent">{{.GameAddr}}</code> and sign in.
+    </p>
+  </div>
+</section>
+
+<section class="stat-band">
+  <div class="container">
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-value">{{thousands .TotalAccounts}}</div>
+        <div class="stat-label">Registered players</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{thousands .TotalFights}}</div>
+        <div class="stat-label">Battles played</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{thousands .RankedCoaches}}</div>
+        <div class="stat-label">Ranked coaches</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+  <div class="blob blob-accent" style="width:420px;height:420px;right:-160px;top:10%" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow">Why play here</div>
+    <h2>What makes Arena special</h2>
+    <p class="lede mb-4">The tactical depth that made DofusArena worth preserving.</p>
+
+    <div class="grid grid-2">
+      <div>
+        <div class="feature">
+          <div class="feature-num">01</div>
+          <div>
+            <h3>Pure strategy</h3>
+            <p>Every decision counts. No farming, no levelling, no gear treadmill — you and your
+              opponent start on equal terms and the better tactician wins.</p>
+          </div>
+        </div>
+        <div class="feature">
+          <div class="feature-num">02</div>
+          <div>
+            <h3>Ranked ladder</h3>
+            <p>Face opponents near your own rating and climb. Every result moves you, and the
+              <a href="/ladder">leaderboard</a> is public.</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="feature">
+          <div class="feature-num">03</div>
+          <div>
+            <h3>Your own team</h3>
+            <p>Recruit fighters, equip them, and find the synergies nobody else has spotted.
+              Teams are yours to build and rebuild at will.</p>
+          </div>
+        </div>
+        <div class="feature">
+          <div class="feature-num">04</div>
+          <div>
+            <h3>The real thing</h3>
+            <p>This runs the original 2012 client against a server rebuilt from scratch to match
+              it exactly — not a remake, but the game as it actually was.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-tight">
+  <div class="container">
+    <div class="panel center">
+      <div class="grid-texture" aria-hidden="true"></div>
+      <div class="blob blob-accent" style="width:360px;height:360px;left:50%;margin-left:-180px;top:-180px" aria-hidden="true"></div>
+      <div style="position:relative;z-index:1">
+        <div class="eyebrow eyebrow-center">Get started</div>
+        <h2>Ready to join the battle?</h2>
+        <p class="lede center" style="margin:0 auto 1.5rem">
+          Create an account for free, point the client at this server, and you are in.
+        </p>
+        <div class="btn-row" style="justify-content:center">
+          {{if .RegistrationEnabled}}
+            <a class="btn btn-primary btn-lg" href="/register">Create your account</a>
+          {{else}}
+            <a class="btn btn-secondary btn-lg" href="/login">Sign in</a>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{end}}

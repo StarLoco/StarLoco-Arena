@@ -64,6 +64,10 @@ web:
   # min_login_length: 3
   # min_password_length: 6
 
+  # The name of your server, shown as the title on the website. Leave it out to
+  # use "DofusArena".
+  # server_name: "My Arena Server"
+
   # Keeps players logged in to the website across server restarts.
   #
   # Leave this empty and the server makes up a new random key every time it

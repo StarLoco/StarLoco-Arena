@@ -1,0 +1,48 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+  <div class="blob blob-accent" style="width:420px;height:420px;right:-140px;top:-160px" aria-hidden="true"></div>
+
+  <div class="container container-mid">
+    <div class="eyebrow">Live</div>
+    <h1>Server status</h1>
+    <p class="lede mb-4">
+      Is the server up, and is anyone playing? This page answers both, and needs no account.
+    </p>
+
+    <div class="badge-pill mb-4">
+      <span class="dot" aria-hidden="true"></span>
+      Online — up {{formatUptime .UptimeSeconds}}
+    </div>
+
+    <div class="grid grid-4 mb-4">
+      <div class="tile">
+        <div class="tile-value">{{.PlayersOnline}}</div>
+        <div class="tile-label">Players online</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{.ActiveFights}}</div>
+        <div class="tile-label">Fights in progress</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{thousands .TotalAccounts}}</div>
+        <div class="tile-label">Registered accounts</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value" style="font-size:1.35rem;padding-top:.35rem">{{formatUptime .UptimeSeconds}}</div>
+        <div class="tile-label">Uptime</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Connect</div>
+      <p>Point your DofusArena client at this address:</p>
+      <p class="mb-0"><code class="accent" style="font-size:1.1rem">{{.GameAddr}}</code></p>
+    </div>
+
+    <p class="small muted mt-3 mb-0">
+      Only totals are shown here — no player names, and nothing that identifies an account.
+    </p>
+  </div>
+</section>
+{{end}}

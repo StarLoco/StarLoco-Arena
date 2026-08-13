@@ -75,6 +75,10 @@ type WebConfig struct {
 	// that (see AGENTS.md constraint 4), only links to it. Empty hides the
 	// link entirely.
 	ClientDownloadURL string `yaml:"client_download_url"`
+	// ServerName brands the portal: it is the name in the header, the page
+	// titles and the landing page's headline. Empty falls back to
+	// "DofusArena".
+	ServerName string `yaml:"server_name"`
 	// SessionSecret keys the HMAC that signs login-session cookies and CSRF
 	// tokens. Leave it empty and the server invents a random one at startup,
 	// which is fine for a local game but logs everybody out on every restart.

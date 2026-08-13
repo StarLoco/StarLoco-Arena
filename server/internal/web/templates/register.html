@@ -1,0 +1,54 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+  <div class="blob blob-accent" style="width:420px;height:420px;left:-140px;top:-120px" aria-hidden="true"></div>
+
+  <div class="container container-narrow">
+    <div class="eyebrow">Join the server</div>
+    <h1>Create an account</h1>
+    <p class="lede mb-4">
+      This is the account you will type into the game client. It takes a few seconds and costs nothing.
+    </p>
+
+    {{if .FirstAccount}}
+      <div class="notice">
+        <strong>This server has no accounts yet.</strong>
+        The first one created becomes the administrator — if this server is yours, register now.
+      </div>
+    {{end}}
+
+    {{if .Error}}<div class="notice notice-error">{{.Error}}</div>{{end}}
+
+    {{if .RegistrationEnabled}}
+    <div class="card">
+      <form method="post" action="/register">
+        <div class="form-row">
+          <label for="login">Account name</label>
+          <input type="text" id="login" name="login" value="{{.FormLogin}}"
+                 autocomplete="username" autocapitalize="none" spellcheck="false"
+                 minlength="{{.MinLogin}}" maxlength="24" autofocus required>
+          <div class="hint">{{.MinLogin}}–24 characters. Letters, digits, hyphen and underscore only.</div>
+        </div>
+        <div class="form-row">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+                 autocomplete="new-password" minlength="{{.MinPassword}}" required>
+          <div class="hint">At least {{.MinPassword}} characters.</div>
+        </div>
+        <div class="form-row">
+          <label for="confirm">Repeat the password</label>
+          <input type="password" id="confirm" name="confirm" autocomplete="new-password" required>
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">Create my account</button>
+      </form>
+    </div>
+
+    <p class="center mt-3 small">Already registered? <a href="/login">Sign in</a>.</p>
+    {{else}}
+      <div class="card center">
+        <p class="mb-0">Registration is closed on this server. Ask the operator to create an account for you.</p>
+      </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

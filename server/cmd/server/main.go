@@ -112,7 +112,17 @@ func run(configPath, dataOverride string) error {
 	banner(cfg, gameLn, webLn, createdConfig, configPath, deps, dataLoc)
 
 	if webLn != nil {
-		portal := web.New(st, cfg.Web, cfg.Addr, func() int { return deps.World.Len() }, log)
+		// The portal runs inside this process on purpose: that is what lets it
+		// report live player and fight counts, and it means the admin
+		// profiler dumps this server's own runtime rather than proxying to a
+		// second, unauthenticated debug port.
+		portal, err := web.New(st, cfg.Web, cfg.Addr, web.Live{
+			PlayersOnline: func() int { return deps.World.Len() },
+			ActiveFights:  func() int { return deps.Fights.Count() },
+		}, log)
+		if err != nil {
+			return fmt.Errorf("web portal: %w", err)
+		}
 		go func() {
 			if err := portal.Serve(ctx, webLn); err != nil {
 				log.Error("web portal stopped", "err", err)

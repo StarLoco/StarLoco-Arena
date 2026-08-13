@@ -1,0 +1,65 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow">Console</div>
+    <h1>Accounts</h1>
+    {{template "admin_tabs" .}}
+
+    <div class="flex-between mb-3">
+      <form method="get" action="/admin/accounts" class="flex-gap" style="flex:1;max-width:460px">
+        <input type="search" name="q" value="{{.Query}}" placeholder="Search an account or coach name…" aria-label="Search accounts">
+        <button class="btn btn-secondary" type="submit">Search</button>
+        {{if .Query}}<a class="btn btn-ghost" href="/admin/accounts">Clear</a>{{end}}
+      </form>
+      <a class="btn btn-primary" href="/admin/accounts/new">New account</a>
+    </div>
+
+    <p class="small muted">
+      {{thousands .Total}} account{{if ne .Total 1}}s{{end}}{{if .Query}} matching “{{.Query}}”{{end}}.
+    </p>
+
+    {{if .Rows}}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th class="num">#</th><th>Account</th><th>Coach</th><th class="num">Rating</th><th>Created</th><th></th>
+        </tr></thead>
+        <tbody>
+        {{range .Rows}}
+          <tr>
+            <td class="num muted">{{.ID}}</td>
+            <td>
+              <strong>{{.Name}}</strong>
+              {{if .IsAdmin}}<span class="chip chip-admin">Admin</span>{{end}}
+              {{if .Connected}}<span class="chip chip-online">Online</span>{{end}}
+            </td>
+            <td>{{if .CoachName}}{{.CoachName}}{{else}}<span class="muted">no coach</span>{{end}}</td>
+            <td class="num">{{if .Strength}}{{.Strength}}{{else}}<span class="muted">—</span>{{end}}</td>
+            <td class="small muted nowrap">{{formatDate .CreatedAt}}</td>
+            <td><a class="btn btn-ghost" href="/admin/accounts/{{.ID}}">View</a></td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if gt .LastPage 1}}
+    <div class="pager">
+      {{if gt .Page 1}}<a class="btn btn-ghost" href="/admin/accounts?q={{.Query}}&page={{sub .Page 1}}">← Previous</a>{{end}}
+      <span>Page {{.Page}} of {{.LastPage}}</span>
+      {{if lt .Page .LastPage}}<a class="btn btn-ghost" href="/admin/accounts?q={{.Query}}&page={{add .Page 1}}">Next →</a>{{end}}
+    </div>
+    {{end}}
+
+    {{else}}
+      <div class="card">
+        <div class="empty">
+          {{if .Query}}Nothing matched “{{.Query}}”.{{else}}No accounts yet.{{end}}
+        </div>
+      </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

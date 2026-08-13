@@ -1,0 +1,29 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+  <div class="blob blob-accent" style="width:460px;height:460px;right:-180px;top:-200px" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="flex-between mb-3">
+      <div>
+        <div class="eyebrow">My account</div>
+        <h1 class="mb-0">{{.Detail.Account.Name}}</h1>
+      </div>
+      <div class="flex-gap">
+        {{if .Detail.Account.IsAdmin}}<span class="chip chip-admin">Administrator</span>{{end}}
+        {{if .Detail.Account.Connected}}<span class="chip chip-online">Online now</span>{{end}}
+        {{if not .Impersonating}}
+          <a class="btn btn-ghost" href="/account/password">Change password</a>
+        {{end}}
+      </div>
+    </div>
+
+    <p class="lede mb-4">
+      Everything this server stores about you. Point your game client at
+      <code class="accent">{{.GameAddr}}</code> and sign in with this account.
+    </p>
+
+    {{template "account_data" .Detail}}
+  </div>
+</section>
+{{end}}

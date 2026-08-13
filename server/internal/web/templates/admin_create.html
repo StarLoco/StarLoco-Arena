@@ -1,0 +1,43 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container container-narrow">
+    <div class="eyebrow"><a href="/admin/accounts">Accounts</a></div>
+    <h1>New account</h1>
+    <p class="lede mb-4">Create an account on behalf of a player.</p>
+
+    {{if .Error}}<div class="notice notice-error">{{.Error}}</div>{{end}}
+
+    <div class="card">
+      <form method="post" action="/admin/accounts/new">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <div class="form-row">
+          <label for="login">Account name</label>
+          <input type="text" id="login" name="login" value="{{.FormLogin}}"
+                 autocapitalize="none" spellcheck="false"
+                 minlength="{{.MinLogin}}" maxlength="24" autofocus required>
+          <div class="hint">{{.MinLogin}}–24 characters. Letters, digits, hyphen and underscore only.</div>
+        </div>
+        <div class="form-row">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+                 autocomplete="new-password" minlength="{{.MinPassword}}" required>
+          <div class="hint">At least {{.MinPassword}} characters. Give it to the player and let them change it.</div>
+        </div>
+        <div class="form-row">
+          <label class="check">
+            <input type="checkbox" name="is_admin" value="1" {{if .FormAdmin}}checked{{end}}>
+            <span>Make this account an administrator — it will be able to delete accounts and
+              impersonate any player.</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" type="submit">Create account</button>
+          <a class="btn btn-secondary" href="/admin/accounts">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{{end}}

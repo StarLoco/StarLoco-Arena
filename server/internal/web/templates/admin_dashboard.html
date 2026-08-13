@@ -1,0 +1,65 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+  <div class="blob blob-accent" style="width:420px;height:420px;right:-160px;top:-180px" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow">Console</div>
+    <h1>Administration</h1>
+    {{template "admin_tabs" .}}
+
+    <div class="grid grid-4 mb-4">
+      <div class="tile">
+        <div class="tile-value">{{thousands .TotalAccounts}}</div>
+        <div class="tile-label">Accounts</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{.PlayersOnline}}</div>
+        <div class="tile-label">Players online</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value">{{.ActiveFights}}</div>
+        <div class="tile-label">Active fights</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value" style="font-size:1.35rem;padding-top:.35rem">{{formatUptime .UptimeSeconds}}</div>
+        <div class="tile-label">Uptime</div>
+      </div>
+    </div>
+
+    <div class="flex-between mb-3">
+      <h2 class="mb-0" style="font-size:1.35rem">Newest accounts</h2>
+      <div class="flex-gap">
+        <a class="btn btn-ghost" href="/admin/accounts">All accounts</a>
+        <a class="btn btn-primary" href="/admin/accounts/new">New account</a>
+      </div>
+    </div>
+
+    {{if .Recent}}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">#</th><th>Account</th><th>Coach</th><th class="num">Rating</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+        {{range .Recent}}
+          <tr>
+            <td class="num muted">{{.ID}}</td>
+            <td>
+              <strong>{{.Name}}</strong>
+              {{if .IsAdmin}}<span class="chip chip-admin">Admin</span>{{end}}
+              {{if .Connected}}<span class="chip chip-online">Online</span>{{end}}
+            </td>
+            <td>{{if .CoachName}}{{.CoachName}}{{else}}<span class="muted">—</span>{{end}}</td>
+            <td class="num">{{if .Strength}}{{.Strength}}{{else}}<span class="muted">—</span>{{end}}</td>
+            <td class="small muted">{{formatDate .CreatedAt}}</td>
+            <td><a class="btn btn-ghost" href="/admin/accounts/{{.ID}}">View</a></td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+      <div class="card"><div class="empty">No accounts yet.</div></div>
+    {{end}}
+  </div>
+</section>
+{{end}}
