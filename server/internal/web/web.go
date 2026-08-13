@@ -272,12 +272,25 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// cacheStatic lets browsers keep the stylesheet and fonts. The URLs are stable
-// across builds, so the window is a day rather than a year: long enough to skip
-// the requests, short enough that an upgraded server looks right by tomorrow.
+// cacheStatic lets browsers keep assets they already have.
+//
+// Anything whose URL identifies its content can be cached forever: the
+// stylesheet carries a ?v= content hash (see assetVersion), and a font is
+// immutable in practice because changing one means shipping a differently
+// named file. Everything else gets a few minutes — long enough to serve a page
+// load, short enough that a fix is never more than a coffee away.
+//
+// The long window used to apply to *everything*, unfingerprinted, which made
+// the portal effectively unfixable: a corrected stylesheet could not reach a
+// browser that had already cached the broken one.
 func cacheStatic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		fingerprinted := r.URL.Query().Get("v") != "" || strings.HasSuffix(r.URL.Path, ".woff2")
+		if fingerprinted {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

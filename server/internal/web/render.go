@@ -2,7 +2,9 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -206,6 +208,41 @@ func parseTemplates() (*templateSet, error) {
 	return set, nil
 }
 
+// assetVersion is a short content hash of every embedded static file, used to
+// fingerprint the stylesheet's URL.
+//
+// Without it the portal was unfixable in practice: /static/app.css is served
+// with a long max-age, so a browser that had already loaded a page kept using
+// the old stylesheet for a day while getting fresh HTML — which is how a
+// corrected CSS rule still rendered the bug it had just fixed. Changing the
+// content changes the URL, so the browser fetches it immediately, and an
+// unchanged one stays cached.
+var assetVersion = computeAssetVersion()
+
+func computeAssetVersion() string {
+	sum := sha256.New()
+	// fs.WalkDir yields entries in lexical order, so the hash is stable across
+	// builds and machines.
+	err := fs.WalkDir(staticFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := staticFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		sum.Write([]byte(path))
+		sum.Write(b)
+		return nil
+	})
+	if err != nil {
+		// The FS is embedded at compile time; a failure here is a bug. Fall
+		// back to something that at least still changes per build.
+		return version.Short()
+	}
+	return hex.EncodeToString(sum.Sum(nil))[:12]
+}
+
 // staticFileServer serves the embedded static directory.
 func staticFileServer() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
@@ -233,6 +270,9 @@ type baseData struct {
 	Version  string
 	Discord  string
 	GameAddr string
+	// AssetVersion fingerprints the stylesheet URL so a corrected stylesheet
+	// actually reaches a browser that already cached the old one.
+	AssetVersion string
 
 	ServerName          string
 	RegistrationEnabled bool
@@ -269,6 +309,7 @@ func (s *Server) newBase(w http.ResponseWriter, r *http.Request, title, navKey s
 		Flash:               consumeFlash(w, r),
 		Year:                time.Now().Year(),
 		Version:             version.Short(),
+		AssetVersion:        assetVersion,
 		GameAddr:            s.gameAddress(r),
 		ServerName:          s.serverName(),
 		RegistrationEnabled: s.cfg.RegistrationEnabled,
