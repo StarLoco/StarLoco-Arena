@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
@@ -38,6 +39,10 @@ type Session struct {
 	// on fight-end ack or disconnect), so it needs no lock; the fight actor owns
 	// the reciprocal f.spectators slice.
 	spectating *Fight
+	// playSince is when this coach entered the world; the gap up to disconnect is
+	// added to Coach.TotalPlaySecs. Zero once credited, so it counts once.
+	// Touched only by this session's own goroutine.
+	playSince time.Time
 }
 
 // writeQueueSize bounds a session's pending outbound frames. A client that
@@ -138,9 +143,40 @@ func (s *Session) serve() {
 	}
 }
 
+// creditPlayTime adds this session's time in the world to the coach's lifetime
+// play counter, which the client's 2400 statistics panel and the web portal both
+// show.
+//
+// It only touches the in-memory Coach; persisting is left to whoever saves it
+// next. That matters for the replaced-session case below: the incoming session
+// owns the coach and will save it on its own disconnect, carrying this session's
+// time with it.
+//
+// Time is therefore lost if the server dies without a clean teardown. Crediting
+// periodically would fix that, but at the cost of a timer per session for a
+// cosmetic statistic — the trade is deliberate.
+func (s *Session) creditPlayTime() {
+	if s.Coach == nil || s.playSince.IsZero() {
+		return
+	}
+	secs := int64(time.Since(s.playSince) / time.Second)
+	s.playSince = time.Time{} // credit at most once
+	if secs <= 0 {
+		return
+	}
+	s.Coach.Mu.Lock()
+	s.Coach.TotalPlaySecs += secs
+	s.Coach.Mu.Unlock()
+}
+
 // onClose handles connection teardown: deregister from world, clear connected.
 func (s *Session) onClose() {
 	s.kick() // idempotent: ensures quit is closed + writer stops
+
+	// Before anything else, and in particular before the replaced-session return
+	// below: the time was really played whether or not this session still owns
+	// the coach.
+	s.creditPlayTime()
 
 	// If a newer login already replaced this session (kick/reconnect), do NOT
 	// tear down the shared account/coach state -- the new session owns it now.

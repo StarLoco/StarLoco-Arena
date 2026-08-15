@@ -749,6 +749,11 @@ func (d *Deps) checkFightEnd(f *Fight) {
 	// Hold the coach lock while mutating so a concurrent session-side save (on
 	// disconnect) can't race the struct. Practice ("Tester") fights are unranked:
 	// skip stats/strength/rewards (also avoids persisting the synthetic sparring).
+	// Lifetime time-in-fight is credited here rather than inside the !Practice
+	// branch below: sparring is excluded from competitive records, but the time
+	// was still spent. Idempotent, so the later teardown does not double-count.
+	d.creditFightTime(f)
+
 	var winners, losers []endFightCoach
 	wonCardsByCoach := map[uint][]int32{}
 	for _, t := range f.Teams {

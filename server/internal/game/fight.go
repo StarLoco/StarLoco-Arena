@@ -179,6 +179,14 @@ type Fight struct {
 	phase atomic.Int32 // read from any goroutine; written only by the actor
 	deps  *Deps
 
+	// startedAt is when the fight was created; the gap to its conclusion is
+	// added to each participating coach's lifetime "time in fight" counter.
+	// Set once by FightManager.Create and read-only afterwards.
+	startedAt time.Time
+	// timeCredited makes that crediting happen exactly once, however the fight
+	// ends — victory, forfeit, or a teardown with no winner at all.
+	timeCredited atomic.Bool
+
 	// --- state below is owned SOLELY by the fight actor goroutine (run()) ---
 	// No locks: all access happens inside events posted to the mailbox.
 	readyPresent map[uint]bool
@@ -493,6 +501,7 @@ func (m *FightManager) Count() int {
 func (m *FightManager) Create(f *Fight) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	f.startedAt = time.Now()
 	f.ID = m.nextID
 	m.nextID++
 	m.byID[f.ID] = f

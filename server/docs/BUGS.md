@@ -72,6 +72,40 @@ belongs to the coach.
 
 ## Fixed
 
+### B-092 - The two play-time statistics were never incremented
+
+`Coach.TimeInFightSecs` and `Coach.TotalPlaySecs` were fully wired *except* for
+the part that counts: declared on the model, written to the wire as the 2400
+statistics panel's `dL`/`dM` entries, persisted by `CoachRepo.Save`, even
+asserted in a packet test with fixture values — and incremented in no code path
+at all. Both showed 0 for every player forever.
+
+It went unnoticed because nothing displayed them prominently. Building the web
+portal's account page, which shows "Time in fight" and "Time played" as their
+own rows, made it obvious.
+
+Fixed in two halves:
+
+- **Play time** is stamped on the session in `completeLogin` and banked by
+  `Session.creditPlayTime`, called at the top of `onClose` — deliberately
+  *before* the replaced-session early return, since a kicked session's time was
+  really played. It only mutates the in-memory coach; the incoming session owns
+  the struct and saves it later, carrying the total with it.
+- **Fight time** is stamped in `FightManager.Create` (the one chokepoint every
+  fight passes through) and credited by `Deps.creditFightTime`, called from all
+  three ways a fight can conclude — declared winner, forfeit, and teardown with
+  no winner — and made idempotent with a CAS rather than trusting a single
+  call site that a future path might bypass.
+
+Practice fights count toward time. They are excluded from wins, losses and
+ladder movement because those are competitive records; time spent is not.
+
+*Verified:* unit (arithmetic, idempotence, sub-second and zero-timestamp
+guards), e2e (`TestPlayTimeIsPersistedOnDisconnect` over a real socket, plus an
+assertion added to the existing full-fight `TestChallengeVictoryConditionEndsFight`
+so the victory path is covered), and live — a 1m48s retail-client session showed
+as `1m 48s` on the portal, having previously always read `0s`.
+
 ### B-090 - Every player who logged in became a server administrator
 
 `handleAuthentication` auto-created unknown logins with `admin=true` **and**

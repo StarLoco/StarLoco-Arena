@@ -2,6 +2,7 @@ package game
 
 import (
 	"sort"
+	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/handshake"
@@ -668,7 +669,42 @@ func (f *Fight) markReady(m map[uint]bool, coachID uint) bool {
 // through coachLeftFight (grace period + forfeit) instead, which DOES declare the
 // opponent the winner. Safe to call from any goroutine: the teardown runs on the
 // fight actor. CAS on the phase makes it run exactly once.
+// creditFightTime adds a fight's wall-clock duration to every participating
+// coach's lifetime "time in fight" counter — the dL entry in the client's 2400
+// statistics panel, and a row on the web portal's account page.
+//
+// A fight can finish three different ways (a declared winner, a forfeit after
+// someone disconnects, or a teardown with no winner at all), so this is called
+// from each of them and made idempotent with a CAS rather than trusted to a
+// single chokepoint that a future path might bypass.
+//
+// Practice fights count. They are excluded from wins, losses and ladder
+// movement because those are competitive records; time spent is not a
+// competitive record, and a player who spent an hour sparring did play for an
+// hour.
+func (d *Deps) creditFightTime(f *Fight) {
+	if f == nil || f.startedAt.IsZero() || !f.timeCredited.CompareAndSwap(false, true) {
+		return
+	}
+	secs := int64(time.Since(f.startedAt) / time.Second)
+	if secs <= 0 {
+		return
+	}
+	for _, t := range f.Teams {
+		if t == nil || t.Coach == nil {
+			continue
+		}
+		t.Coach.Mu.Lock()
+		t.Coach.TimeInFightSecs += secs
+		t.Coach.Mu.Unlock()
+		if d.Store != nil {
+			_ = d.Store.Coaches.Save(t.Coach)
+		}
+	}
+}
+
 func (d *Deps) endFight(f *Fight) {
+	d.creditFightTime(f)
 	if !f.phase.CompareAndSwap(int32(PhasePresentation), int32(PhaseEnded)) &&
 		!f.phase.CompareAndSwap(int32(PhasePlacement), int32(PhaseEnded)) &&
 		!f.phase.CompareAndSwap(int32(PhaseObservation), int32(PhaseEnded)) &&

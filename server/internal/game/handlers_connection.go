@@ -2,6 +2,7 @@ package game
 
 import (
 	"errors"
+	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/handshake"
@@ -208,6 +209,7 @@ const coachNameTaken uint8 = 11
 func (s *Session) completeLogin(coach *domain.Coach) error {
 	s.Coach = coach
 	s.currentWorld = startWorldID
+	s.playSince = time.Now() // lifetime play counter; banked in onClose
 	s.grantStarterCards(coach)
 	s.grantZaapCards(coach)
 	s.grantStarterWallet(coach)

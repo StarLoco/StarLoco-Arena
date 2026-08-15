@@ -59,12 +59,12 @@ func TestChallengeVictoryConditionEndsFight(t *testing.T) {
 		},
 	})
 
-	_, addr := testServerWithDeps(t, func(d *game.Deps) {
+	db, addr := testServerWithDeps(t, func(d *game.Deps) {
 		d.ChallengeDefs = gamedata.NewChallenges(&quick)
 		d.Spells = spells
 	})
 
-	c, _ := dialLogin(t, addr, "vict1", "Victor1")
+	c, coachID := dialLogin(t, addr, "vict1", "Victor1")
 	reachWorld(t, c)
 
 	if err := c.Send(2, testclient.OpTeamTest, challengeLaunch(35)); err != nil {
@@ -122,5 +122,22 @@ func TestChallengeVictoryConditionEndsFight(t *testing.T) {
 	_ = r.I32()
 	if winners := r.U8(); winners == 0 {
 		t.Error("END_FIGHT declared no winner; the coach should have won on the victory condition")
+	}
+
+	// The fight just ran to completion through the production victory path, so
+	// it is the cheapest place to prove lifetime time-in-fight is actually
+	// credited there — the unit tests cover the arithmetic, not the wiring.
+	var inFight int64
+	waitFor := time.Now().Add(5 * time.Second)
+	for time.Now().Before(waitFor) {
+		if coach, err := db.Coaches.Get(uint(coachID)); err == nil && coach.TimeInFightSecs > 0 {
+			inFight = coach.TimeInFightSecs
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if inFight == 0 {
+		t.Error("TimeInFightSecs is still 0 after a full fight — the statistics panel's " +
+			"'time in fight' would never move")
 	}
 }

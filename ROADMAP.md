@@ -179,8 +179,17 @@ lists.
    dropped in three places: `CoachRepo.Save`'s field map, the 2052 descriptor and
    the 4096 actor record (both of the latter hardcoded `0` into an i32 that was
    already the right size, so no wire layout changed).
-2. **`TimeInFightSecs` / `TotalPlaySecs` are never incremented** — the 2400
-   statistics panel permanently shows 0 for both.
+2. ~~**`TimeInFightSecs` / `TotalPlaySecs` are never incremented**~~ — **fixed**.
+   Both were declared, written to the wire (the 2400 panel's dL/dM entries) and
+   persisted by `CoachRepo.Save`, but incremented nowhere, so the panel showed 0
+   forever — and so did the web portal's account page once it started showing them.
+   Play time is stamped in `completeLogin` and banked in `Session.onClose`
+   (before the replaced-session return, so a reconnect does not lose it); fight
+   time is stamped in `FightManager.Create` and credited by `creditFightTime`,
+   called from all three ways a fight can end and made idempotent with a CAS.
+   Practice fights count for time (they are excluded from *competitive* records,
+   but an hour of sparring is still an hour played). Verified live: a retail
+   client session of 1m48s showed as `1m 48s` on the portal.
 3. **`CardLocked` is read in three places and set nowhere.** This used to blame
    the 5203 stub, but 5203 is a *removal* notice with no lock semantics at all
    (see backlog item 14), so it was never going to write this flag. Whatever
