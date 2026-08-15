@@ -75,6 +75,10 @@ Admin only — gated on the **real** signed-in account being `is_admin`:
 | `POST /admin/accounts/{id}/delete` | Deletes the account and everything under it. Refused while connected. |
 | `POST /admin/accounts/{id}/toggle-admin` | Grant/revoke admin. |
 | `POST /admin/accounts/{id}/impersonate` | Start viewing the site as that player. |
+| `GET /admin/tournaments` | The standing tournaments players see. Create, edit, reorder, hide or delete. |
+| `GET\|POST /admin/tournaments/new` | |
+| `GET\|POST /admin/tournaments/{id}` | Edit. |
+| `POST /admin/tournaments/{id}/delete` `.../toggle` | Delete, or hide without losing the setup. |
 | `GET /admin/monitoring` | Runtime stats + the profiler. |
 | `GET /admin/monitoring/pprof/{profile}` | One profile, served from this process. |
 | `POST /impersonate/stop` | Not admin-gated: whoever is impersonating must always be able to get back to themselves. |
@@ -91,6 +95,30 @@ integrity is the only property needed. Crucially the cookie is never used as a
 cache: every request re-loads the account from the database, so a deleted or
 demoted user is handled on their next click rather than at their next login.
 7-day TTL, `HttpOnly`, `SameSite=Lax`.
+
+### Tournament editing is the one dangerous form
+
+Everywhere else in this console a careless save annoys somebody. Here it can
+take every connected client down, so the rules are enforced rather than
+documented.
+
+A tournament row carries a **client definition id** — a `data.bdat` type-1000
+`aub` record. The retail client ships 22 of them (ids 1 and 4–24) and
+dereferences the id **unguarded**: `LS.Yf().gG(defId)` returns null for anything
+else and the list/detail/register code walks straight into it. On top of that, a
+definition whose inscription card is non-zero makes the client demand an entry
+ticket this server never grants, so registration can never complete.
+
+Both rules are checked against the decoded catalogue in `validateTournament`,
+and the form only ever offers definitions that satisfy them — the picker shows
+20 of the 22, labelled with the team type the client will read (`1 — classic
+1v1`, `17 — graveyard`). With no game data loaded the catalogue is empty and the
+id is taken on trust, because refusing to let an operator edit tournaments at
+all because `data_dir` is missing would be worse.
+
+Name and short label are capped at 127 bytes. That is the wire, not taste: both
+are length-prefixed with a **signed** byte, so 128 presents as a negative length
+and the client's decoder throws.
 
 **CSRF** (`csrf.go`) is a signed per-account double-submit token: an HMAC over
 the account id plus a day bucket, embedded in every state-changing form and

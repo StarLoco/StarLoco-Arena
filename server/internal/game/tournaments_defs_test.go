@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
+	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
 // TestStandingTournamentsMatchRealDefinitions validates the hand-built standing
 // tournament table against the real type-1000 definitions, now that those decode.
 //
-// Two assumptions were written into `standingTournamentTable` as comments and
+// Two assumptions were written into the seed line-up as comments and
 // could not be checked before:
 //
 //   - "defIDs are real ... client definitions" — the client looks the definition
@@ -32,21 +33,21 @@ func TestStandingTournamentsMatchRealDefinitions(t *testing.T) {
 		t.Fatal("no tournament definitions decoded")
 	}
 
-	for _, s := range standingTournamentTable {
-		d := defs.Get(int16(s.defID))
+	for _, s := range store.DefaultTournaments() {
+		d := defs.Get(int16(s.DefID))
 		if d == nil {
 			t.Errorf("standing tournament %q uses defID %d, which is not in the real "+
-				"type-1000 table — the client would resolve a null definition", s.name, s.defID)
+				"type-1000 table — the client would resolve a null definition", s.Name, s.DefID)
 			continue
 		}
 		if d.InscriptionCard != 0 {
 			t.Errorf("standing tournament %q uses defID %d, whose inscription card is %d; "+
 				"the table requires a no-card definition because we never grant or check "+
-				"the entry ticket", s.name, s.defID, d.InscriptionCard)
+				"the entry ticket", s.Name, s.DefID, d.InscriptionCard)
 		}
 		if d.TeamType > gamedata.TournamentTeamLegendary {
-			t.Errorf("defID %d has team type %d, outside aql_0", s.defID, d.TeamType)
+			t.Errorf("defID %d has team type %d, outside aql_0", s.DefID, d.TeamType)
 		}
-		t.Logf("%-24q defID=%2d teamType=%d rules=%d", s.name, s.defID, d.TeamType, len(d.Rules))
+		t.Logf("%-24q defID=%2d teamType=%d rules=%d", s.Name, s.DefID, d.TeamType, len(d.Rules))
 	}
 }

@@ -1253,24 +1253,30 @@ is a signing certificate or SignPath); no published Docker image.
     slots 2-5), which the client reads from each element's descriptor and we
     already carried as `worldElement.arg`. **Still open:** the success
     probability curve, which no client code reveals.
-23. 🟡 **Tournament definitions** — **decoded (types 1000 + 1001, complete)**. 22
-    definitions and the 4-entry level list, with the field names taken from the
-    client's own property strings: `qo()` is "tournamentInscriptionCard" (the
-    entry ticket `aug.registerTournament` looks up in the inventory), `aHi()` is
-    "tournamentRewards", and `aHh()` is the team type branched on in `agz_1`
-    against `aql_0` (1 classique 1v1, 2 évolution, 3 cimetière, 4 légendaire).
-    The three hand-built standing tournaments are **not** replaced — they are now
-    *validated* against the real table by
-    `TestStandingTournamentsMatchRealDefinitions`, which turns two prose comments
-    into checked invariants: the defID must exist, and its inscription card must
-    be 0 because we neither grant nor honour entry tickets. Pleasingly, the
-    decoded team types corroborate the hand-picked names — defID 17, our "Tournoi
-    du Cimetière", really is teamType 3.
-    **Next step (agreed, not started): tournament MANAGEMENT via the web admin
-    panel** — creating/scheduling/editing the standing tournaments from
-    `cmd/server`'s web portal instead of the compiled-in
-    `standingTournamentTable`, with the decoded definitions as the reference list
-    an admin picks a defID from. The decode above is the input that work needs.
+23. [x] **Tournament definitions + management** — DONE. Types 1000/1001 are
+    decoded (22 definitions, field names taken from the client's own property
+    strings: `qo()` = tournamentInscriptionCard, `aHi()` = tournamentRewards,
+    `aHh()` = the team type branched on in `agz_1` against `aql_0`).
+
+    The standing line-up is no longer a compiled-in Go table: it lives in
+    `domain.Tournament` and is **edited from the web admin console** — create,
+    edit, reorder, hide, delete — with a fresh database seeded with the three
+    that used to be hard-coded, so nothing changes for an existing install.
+    Changing the line-up no longer needs a rebuild.
+
+    The dangerous part is guarded rather than documented: a definition id the
+    client does not have NPEs it outright (`LS.Yf().gG(defId)` is
+    dereferenced unguarded), and one with a non-zero inscription card can never
+    complete registration here. Both are validated against the decoded
+    catalogue on save, and the picker only offers definitions that satisfy them.
+
+    Verified live: a tournament created in the browser reached a connected
+    retail client (3 → 4), hiding one took it away again (→ 3), and the
+    client logged no decode errors throughout.
+
+    Still deferred (unchanged): the live-match layer — opponent search
+    28609/28611, brackets, scheduled fights and rewards. Registrations remain
+    in-memory and reset on restart, which the console says on the page.
 24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and
     retire the hand-transcribed table.
 25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)

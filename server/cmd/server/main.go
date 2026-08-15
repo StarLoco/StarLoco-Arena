@@ -117,8 +117,12 @@ func run(configPath, dataOverride string) error {
 		// profiler dumps this server's own runtime rather than proxying to a
 		// second, unauthenticated debug port.
 		portal, err := web.New(st, cfg.Web, cfg.Addr, web.Live{
-			PlayersOnline: func() int { return deps.World.Len() },
-			ActiveFights:  func() int { return deps.Fights.Count() },
+			PlayersOnline:  func() int { return deps.World.Len() },
+			ActiveFights:   func() int { return deps.Fights.Count() },
+			TournamentDefs: deps.TournamentDefs,
+			TournamentRegistrations: func(wireID int64) int {
+				return deps.Tournaments.CountFor(wireID)
+			},
 		}, log)
 		if err != nil {
 			return fmt.Errorf("web portal: %w", err)

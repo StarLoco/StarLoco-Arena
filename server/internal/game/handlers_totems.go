@@ -80,11 +80,15 @@ func handleTournamentCalendarRequest(s *Session, _ *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
 	}
-	frame, err := buildTournamentCalendar()
+	ts, err := s.deps.Store.Tournaments.ListEnabled()
 	if err != nil {
 		return err
 	}
-	s.log.Debug("tournament calendar", "coach", s.Coach.Name, "events", len(standingTournamentTable))
+	frame, err := buildTournamentCalendar(ts)
+	if err != nil {
+		return err
+	}
+	s.log.Debug("tournament calendar", "coach", s.Coach.Name, "events", len(ts))
 	return s.Send(frame)
 }
 
@@ -95,11 +99,15 @@ func handleTournamentListRequest(s *Session, _ *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
 	}
-	frame, err := buildTournamentList(s.Coach.ID, s.deps.Tournaments)
+	ts, err := s.deps.Store.Tournaments.ListEnabled()
 	if err != nil {
 		return err
 	}
-	s.log.Debug("tournament list", "coach", s.Coach.Name, "count", len(standingTournamentTable))
+	frame, err := buildTournamentList(s.Coach.ID, s.deps.Tournaments, ts)
+	if err != nil {
+		return err
+	}
+	s.log.Debug("tournament list", "coach", s.Coach.Name, "count", len(ts))
 	return s.Send(frame)
 }
 
@@ -124,10 +132,15 @@ func handleTournamentRegister(s *Session, f *protocol.C2SFrame) error {
 		regRefused  uint8 = 1
 	)
 	code := regAccepted
-	if t := findStandingTournament(tid); t == nil {
-		code = regRefused // unknown tournament id
-	} else if s.deps.Tournaments != nil {
-		s.deps.Tournaments.Register(s.Coach.ID, tid)
+	switch t, lookupErr := s.deps.Store.Tournaments.GetByWireID(tid); {
+	case lookupErr != nil || !t.Enabled:
+		code = regRefused // unknown, or an admin has taken it offline
+	case !t.RegistrationOpen:
+		code = regRefused // listed, but closed to new entrants
+	default:
+		if s.deps.Tournaments != nil {
+			s.deps.Tournaments.Register(s.Coach.ID, tid)
+		}
 	}
 
 	w := protocol.NewWriter().I64(tid).U8(code)

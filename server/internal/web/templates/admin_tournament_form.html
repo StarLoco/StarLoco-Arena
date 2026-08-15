@@ -1,0 +1,100 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container container-mid">
+    <div class="eyebrow"><a href="/admin/tournaments">Tournaments</a></div>
+    <h1>{{if .IsNew}}New tournament{{else}}Edit tournament{{end}}</h1>
+
+    {{if .Error}}<div class="notice notice-error">{{.Error}}</div>{{end}}
+
+    {{if and (not .IsNew) .Registrations}}
+      <div class="notice">
+        <strong>{{.Registrations}} coach(es) are registered.</strong>
+        Editing is safe, but deleting the tournament loses their entry.
+      </div>
+    {{end}}
+
+    <div class="card">
+      <form method="post" action="{{if .IsNew}}/admin/tournaments/new{{else}}/admin/tournaments/{{.Form.ID}}{{end}}">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+
+        <div class="form-row">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" value="{{.Form.Name}}" maxlength="127" autofocus required>
+          <div class="hint">Shown on the calendar and in the tournament list. At most 127 characters.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="short">Short label</label>
+          <input type="text" id="short" name="short" value="{{.Form.Short}}" maxlength="127">
+          <div class="hint">Used where space is tight. Leave empty to reuse the name.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="description">Description</label>
+          <input type="text" id="description" name="description" value="{{.Form.Description}}" maxlength="1000">
+          <div class="hint">The rules blurb players read before registering.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="def_id">Tournament type</label>
+          {{if .Choices}}
+            <select id="def_id" name="def_id" required
+                    style="width:100%;font-family:var(--font-body);font-size:1rem;color:var(--text-primary);
+                           background:var(--bg-primary);border:1px solid var(--border-strong);
+                           border-radius:var(--radius);padding:.75rem .95rem">
+              {{$sel := .Form.DefID}}
+              {{range .Choices}}
+                <option value="{{.DefID}}" {{if eq .DefID $sel}}selected{{end}}>{{.Label}}</option>
+              {{end}}
+            </select>
+            <div class="hint">
+              These are the tournament definitions your game client actually ships, filtered to
+              the ones that need no entry card. Picking anything else would crash the client,
+              so the list is the whole choice.
+            </div>
+          {{else}}
+            <input type="text" id="def_id" name="def_id" value="{{.Form.DefID}}" inputmode="numeric" required>
+            <div class="hint">
+              The game data files are not loaded, so the type cannot be checked. Use one of
+              the ids the client knows: 1, or 4 to 24.
+            </div>
+          {{end}}
+        </div>
+
+        <div class="form-row">
+          <label for="organizer">Organiser</label>
+          <input type="text" id="organizer" name="organizer" value="{{.Form.Organizer}}" maxlength="127">
+          <div class="hint">Shown as who runs the event.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="position">Order</label>
+          <input type="text" id="position" name="position" value="{{.Form.Position}}" inputmode="numeric">
+          <div class="hint">Lower numbers appear first.</div>
+        </div>
+
+        <div class="form-row">
+          <label class="check">
+            <input type="checkbox" name="enabled" value="1" {{if .Form.Enabled}}checked{{end}}>
+            <span>Visible to players — untick to take it off the board without losing the setup.</span>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label class="check">
+            <input type="checkbox" name="registration_open" value="1" {{if .Form.RegistrationOpen}}checked{{end}}>
+            <span>Registration open — untick to keep it listed but refuse new sign-ups.</span>
+          </label>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" type="submit">{{if .IsNew}}Create tournament{{else}}Save changes{{end}}</button>
+          <a class="btn btn-secondary" href="/admin/tournaments">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{{end}}

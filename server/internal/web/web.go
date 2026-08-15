@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/config"
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
@@ -40,14 +41,24 @@ var loginRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 // accountsPerPage is the admin console's page size.
 const accountsPerPage = 25
 
-// Live exposes the running game server's counters to the portal. Every field is
-// optional — a nil func reads zero — so tests and a server started without a
-// world can construct the portal without stubbing anything.
+// Live is what the running game server lends the portal: counters it cannot
+// read from the database, and the reference data it needs to validate what an
+// admin types. Every field is optional — a nil func reads zero and a nil
+// catalogue disables the checks that depend on it — so tests and a server
+// started without game data can construct the portal without stubbing anything.
 type Live struct {
 	// PlayersOnline is the number of coaches currently in the world.
 	PlayersOnline func() int
 	// ActiveFights is the number of fights in progress.
 	ActiveFights func() int
+	// TournamentDefs is the decoded type-1000 catalogue. The tournament editor
+	// validates against it: a definition id the client does not have crashes
+	// the client, so an admin must not be able to save one.
+	TournamentDefs *gamedata.Tournaments
+	// TournamentRegistrations reports how many coaches have signed up for a
+	// tournament, by wire id. Registrations live in memory in the game process,
+	// so the portal cannot query them directly.
+	TournamentRegistrations func(wireID int64) int
 }
 
 // Server is the portal. Construct it with New and hand Handler() to net/http.
@@ -60,6 +71,8 @@ type Server struct {
 	// what to put in their client config.
 	gameAddr string
 	live     Live
+	// tournamentDefs mirrors live.TournamentDefs; see tournaments.go.
+	tournamentDefs *gamedata.Tournaments
 
 	codec *sessionCodec
 	tmpl  *templateSet
@@ -102,13 +115,14 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 	}
 
 	return &Server{
-		store:    st,
-		cfg:      cfg,
-		log:      log,
-		gameAddr: gameAddr,
-		live:     live,
-		codec:    codec,
-		tmpl:     tmpl,
+		store:          st,
+		cfg:            cfg,
+		log:            log,
+		gameAddr:       gameAddr,
+		live:           live,
+		tournamentDefs: live.TournamentDefs,
+		codec:          codec,
+		tmpl:           tmpl,
 		// A generous allowance for a household or guild sharing one address,
 		// but low enough that the form cannot be used to hammer the database.
 		limiter: newLimiter(10, time.Hour),
@@ -163,6 +177,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/accounts/{id}/delete", s.requireAdmin(s.handleAdminDelete))
 	mux.HandleFunc("POST /admin/accounts/{id}/toggle-admin", s.requireAdmin(s.handleAdminToggleAdmin))
 	mux.HandleFunc("POST /admin/accounts/{id}/impersonate", s.requireAdmin(s.handleImpersonateStart))
+	mux.HandleFunc("GET /admin/tournaments", s.requireAdmin(s.handleAdminTournaments))
+	mux.HandleFunc("GET /admin/tournaments/new", s.requireAdmin(s.handleAdminTournamentNew))
+	mux.HandleFunc("POST /admin/tournaments/new", s.requireAdmin(s.handleAdminTournamentCreate))
+	mux.HandleFunc("GET /admin/tournaments/{id}", s.requireAdmin(s.handleAdminTournamentEdit))
+	mux.HandleFunc("POST /admin/tournaments/{id}", s.requireAdmin(s.handleAdminTournamentSave))
+	mux.HandleFunc("POST /admin/tournaments/{id}/delete", s.requireAdmin(s.handleAdminTournamentDelete))
+	mux.HandleFunc("POST /admin/tournaments/{id}/toggle", s.requireAdmin(s.handleAdminTournamentToggle))
 	mux.HandleFunc("GET /admin/monitoring", s.requireAdmin(s.handleAdminMonitoring))
 	mux.HandleFunc("GET /admin/monitoring/pprof/{profile}", s.requireAdmin(s.handleAdminPprof))
 	mux.HandleFunc("POST /impersonate/stop", s.handleImpersonateStop)

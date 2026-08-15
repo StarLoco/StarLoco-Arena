@@ -525,6 +525,7 @@ func TestEveryTemplateParses(t *testing.T) {
 		"account.html", "password.html", "error.html",
 		"admin_dashboard.html", "admin_accounts.html", "admin_detail.html",
 		"admin_create.html", "admin_monitoring.html",
+		"admin_tournaments.html", "admin_tournament_form.html",
 	}
 	for _, name := range want {
 		if _, ok := set.pages[name]; !ok {

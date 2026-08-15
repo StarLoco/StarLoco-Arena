@@ -3,9 +3,23 @@ package game
 import (
 	"encoding/binary"
 	"testing"
+	"time"
 
+	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
 )
+
+// testTournaments is the line-up a fresh install ships with, which is what these
+// wire tests exercise. Row ids are assigned as if freshly inserted so WireID()
+// matches what a real database would produce.
+func testTournaments() []domain.Tournament {
+	ts := store.DefaultTournaments()
+	for i := range ts {
+		ts[i].ID = uint(i + 1)
+	}
+	return ts
+}
 
 // noCardDefIDs are the retail 2.70 tournament definition ids (data.bdat type-1000
 // aub records) whose referenceCardId == 0 — i.e. a coach can register without
@@ -23,26 +37,27 @@ var noCardDefIDs = map[uint16]bool{
 // definition id, ids must be unique, and the name must fit the qr_0 i8 length
 // prefix (a name > 127 bytes presents a negative length and crashes the decoder).
 func TestStandingTournamentsAreCrashSafe(t *testing.T) {
-	if len(standingTournamentTable) == 0 {
+	ts := testTournaments()
+	if len(ts) == 0 {
 		t.Fatal("no standing tournaments defined")
 	}
 	seen := map[int64]bool{}
-	for _, tr := range standingTournamentTable {
-		if !noCardDefIDs[tr.defID] {
-			t.Errorf("tournament %q defID %d is not a real no-card definition -> client would NPE", tr.name, tr.defID)
+	for _, tr := range ts {
+		if !noCardDefIDs[tr.DefID] {
+			t.Errorf("tournament %q defID %d is not a real no-card definition -> client would NPE", tr.Name, tr.DefID)
 		}
-		if tr.id == 0 {
-			t.Errorf("tournament %q has a zero id", tr.name)
+		if tr.WireID() == 0 {
+			t.Errorf("tournament %q has a zero wire id", tr.Name)
 		}
-		if seen[tr.id] {
-			t.Errorf("duplicate tournament id %d", tr.id)
+		if seen[tr.WireID()] {
+			t.Errorf("duplicate tournament wire id %d", tr.WireID())
 		}
-		seen[tr.id] = true
-		if len(tr.name) > 127 {
-			t.Errorf("name %q is %d bytes; exceeds the qr_0 i8 length prefix (127)", tr.name, len(tr.name))
+		seen[tr.WireID()] = true
+		if len(tr.Name) > 127 {
+			t.Errorf("name %q is %d bytes; exceeds the qr_0 i8 length prefix (127)", tr.Name, len(tr.Name))
 		}
-		if len(tr.short) > 127 {
-			t.Errorf("short %q is %d bytes; exceeds the qr_0 i8 length prefix (127)", tr.short, len(tr.short))
+		if len(tr.Short) > 127 {
+			t.Errorf("short %q is %d bytes; exceeds the qr_0 i8 length prefix (127)", tr.Short, len(tr.Short))
 		}
 	}
 }
@@ -54,7 +69,9 @@ func TestStandingTournamentsAreCrashSafe(t *testing.T) {
 // and each event must carry at least one registration-period pair (qr_0 reads
 // element 0 of that list unguarded).
 func TestTournamentCalendarWireIsExact(t *testing.T) {
-	frame, err := buildTournamentCalendar()
+	ts := testTournaments()
+	nowMs := time.Now().UnixMilli()
+	frame, err := buildTournamentCalendar(ts)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -66,8 +83,8 @@ func TestTournamentCalendarWireIsExact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if int(count) != len(standingTournamentTable) {
-		t.Fatalf("event count = %d, want %d", count, len(standingTournamentTable))
+	if int(count) != len(ts) {
+		t.Fatalf("event count = %d, want %d", count, len(ts))
 	}
 	for i := 0; i < int(count); i++ {
 		typeID, _ := r.I32()
@@ -75,12 +92,34 @@ func TestTournamentCalendarWireIsExact(t *testing.T) {
 			t.Errorf("event %d typeId = %d, want %d (qr_0 prototype)", i, typeID, tournamentContentTypeID)
 		}
 		// iz_0 base + th_2 extra date.
-		r.I64() // eventId
-		r.I64() // startDate
-		r.I64() // endDate
-		r.I64() // recurrence
-		r.I32() // labelIndex
-		r.I64() // extraDate
+		r.I64()                 // eventId
+		startDate, _ := r.I64() // OV slot: the runs-until bound
+		endDate, _ := r.I64()
+		recurrence, _ := r.I64()
+		r.I32()                 // labelIndex
+		extraDate, _ := r.I64() // bOF slot: the already-started bound
+
+		// These two bounds are a silent-failure trap, which is why they are
+		// asserted rather than skipped: the client filters a non-recurring
+		// event in when its OV slot is still in the future AND its bOF slot is
+		// already past. Swap them and the event vanishes from the calendar with
+		// no error anywhere — the tournament window simply comes up empty.
+		if startDate <= nowMs {
+			t.Errorf("event %d startDate (OV) = %d is not in the future (now %d); "+
+				"the client filters the event out and the calendar shows nothing",
+				i, startDate, nowMs)
+		}
+		if extraDate >= nowMs {
+			t.Errorf("event %d extraDate (bOF) = %d is not in the past (now %d); "+
+				"the client treats the event as not yet started and hides it",
+				i, extraDate, nowMs)
+		}
+		if endDate != startDate {
+			t.Errorf("event %d endDate = %d, want it mirroring startDate %d", i, endDate, startDate)
+		}
+		if recurrence != 0 {
+			t.Errorf("event %d recurrence = %d, want 0 (single occurrence)", i, recurrence)
+		}
 		// qr_0 fields.
 		r.I64() // tournamentId
 		name, _ := r.StringU8()
@@ -113,7 +152,8 @@ func TestTournamentCalendarWireIsExact(t *testing.T) {
 // consume plus the values that make a row registerable: not-registered status, an
 // open registration flag, a real definition id and no special fight params.
 func TestTournamentListWireIsExact(t *testing.T) {
-	frame, err := buildTournamentList(999, nil) // no manager -> everyone not registered
+	ts := testTournaments()
+	frame, err := buildTournamentList(999, nil, ts) // no manager -> everyone not registered
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -125,11 +165,11 @@ func TestTournamentListWireIsExact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if int(count) != len(standingTournamentTable) {
-		t.Fatalf("row count = %d, want %d", count, len(standingTournamentTable))
+	if int(count) != len(ts) {
+		t.Fatalf("row count = %d, want %d", count, len(ts))
 	}
 	for i := 0; i < int(count); i++ {
-		want := standingTournamentTable[i]
+		want := ts[i]
 		tid, _ := r.I64()
 		search, _ := r.U8()
 		status, _ := r.U8()
@@ -141,8 +181,8 @@ func TestTournamentListWireIsExact(t *testing.T) {
 		r.StringU32() // organizer
 		kind, _ := r.U8()
 
-		if tid != want.id {
-			t.Errorf("row %d id = %d, want %d", i, tid, want.id)
+		if tid != want.WireID() {
+			t.Errorf("row %d id = %d, want %d", i, tid, want.WireID())
 		}
 		if search != 0 {
 			t.Errorf("row %d openedSearch = %d, want 0", i, search)
@@ -150,20 +190,66 @@ func TestTournamentListWireIsExact(t *testing.T) {
 		if int8(status) != tournamentCoachNotRegistered {
 			t.Errorf("row %d status = %d, want %d (not registered)", i, int8(status), tournamentCoachNotRegistered)
 		}
-		if defID != want.defID {
-			t.Errorf("row %d defID = %d, want %d", i, defID, want.defID)
+		if defID != want.DefID {
+			t.Errorf("row %d defID = %d, want %d", i, defID, want.DefID)
 		}
-		if regOpen != 1 {
-			t.Errorf("row %d registrationOpen = %d, want 1", i, regOpen)
+		if regOpen != boolByte(want.RegistrationOpen) {
+			t.Errorf("row %d registrationOpen = %d, want %d", i, regOpen, boolByte(want.RegistrationOpen))
 		}
 		if fp != 0 {
 			t.Errorf("row %d fightParamCount = %d, want 0", i, fp)
 		}
-		if name != want.name {
-			t.Errorf("row %d name = %q, want %q", i, name, want.name)
+		if name != want.Name {
+			t.Errorf("row %d name = %q, want %q", i, name, want.Name)
 		}
-		if kind != want.kind {
-			t.Errorf("row %d kind = %d, want %d", i, kind, want.kind)
+		if kind != domain.TournamentKindPrivate {
+			t.Errorf("row %d kind = %d, want %d", i, kind, domain.TournamentKindPrivate)
+		}
+	}
+	if r.Remaining() != 0 {
+		t.Errorf("list has %d trailing bytes", r.Remaining())
+	}
+}
+
+// TestTournamentListReportsClosedRegistration covers the admin-controlled half
+// of the row that the seed line-up cannot exercise: every default tournament is
+// open, so the "registration open" byte would look correct even if it were
+// hardcoded. Closing registration from the console has to actually reach the
+// client, or the button stays live and the player gets refused with no
+// explanation.
+//
+// The tournament must still be LISTED — closing registration hides the button,
+// not the event. Hiding it entirely is what Enabled does, and that is filtered
+// in the query rather than on the wire.
+func TestTournamentListReportsClosedRegistration(t *testing.T) {
+	ts := testTournaments()
+	ts[1].RegistrationOpen = false
+
+	frame, err := buildTournamentList(1, nil, ts)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	r := protocol.NewReader(frame[4:])
+	count, _ := r.I32()
+	if int(count) != len(ts) {
+		t.Fatalf("row count = %d, want %d — a closed tournament must still be listed", count, len(ts))
+	}
+	for i := 0; i < int(count); i++ {
+		r.I64() // id
+		r.U8()  // search
+		r.U8()  // status
+		r.U16() // defID
+		regOpen, _ := r.U8()
+		r.I32()
+		r.StringU32()
+		r.StringU32()
+		r.StringU32()
+		r.U8()
+
+		want := boolByte(ts[i].RegistrationOpen)
+		if regOpen != want {
+			t.Errorf("row %d (%q) registrationOpen = %d, want %d",
+				i, ts[i].Name, regOpen, want)
 		}
 	}
 	if r.Remaining() != 0 {
@@ -176,7 +262,7 @@ func TestTournamentListWireIsExact(t *testing.T) {
 func TestTournamentManagerRegister(t *testing.T) {
 	tm := NewTournamentManager()
 	const coach = uint(42)
-	tid := standingTournamentTable[0].id
+	tid := testTournaments()[0].WireID()
 
 	if tm.IsRegistered(coach, tid) {
 		t.Error("fresh manager reports coach registered")
@@ -201,10 +287,11 @@ func TestTournamentManagerRegister(t *testing.T) {
 func TestTournamentListReflectsRegistration(t *testing.T) {
 	tm := NewTournamentManager()
 	const coach = uint(7)
-	target := standingTournamentTable[1].id
+	ts := testTournaments()
+	target := ts[1].WireID()
 	tm.Register(coach, target)
 
-	frame, err := buildTournamentList(coach, tm)
+	frame, err := buildTournamentList(coach, tm, ts)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

@@ -33,6 +33,8 @@ type Store struct {
 	Fighters *FighterRepo
 	Teams    *TeamRepo
 	Mail     *MailRepo
+	// Tournaments are the standing events the web console edits.
+	Tournaments *TournamentRepo
 }
 
 // Open connects to a SQLite database at path (dev convenience / tests) and
@@ -112,6 +114,7 @@ func OpenConfig(c Config) (*Store, error) {
 		&domain.TeamFighter{},
 		&domain.Mail{},
 		&domain.MailCard{},
+		&domain.Tournament{},
 	); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
@@ -122,6 +125,13 @@ func OpenConfig(c Config) (*Store, error) {
 	s.Fighters = &FighterRepo{db: gdb}
 	s.Teams = &TeamRepo{db: gdb}
 	s.Mail = &MailRepo{db: gdb}
+	s.Tournaments = &TournamentRepo{db: gdb}
+
+	// A fresh database starts with the line-up that used to be compiled in, so
+	// a new install behaves as before and an admin has something to edit.
+	if _, err := s.Tournaments.SeedDefaults(); err != nil {
+		return nil, fmt.Errorf("store: seed tournaments: %w", err)
+	}
 	return s, nil
 }
 
