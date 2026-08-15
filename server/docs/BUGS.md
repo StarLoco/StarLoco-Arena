@@ -170,6 +170,39 @@ against a trade the server had already committed).
 numbering). Mutation-checked: restoring the 2006 numbering and re-adding the
 uid+flags bytes each fail a named test.
 
+**Live-verified end to end** against the retail client, using a synthetic second
+player built on `internal/testclient` (it logs in over the real socket, places
+itself beside the target coach so the client can resolve the inviter actor, and
+grants itself a card the shipped data says is tradable). Observed in the real
+UI:
+
+| Message | What the client did |
+|---|---|
+| 5102 invitation | showed *"ExBot t'invite à participer à un échange."* |
+| 5103 answer → 5104 result 3 | **opened the trade window** with both panels |
+| 5105 add card (i32 template) | server staged it |
+| 5110 card added, 15-byte payload | **the card appeared in the trade panel** |
+| 5107 remove card | server unstaged it |
+| 5112 card removed | **the card disappeared** |
+| 5113 | sent when a non-tradable card was staked |
+| 5114 | showed *"Proposition d'échange annulée"* |
+
+That last row is the clearest demonstration of the bug: the server used to send
+the end notice as **5111**, which this client implements as a *client-sent*
+message, so it was discarded in silence. The same is true of card-added, which
+went out as 5109.
+
+The result codes were confirmed at the same time: `ug_1`'s 5104 switch opens the
+trade window on **3** (`nk.c()` → `sd()`) and shows the cancelled-invitation
+notice on 1 and 2, which is what the server already sent.
+
+*Not covered:* clicking **Oui** in the invitation dialog through the test
+harness produced a refusal rather than an accept, so the accept was injected
+instead. That is unexplained and is a harness question (click placement) rather
+than a protocol one — an injected `accept = 1` is read correctly by the server,
+and `tw_0.encode` writes `[i64 exId][i8 accept]`, exactly the order the handler
+reads.
+
 ### B-092 - The two play-time statistics were never incremented
 
 `Coach.TimeInFightSecs` and `Coach.TotalPlaySecs` were fully wired *except* for

@@ -156,21 +156,28 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 
 ## Card exchange (trading)
 
+> **Live-verified against the retail client** (2026-08-15), driven by a synthetic
+> second player. Observed in the real UI: the invitation dialog (5102) with the
+> inviter's name, the trade window opening on 5104 result 3, a staked card
+> appearing on 5110 and disappearing on 5112, and the "Proposition d'echange
+> annulee" notice on 5114. Under the previous (2006) numbering none of those
+> S2C messages could have reached the client at all - see BUGS.md B-093.
+
 | Opcode | Msg | Dir | Impl | Audit | Unit | E2E |
 |---|---|:---:|:---:|:---:|:---:|:---:|
-| 5101 | ExchangeInvite | C2S | ✓ | A* | - | ✓ |
-| 5102 | ExchangeInvitationRequest | S2C | ✓ | A* | - | ✓ |
-| 5103 | ExchangeAnswer | C2S | ✓ | A* | - | ✓ |
-| 5104 | ExchangeConfirmation | S2C | ✓ | A* | - | ✓ |
-| 5105 | ExchangeAddCard (ua_2) | C2S | ✓ | A* | ✓ | ✓ |
-| 5107 | ExchangeRemoveCard (wd_0) | C2S | ✓ | A* | ✓ | ✓ |
-| 5109 | ExchangeSetReady (ahJ) | C2S | ✓ | A* | ✓ | ✓ |
-| 5110 | ExchangeCardAdded (asH) | S2C | ✓ | A* | ✓ | ✓ |
-| 5111 | ExchangeCancel (any) | C2S | ✓ | A* | ✓ | ✓ |
-| 5112 | ExchangeCardRemoved (aaz_1) | S2C | ✓ | A* | ✓ | ✓ |
-| 5113 | ExchangeError (Or) | S2C | ✓ | A* | ✓ | - |
-| 5114 | ExchangeEnd (aqX) | S2C | ✓ | A* | ✓ | ✓ |
-| 5116 | ExchangeUserReady (dl_0) | S2C | ✓ | A* | ✓ | ✓ |
+| 5101 | ExchangeInvite | C2S | V | A* | - | V |
+| 5102 | ExchangeInvitationRequest | S2C | V | A* | - | V |
+| 5103 | ExchangeAnswer | C2S | V | A* | - | V |
+| 5104 | ExchangeConfirmation | S2C | V | A* | - | V |
+| 5105 | ExchangeAddCard (ua_2) | C2S | V | A* | V | V |
+| 5107 | ExchangeRemoveCard (wd_0) | C2S | V | A* | V | V |
+| 5109 | ExchangeSetReady (ahJ) | C2S | V | A* | V | V |
+| 5110 | ExchangeCardAdded (asH) | S2C | V | A* | V | V |
+| 5111 | ExchangeCancel (any) | C2S | V | A* | V | V |
+| 5112 | ExchangeCardRemoved (aaz_1) | S2C | V | A* | V | V |
+| 5113 | ExchangeError (Or) | S2C | V | A* | V | - |
+| 5114 | ExchangeEnd (aqX) | S2C | V | A* | V | V |
+| 5116 | ExchangeUserReady (dl_0) | S2C | V | A* | V | V |
 | — | transactional swap (dupe-safe) | — | ✓ | n/a | ✓✓✓✓ | ✓ |
 
 ## Fighters & teams
