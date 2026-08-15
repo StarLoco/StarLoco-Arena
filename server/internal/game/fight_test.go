@@ -22,7 +22,6 @@ func buildTestFight() *Fight {
 		}
 	}
 	f := &Fight{
-		FightType:    1,
 		Teams:        [2]*FightTeam{mk(1, "A", 0), mk(2, "B", 1)},
 		readyPresent: map[uint]bool{}, readyObserve: map[uint]bool{}, readyAction: map[uint]bool{},
 	}

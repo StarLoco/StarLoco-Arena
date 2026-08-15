@@ -24,16 +24,27 @@ import (
 // (startFightWithTeams) and hands its fighters to the built-in AI each turn
 // (Fight.isAIControlled -> runAITurn). See ai.go.
 
-// fightKindChallenge is the CREATE_FIGHT (8000) "kind" byte that marks a fight as
-// a challenge. The client gates its end-of-fight challenge panel on kind == 5
-// (WE, case 8300 -> adu_02.aKl() == 5).
-const fightKindChallenge uint8 = 5
+// The CREATE_FIGHT (8000) fight KIND. It travels in the message's first i32 and
+// the client reads it back as aKl(); the i8 that looks like a kind byte is never
+// read at all. See buildCreateFight and BUGS.md B-095.
+//
+// fightKindNormal is everything ordinary: ranked, practice and challenge-free.
+const fightKindNormal int32 = 1
 
-// fightKindEvolution is the CREATE_FIGHT (8000) "kind" byte for the LETHAL
+// fightKindTournament (aKl()==3) makes the client take its tournament result
+// path. Unused until the tournament live-match layer exists.
+const fightKindTournament int32 = 3
+
+// fightKindChallenge marks a challenge fight. The client gates its end-of-fight
+// challenge reward/XP panel on aKl() == 5 (WE, case 8300) and resolves the
+// challenge itself with ahy_1.axg().dC(asy()).
+const fightKindChallenge int32 = 5
+
+// fightKindEvolution is the LETHAL
 // evolution fight (client aKl()==6): the client opens its evolution result
 // dialog, and — the functional part — downed fighters persist as dead. See
 // persistEvolutionDeaths.
-const fightKindEvolution uint8 = 6
+const fightKindEvolution int32 = 6
 
 // challengeCoachID is the synthetic coach id owning every challenge opponent
 // team. Like sparringCoachID it sits far above any real DB coach id so it can

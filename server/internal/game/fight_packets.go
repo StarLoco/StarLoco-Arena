@@ -12,7 +12,7 @@ import (
 //
 //	[i8 error=0]
 //	[i16 coachCardBlobLen=0]
-//	[i32 fightType][i64 bet][i8 kind][i64 extraId][i32 extraInt]
+//	[i32 kind][i64 challengeId][i8 unread][i64 turnClockMs][i32 instanceId]
 //	[i8 coachCount] { coach block (flag 34) + [i16 statsLen][stats] }
 //	[i8 teamCount]  { team header + [i8 fighterCount]{[i8 kind]<fighter blob>[i64 ownerCoachId]} }
 //	[i8 timelineCount]{i64 wireId}
@@ -35,27 +35,39 @@ func buildCreateFight(f *Fight, deckCoach *domain.Coach, spectator bool) ([]byte
 	// tracing the dispatcher, July 2026).
 	w.U8(0) // error = OK
 	writeCoachActionDeck(w, f, deckCoach)
-	w.I32(f.FightType)
-	w.I64(f.Bet)
-	// kind + the id the client resolves challenge metadata with. Both matter for
-	// a challenge fight: the client's end-of-fight builder (WE, case 8300) only
-	// shows the "endFightChallenge" reward/XP panel when kind == 5, and it looks
-	// the challenge up as ahy_1.axg().dC(<this id>) — a mismatch just yields nil
-	// and silently skips the panel (which is what happened before this).
-	switch {
-	case f.Evolution:
-		// kind 6 = the LETHAL evolution fight; the client (WE case 8300, aKl==6)
-		// opens its evolution result dialog. No challenge id.
-		w.U8(fightKindEvolution)
-		w.I64(0)
-	case f.ChallengeID != 0:
-		w.U8(fightKindChallenge)
+
+	// The fight KIND goes in the i32, not the i8. aat_2.ac reads
+	//   [i32]->mv_1.cAq  [i64]->adu_0.cmF  [i8]->mv_1.byp  [i64]->mv_1.byv  [i32]->axw.aW
+	// and every decision the client makes about what sort of fight this is reads
+	// the FIRST one, through aKl(): `aKl() == 5` opens the challenge reward/XP
+	// panel (WE case 8300), `aKl() == 6` selects the evolution result dialog and
+	// also changes how the coach block is read during setup (aat_2 lines 194/214
+	// take the evolution level instead of the strength), and `aKl() == 3` is the
+	// tournament path. The i8 (byp/ZC()) has NO reader anywhere in the client.
+	//
+	// This used to write the kind into that unread i8 and leave the i32 at a
+	// constant 1, so no challenge or evolution fight ever identified itself —
+	// see BUGS.md B-095.
+	w.I32(f.wireKind())
+
+	// The challenge id the client resolves metadata with: ahy_1.axg().dC(asy()).
+	// asy() is the FIRST i64; a wrong slot here just yields nil and silently
+	// skips the panel.
+	if f.ChallengeID != 0 && !f.Evolution {
 		w.I64(int64(f.ChallengeID))
-	default:
-		w.U8(0)
+	} else {
 		w.I64(0)
 	}
-	w.I32(0) // extra int
+
+	w.U8(0) // byp / ZC(): never read by the client
+
+	// mv_1.byv, the client's turn-display budget in milliseconds. It is used as
+	// Math.max(31000, byv), so anything at or below 31s is floored there; it is
+	// sent honestly rather than zeroed so a ruleset that lengthens turns is
+	// reflected in the client's own countdown.
+	w.I64(f.turnClockFor().Milliseconds())
+
+	w.I32(0) // axw.aW: fight instance id, unused by the client's own rendering
 
 	// Coach loop.
 	coaches := []*FightTeam{f.Teams[0], f.Teams[1]}

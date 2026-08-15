@@ -64,13 +64,71 @@ belongs to the coach.
   is one turn (`arm_0.lQ(1)`, a literal), which is the granularity `CastMaxPerTarget`
   already has, and all 6 spells are already bound at least as tightly by an enforced
   limit. Pinned by `TestMaxActiveIsRedundantInShippedData`.
-- **The evolution debrief PANEL is not yet visually confirmed** — the server side of
-  B-065 is verified live, but the panel needs a true evolution fight (client-initiated,
-  fight kind 6), which needs a second player.
+- **No end-of-fight dialog appears at all in the retail client.** A challenge fight
+  and an evolution fight were each driven to a settled result live (2026-08-16); the
+  server sent END_FIGHT and the chat confirmed the outcome, but the client opened
+  neither the challenge panel, nor the evolution debrief, nor the ordinary result
+  screen. B-095 fixed the fight-kind slot, which those panels need, so the remaining
+  cause is upstream of it — the next thing to chase is `WE` case 8300's guard
+  (`apN.aDK().aDL()` returning null) and `y_0`'s own dialog condition.
 
 ---
 
 ## Fixed
+
+### B-095 - CREATE_FIGHT's fight kind was written into a byte the client never reads
+
+Every decision the retail client makes about *what sort of fight this is* — which
+result dialog to open, whether to read a coach's evolution level instead of its
+strength, whether to look up challenge metadata — comes from one value, and the
+server was putting it somewhere else.
+
+`aat_2.ac` reads the 8000 header as:
+
+| slot | lands in | read back as |
+|---|---|---|
+| i32 | `mv_1.cAq` | **`aKl()`** — the fight kind |
+| i64 | `adu_0.cmF` | **`asy()`** — the challenge id |
+| i8 | `mv_1.byp` | `ZC()` — **no reader anywhere in the client** |
+| i64 | `mv_1.byv` | turn-display budget, `Math.max(31000, byv)` ms |
+| i32 | `axw.aW` | fight instance id |
+
+The server wrote a constant `1` into the i32, `0` into the first i64, the kind
+(5 or 6) into the **unread** i8, and the challenge id into the turn-clock slot.
+So `aKl()` was always 1 and `asy()` always 0, which means:
+
+- `WE` case 8300 could never take `aKl() == 5`, so the challenge reward/XP panel
+  was unreachable, and `dC(0)` would have returned null even if it had;
+- `aKl() == 6` was never true, so the evolution result path and its
+  Death/Injury achievement rows were unreachable;
+- `aat_2` lines 194/214 never took the evolution branch, so an evolution fight's
+  coach block was read as *strength* instead of the evolution level;
+- `aKl() == 3`, the tournament path, was equally unreachable.
+
+The semantics had actually been worked out correctly before — the old comment
+named `WE case 8300 -> adu_02.aKl() == 5` — but the value was written to the
+wrong field, and `aKl()` is the i32, not the byte that looks like a kind.
+
+Fixed by deriving the kind once (`Fight.wireKind()`: evolution 6 > challenge 5 >
+normal 1) into the i32, putting the challenge id in the first i64, leaving the
+unread byte at zero, and sending the real turn clock in the slot that wants a
+duration. `Fight.FightType` and `Fight.Bet` are gone with it: the first was a
+constant 1 that only fed the wrong slot, and the second was never set by
+anything (betting is vestigial in 2.70 — see the note below).
+
+*Verified:* unit (`TestCreateFightKindLandsInTheSlotTheClientReads` decodes the
+header exactly as `aat_2.ac` does and asserts each value's slot;
+`TestCreateFightLeavesTheUnreadByteZero` stops the kind being put back into the
+i8). Mutation-checked by restoring the whole original mapping, which fails five
+assertions naming the specific slots.
+
+**Not yet visually confirmed, and now known to be blocked by something else:** a
+live challenge fight and a live evolution fight were both driven to a settled
+result against the retail client, and **neither opened any end-of-fight dialog**
+— not the challenge panel, not the evolution debrief, not the ordinary result
+screen. Since the ordinary screen is also missing, the dialog is failing for a
+reason upstream of the fight kind. This fix is necessary for those panels but is
+evidently not sufficient; the missing result dialog is a separate open item.
 
 ### B-094 - `CardLocked` was read in three places and set nowhere
 

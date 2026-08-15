@@ -158,8 +158,7 @@ var (
 
 // Fight is an in-progress 1v1 fight between two coaches.
 type Fight struct {
-	ID        int64
-	FightType int32
+	ID int64
 	// Practice marks an unranked fight (the "Tester" sparring bout and the PvE
 	// challenges): no win/loss stats are persisted and no ladder movement occurs.
 	Practice bool
@@ -172,7 +171,6 @@ type Fight struct {
 	// graveyard from real play. Only evolution fights persist deaths; ranked,
 	// practice and PvE-challenge fights never do. See persistEvolutionDeaths.
 	Evolution bool
-	Bet       int64
 	Teams     [2]*FightTeam
 	Timeline  []*FightFighter // initiative-descending turn order
 

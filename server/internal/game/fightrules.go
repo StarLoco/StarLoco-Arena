@@ -97,6 +97,28 @@ func (d *Deps) rulesForChallenge(challengeID int32) fightRules {
 	return rulesFromParameters(ch.Bonuses)
 }
 
+// wireKind is the fight kind the client reads back as aKl() from CREATE_FIGHT's
+// first i32. Everything the client decides about the shape of a fight — which
+// result dialog to open, whether to read a coach's evolution level instead of
+// its strength, whether to look up challenge metadata — hangs off this one
+// value, so it is derived in exactly one place.
+//
+// Evolution wins over challenge when a fight is somehow both: the lethal
+// debrief is the more important of the two panels, and the challenge id is
+// suppressed alongside it so the client cannot open both.
+func (f *Fight) wireKind() int32 {
+	switch {
+	case f == nil:
+		return fightKindNormal
+	case f.Evolution:
+		return fightKindEvolution
+	case f.ChallengeID != 0:
+		return fightKindChallenge
+	default:
+		return fightKindNormal
+	}
+}
+
 // turnClockFor returns the clock to arm for a fighter's turn.
 func (f *Fight) turnClockFor() time.Duration {
 	if f == nil || f.Rules.TurnClock <= 0 {

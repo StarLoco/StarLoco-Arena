@@ -46,7 +46,6 @@ func (d *Deps) startFight(pm *pendingMatch) error {
 // still advances the fight. When practice is true the fight is unranked.
 func (d *Deps) startFightWithTeams(a *arena, teamA, teamB *FightTeam, practice bool, challengeID int32, evolution bool) error {
 	f := &Fight{
-		FightType:    1,
 		arena:        a,
 		Practice:     practice,
 		ChallengeID:  challengeID,

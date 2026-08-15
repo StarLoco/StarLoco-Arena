@@ -1255,7 +1255,26 @@ is a signing certificate or SignPath); no published Docker image.
     and `agp` (np_1 **type 12**, the fight-start effect, already implemented).
     See BUGS.md *"Coach action deck — nothing populates it in the 2.70 build"*
     for the full elimination trail.
-20. **Card staking / bets** on a fight.
+20. [x] ~~**Card staking / bets** on a fight.~~ — **closed: vestigial in 2.70,**
+    **nothing to implement.** The whole flow is absent from the shipped client.
+    The only bet control, a `%randomFight.withBet%` checkbox in
+    `randomFightCreationDialog.xml`, is **commented out with the reason in the
+    file**: `<!--plus de pari-->`. The padlock UI the `desc.LockCard` /
+    `desc.Unlock` / `desc.NotEnoughCards` strings belong to survives only as
+    an orphaned theme skin (`checkboxCoachInventoryBigLock`) used by no dialog;
+    those keys, and `fight.bet`, are referenced by **neither core.jar nor
+    gui.jar** (verified by scanning the shipped jars' constant pools and every
+    gui entry, not just the decompiled tree). None of the 134 C2S message classes
+    carries a wager or a staked-card list.
+
+    The **won**-cards half of END_FIGHT is emphatically not vestigial and is
+    already implemented: 2.70 reuses it for challenge reward cards, and the
+    client renders it. Only the `lostCards` slot is dead — it reaches the
+    client's property store but no widget binds it, so `writeCardBlob(w, nil)`
+    stays correct.
+
+    This investigation is what turned up B-095 (the fight kind was in the wrong
+    wire slot), which was a real bug hiding behind the "bet" field next to it.
 21. **Evolution per-fighter death chance** (currently: all downed fighters die).
 22. 🟡 **Fusion** — **there is no recipe table; type 1100 is the ALTARS.** Decoded
     (4/4 fields: power / quality / slots): 30 tiered altars. The mechanic is a
