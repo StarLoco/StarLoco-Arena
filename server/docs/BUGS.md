@@ -72,6 +72,52 @@ belongs to the coach.
 
 ## Fixed
 
+### B-094 - `CardLocked` was read in three places and set nowhere
+
+The last of the three persistence defects, and the answer turned out to be that
+the question was wrong: nothing sets the flag because **2.70 has no per-instance
+card flag at all**.
+
+`CoachCard.Flag` carried two bits, `CardLocked` (1) and `CardCursed` (2). The
+locked bit gated trading, mailing and the commit-time exchange invariant, and
+was never written by anything. The cursed bit was written to every card the
+server ever created and was never read.
+
+Neither exists in the client:
+
+- the card object on the wire is `eb_1`'s four bytes — one i32 reference id,
+  `NT()` returns 4 — with no flag byte anywhere;
+- the owned-card view model `wy_2.ce` lists 28 bindable property names and none
+  of them is locked, cursed, linked or tradable;
+- the only `isLocked()` in the client is `mi_2.isLocked()`, a local
+  drag-and-drop lock on an inventory container that never touches the network;
+- there is no "cursed" concept for cards in the i18n tables in any language —
+  the only *maudit* strings are spell descriptions.
+
+The real rules are **per-template**, in the `aPp` card record: field 12 `tp()`
+(**Bound** — "on ne peut échanger/envoyer une kard liée") and field 13 `tq()`
+(**Undestructible** — blocks destroy, sell, fuse and give-to-demon). The server
+already parsed both into `gamedata.CoachCard` and already used them for trading
+via `cardIsTradable`; only mail and the store were still consulting the dead
+bit.
+
+Fixed by deleting the flag outright — the field, both constants, every
+`Flag: CardCursed` initialiser, and the portal's "Flags" column, which had been
+rendering "Cursed" against every card a player owned. Mail now gates on
+`cardIsBound`, which matches the client exactly: mail checks `tp()` **alone**, so
+an indestructible card may be posted even though it cannot be destroyed or sold.
+Using the broader tradability check there would have quietly refused a card the
+retail client sends happily.
+
+The `flag` column itself stays in existing databases — `AutoMigrate` never drops
+— but nothing reads or writes it, and inserts fall back to its default.
+
+*Verified:* unit (`cardIsBound` truth table, including that Undestructible is
+NOT bound), e2e (`TestMailRefusesBoundCardsButAllowsUndestructible` posts all
+three kinds and checks what actually left the sender's inventory).
+Mutation-checked both ways: dropping the gate lets a Bound card through, and
+substituting `cardIsTradable` wrongly refuses the Undestructible one.
+
 ### B-093 - The whole card-exchange block was on 2006 opcode numbering
 
 Trading could never have worked with the retail client. The exchange messages

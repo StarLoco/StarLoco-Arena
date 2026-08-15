@@ -81,21 +81,22 @@ type CoachStat struct {
 	Value   int32 `gorm:"not null;default:0"`
 }
 
-// Card flag bits.
-const (
-	CardLocked uint8 = 1
-	CardCursed uint8 = 2
-)
-
 // CoachCard is one owned card stack. Pos==0 => in inventory; Pos>=1 => equipped
 // in wire-slot Pos-1. TemplateID references a gamedata card template (not a FK).
+//
+// There is deliberately no per-instance flag here. 2.70 has none: the card
+// object on the wire is a bare i32 reference id (eb_1.NT() == 4), and every rule
+// about what may be traded, mailed, sold or destroyed reads the TEMPLATE's own
+// booleans — Bound (tp()) and Undestructible (tq()) — which live in gamedata.
+// A `Flag` column carrying "locked"/"cursed" bits used to exist here; nothing
+// ever set the locked bit, the cursed bit was written to every card and meant
+// nothing, and the client never saw either. See BUGS.md B-094.
 type CoachCard struct {
 	ID         uint  `gorm:"primaryKey"`
 	CoachID    uint  `gorm:"index;not null"`
 	TemplateID int32 `gorm:"not null"`
 	Quantity   int16 `gorm:"not null;default:1"`
 	Pos        int16 `gorm:"not null;default:0"`
-	Flag       uint8 `gorm:"not null;default:2"`
 }
 
 // Mailbox limits enforced by the client and mirrored server-side.

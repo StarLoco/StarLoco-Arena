@@ -229,8 +229,13 @@ func (s *Session) takeCardsForMail(want []int32) []int32 {
 		if err != nil {
 			continue // not owned / equipped — silently skip
 		}
-		if card.Flag&domain.CardLocked != 0 {
-			continue // "on ne peut pas envoyer de kard liée par mail"
+		// "On ne peut pas envoyer de kard liée par mail." The client gates this
+		// on the TEMPLATE's tp() flag (ay.java), not on anything stored per
+		// owned card — there is no per-instance flag in 2.70. Note it checks
+		// only Bound, not Undestructible: an indestructible card may be posted,
+		// it just cannot be destroyed or sold.
+		if s.deps.cardIsBound(id) {
+			continue
 		}
 		if card.Quantity > 1 {
 			db.Model(&domain.CoachCard{}).Where("id = ?", card.ID).
@@ -260,7 +265,7 @@ func (s *Session) restoreCardsFromFailedMail(cards []int32) {
 			continue
 		}
 		db.Create(&domain.CoachCard{
-			CoachID: s.Coach.ID, TemplateID: id, Quantity: 1, Flag: domain.CardCursed,
+			CoachID: s.Coach.ID, TemplateID: id, Quantity: 1,
 		})
 	}
 	s.refreshAndPushInventory()

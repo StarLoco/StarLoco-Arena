@@ -27,7 +27,7 @@ func (s *Session) grantStarterCards(coach *domain.Coach) {
 	}
 	db := s.deps.Store.DB()
 	for _, id := range ids {
-		card := domain.CoachCard{CoachID: coach.ID, TemplateID: id, Quantity: 1, Flag: domain.CardCursed}
+		card := domain.CoachCard{CoachID: coach.ID, TemplateID: id, Quantity: 1}
 		db.Create(&card)
 		coach.Inventory = append(coach.Inventory, card)
 	}

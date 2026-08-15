@@ -45,7 +45,7 @@ func TestInventoryRequestReturnsCards(t *testing.T) {
 	// loads the inventory fresh (the harness has no gamedata, so no starter
 	// cards are granted at creation).
 	_, aID := dialLogin(t, addr, "inv_a", "InvA")
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 7777, Quantity: 3, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 7777, Quantity: 3})
 	a, _ := dialLogin(t, addr, "inv_a", "InvA")
 	reachWorld(t, a)
 	a.DrainReceived(150 * time.Millisecond)
@@ -67,7 +67,7 @@ func TestInventoryRequestReturnsCards(t *testing.T) {
 func TestEquipMovesCardOutOfInventory(t *testing.T) {
 	st, addr := testServerWithStore(t)
 	_, aID := dialLogin(t, addr, "equip_a", "EquipA")
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 8888, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 8888, Quantity: 1})
 	a, _ := dialLogin(t, addr, "equip_a", "EquipA")
 	reachWorld(t, a)
 	a.DrainReceived(150 * time.Millisecond)

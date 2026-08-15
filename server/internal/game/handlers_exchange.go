@@ -388,6 +388,18 @@ func otherCoachID(other *Session) uint {
 //
 // Unknown templates (or an absent catalog) are permissive, so a server running
 // without data files behaves as before rather than blocking every trade.
+// cardIsBound reports whether a card is linked to its owner (aPp field 12,
+// tp()). The client refuses to trade or mail one — "error.exchange.linkedCard"
+// and "error.mail.cantSendALinkedCard" — and both gates read this template
+// flag, never anything on the owned instance.
+func (d *Deps) cardIsBound(templateID int32) bool {
+	if d == nil || d.Cards == nil {
+		return false
+	}
+	tmpl := d.Cards.Get(templateID)
+	return tmpl != nil && tmpl.Bound
+}
+
 // cardIsUnique reports whether only one copy of a template may be owned
 // (aPp field 9, isUnique()). Unknown or missing data means "not unique", so an
 // operator without game data is not blocked from trading.

@@ -61,9 +61,10 @@ func applyExchangeSide(tx *gorm.DB, o ExchangeOffer) error {
 		if err != nil {
 			return err
 		}
-		// Invariants: never trade a locked or equipped card, and never more than
-		// currently owned.
-		if card.Flag&domain.CardLocked != 0 || card.Pos != 0 || card.Quantity <= 0 {
+		// Invariants: never trade an equipped card, and never more than currently
+		// owned. Tradability is a TEMPLATE property (Bound/Undestructible) and is
+		// enforced in the handler, which has the card catalogue; the store does not.
+		if card.Pos != 0 || card.Quantity <= 0 {
 			return errExchangeAborted
 		}
 		qty := staked.Quantity
@@ -87,7 +88,7 @@ func applyExchangeSide(tx *gorm.DB, o ExchangeOffer) error {
 		}
 
 		// Credit the receiver: stack onto an existing unequipped same-template
-		// card, or insert a new (cursed) one.
+		// card, or insert a new one.
 		var dst domain.CoachCard
 		err = tx.Where("coach_id = ? AND template_id = ? AND pos = 0",
 			o.Receiver, card.TemplateID).First(&dst).Error
@@ -95,7 +96,7 @@ func applyExchangeSide(tx *gorm.DB, o ExchangeOffer) error {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			if err := tx.Create(&domain.CoachCard{
 				CoachID: o.Receiver, TemplateID: card.TemplateID,
-				Quantity: qty, Pos: 0, Flag: domain.CardCursed,
+				Quantity: qty, Pos: 0,
 			}).Error; err != nil {
 				return err
 			}

@@ -7,14 +7,14 @@ import (
 )
 
 // seedCoachWithCard creates a coach and gives it one card, returning the card id.
-func seedCoachWithCard(t *testing.T, s *Store, name string, tmpl int32, qty int16, flag uint8, pos int16) (coachID, cardID uint) {
+func seedCoachWithCard(t *testing.T, s *Store, name string, tmpl int32, qty int16, pos int16) (coachID, cardID uint) {
 	t.Helper()
 	acc, _ := s.Accounts.CreateAccount(name+"_acc", "pw", false)
 	coach, err := s.Coaches.Create(acc.ID, name, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("create coach: %v", err)
 	}
-	card := domain.CoachCard{CoachID: coach.ID, TemplateID: tmpl, Quantity: qty, Flag: flag, Pos: pos}
+	card := domain.CoachCard{CoachID: coach.ID, TemplateID: tmpl, Quantity: qty, Pos: pos}
 	if err := s.DB().Create(&card).Error; err != nil {
 		t.Fatalf("create card: %v", err)
 	}
@@ -34,8 +34,8 @@ func cardCount(t *testing.T, s *Store, coachID uint, tmpl int32) int16 {
 // TestCompleteExchange_SwapsBothSides: a valid two-sided trade moves both cards.
 func TestCompleteExchange_SwapsBothSides(t *testing.T) {
 	s := newTestStore(t)
-	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 1, domain.CardCursed, 0)
-	bID, bCard := seedCoachWithCard(t, s, "Bob", 200, 1, domain.CardCursed, 0)
+	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 1, 0)
+	bID, bCard := seedCoachWithCard(t, s, "Bob", 200, 1, 0)
 
 	committed, err := s.Coaches.CompleteExchange(
 		ExchangeOffer{GiverID: aID, Receiver: bID, Cards: []ExchangeCard{{CardID: aCard, Quantity: 1}}},
@@ -53,12 +53,12 @@ func TestCompleteExchange_SwapsBothSides(t *testing.T) {
 	}
 }
 
-// TestCompleteExchange_RollsBackWhenSecondSideInvalid: if B's card is locked,
-// the WHOLE trade rolls back — A must NOT lose its card (no one-sided theft).
+// TestCompleteExchange_RollsBackWhenSecondSideInvalid: if B's card cannot be
+// traded, the WHOLE trade rolls back — A must NOT lose its card (no one-sided theft).
 func TestCompleteExchange_RollsBackWhenSecondSideInvalid(t *testing.T) {
 	s := newTestStore(t)
-	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 1, domain.CardCursed, 0)
-	bID, bCard := seedCoachWithCard(t, s, "Bob", 200, 1, domain.CardLocked, 0) // LOCKED
+	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 1, 0)
+	bID, bCard := seedCoachWithCard(t, s, "Bob", 200, 1, 1) // EQUIPPED: not tradable
 
 	committed, err := s.Coaches.CompleteExchange(
 		ExchangeOffer{GiverID: aID, Receiver: bID, Cards: []ExchangeCard{{CardID: aCard, Quantity: 1}}},
@@ -68,7 +68,7 @@ func TestCompleteExchange_RollsBackWhenSecondSideInvalid(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	if committed {
-		t.Fatal("trade should have aborted (locked card)")
+		t.Fatal("trade should have aborted (B's card is equipped)")
 	}
 	// Nothing moved: Alice still has 100, Bob still has 200.
 	if cardCount(t, s, aID, 100) != 1 {
@@ -85,8 +85,8 @@ func TestCompleteExchange_RollsBackWhenSecondSideInvalid(t *testing.T) {
 // TestCompleteExchange_AbortsOnEquipped: an equipped (pos!=0) card can't trade.
 func TestCompleteExchange_AbortsOnEquipped(t *testing.T) {
 	s := newTestStore(t)
-	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 1, domain.CardCursed, 1) // equipped
-	bID, bCard := seedCoachWithCard(t, s, "Bob", 200, 1, domain.CardCursed, 0)
+	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 1, 1) // equipped
+	bID, bCard := seedCoachWithCard(t, s, "Bob", 200, 1, 0)
 
 	committed, _ := s.Coaches.CompleteExchange(
 		ExchangeOffer{GiverID: aID, Receiver: bID, Cards: []ExchangeCard{{CardID: aCard, Quantity: 1}}},
@@ -104,8 +104,8 @@ func TestCompleteExchange_AbortsOnEquipped(t *testing.T) {
 // receiving stacks onto an existing same-template card.
 func TestCompleteExchange_QuantityClampAndStack(t *testing.T) {
 	s := newTestStore(t)
-	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 3, domain.CardCursed, 0)
-	bID, _ := seedCoachWithCard(t, s, "Bob", 100, 2, domain.CardCursed, 0) // Bob already has tmpl 100
+	aID, aCard := seedCoachWithCard(t, s, "Alice", 100, 3, 0)
+	bID, _ := seedCoachWithCard(t, s, "Bob", 100, 2, 0) // Bob already has tmpl 100
 
 	// Alice offers 10 (only owns 3 -> clamp to 3); Bob offers nothing.
 	committed, err := s.Coaches.CompleteExchange(

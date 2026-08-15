@@ -84,7 +84,7 @@ func TestShopBarterSuccess(t *testing.T) {
 	a.DrainReceived(200 * time.Millisecond)
 
 	// Own 2× card 9703 (value 60 each = 120 >= wanted 100).
-	if err := st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 9703, Quantity: 2, Flag: domain.CardCursed}).Error; err != nil {
+	if err := st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 9703, Quantity: 2}).Error; err != nil {
 		t.Fatalf("seed 9703: %v", err)
 	}
 	before700 := ownedQty(t, st, uint(aID), 9700)
@@ -115,7 +115,7 @@ func TestShopBarterInsufficientValue(t *testing.T) {
 	reachWorld(t, a)
 	a.DrainReceived(200 * time.Millisecond)
 
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 9703, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 9703, Quantity: 1})
 	before9703 := ownedQty(t, st, uint(aID), 9703)
 
 	// 1× 9703 (value 60) < wanted 9700 (value 100) -> reject.

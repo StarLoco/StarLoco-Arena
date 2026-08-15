@@ -227,8 +227,8 @@ func TestConsumeAndGrant(t *testing.T) {
 	coach, _ := s.Coaches.Create(acc.ID, "Alchemist", 0, 0, 0)
 
 	// Seed: 2× card 10, 1× card 11.
-	s.DB().Create(&domain.CoachCard{CoachID: coach.ID, TemplateID: 10, Quantity: 2, Flag: domain.CardCursed})
-	s.DB().Create(&domain.CoachCard{CoachID: coach.ID, TemplateID: 11, Quantity: 1, Flag: domain.CardCursed})
+	s.DB().Create(&domain.CoachCard{CoachID: coach.ID, TemplateID: 10, Quantity: 2})
+	s.DB().Create(&domain.CoachCard{CoachID: coach.ID, TemplateID: 11, Quantity: 1})
 
 	// Consume one 10 and one 11, grant a 99.
 	if err := s.Coaches.ConsumeAndGrant(coach.ID, []int32{10, 11}, 99); err != nil {

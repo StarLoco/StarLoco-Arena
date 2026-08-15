@@ -250,7 +250,7 @@ func (r *CoachRepo) BuyCards(coachID uint, cost map[uint8]int32, grants []GrantC
 			case errors.Is(err, gorm.ErrRecordNotFound):
 				card := domain.CoachCard{
 					CoachID: coachID, TemplateID: g.TemplateID,
-					Quantity: g.Quantity, Flag: domain.CardCursed,
+					Quantity: g.Quantity,
 				}
 				if err := tx.Create(&card).Error; err != nil {
 					return err
@@ -326,7 +326,7 @@ func (r *CoachRepo) ConsumeAndGrant(coachID uint, inputs []int32, grantTemplate 
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			return tx.Create(&domain.CoachCard{
 				CoachID: coachID, TemplateID: grantTemplate,
-				Quantity: 1, Flag: domain.CardCursed,
+				Quantity: 1,
 			}).Error
 		case err != nil:
 			return err

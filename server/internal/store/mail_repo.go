@@ -145,7 +145,6 @@ func (r *MailRepo) TakeAttachments(coachID, mailID uint) ([]int32, error) {
 			case errors.Is(err, gorm.ErrRecordNotFound):
 				if err := tx.Create(&domain.CoachCard{
 					CoachID: coachID, TemplateID: c.TemplateID, Quantity: 1,
-					Flag: domain.CardCursed,
 				}).Error; err != nil {
 					return err
 				}

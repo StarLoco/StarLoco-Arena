@@ -39,8 +39,8 @@ func TestFusionTargetCostIsEnforced(t *testing.T) {
 	reachWorld(t, a)
 	a.DrainReceived(200 * time.Millisecond)
 
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1, Flag: domain.CardCursed})
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1})
 	q700Before := ownedQty(t, st, uint(aID), 700)
 
 	// inputs 700+701 (level 0), target 703 (costs 30) -> unaffordable.
@@ -84,8 +84,8 @@ func TestFusionSuccess(t *testing.T) {
 	a.DrainReceived(200 * time.Millisecond)
 
 	// Seed inventory: one 700 and one 701 (same set).
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1, Flag: domain.CardCursed})
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1})
 
 	// Snapshot the pre-fusion set-5 total (starter grants may add copies).
 	before := setTotal(t, st, uint(aID))
@@ -146,8 +146,8 @@ func TestFusionFailureLeftovers(t *testing.T) {
 	reachWorld(t, a)
 	a.DrainReceived(200 * time.Millisecond)
 
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1, Flag: domain.CardCursed})
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 701, Quantity: 1})
 
 	req := testclient.NewW().I32(3).I32(700).I32(701).I32(702).Bytes()
 	_ = a.Send(3, testclient.OpFusionRequest, req)
@@ -181,8 +181,8 @@ func TestFusionMixedSetsFails(t *testing.T) {
 	reachWorld(t, a)
 	a.DrainReceived(200 * time.Millisecond)
 
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1, Flag: domain.CardCursed})
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 900, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 700, Quantity: 1})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 900, Quantity: 1})
 
 	q700Before := ownedQty(t, st, uint(aID), 700)
 	q900Before := ownedQty(t, st, uint(aID), 900)

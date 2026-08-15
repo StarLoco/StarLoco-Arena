@@ -40,7 +40,7 @@ func TestExchangeTransfersCard(t *testing.T) {
 
 	// Seed A with a tradeable card (the E2E harness has no game data, so no
 	// starter cards are granted).
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 4242, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 4242, Quantity: 1})
 
 	// A's card to give away.
 	giveCard := firstUnequippedCard(t, st, uint(aID))
@@ -120,7 +120,7 @@ func TestExchangeRemoveCard(t *testing.T) {
 	a.DrainReceived(150 * time.Millisecond)
 	b.DrainReceived(150 * time.Millisecond)
 
-	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 4243, Quantity: 1, Flag: domain.CardCursed})
+	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 4243, Quantity: 1})
 	giveCard := firstUnequippedCard(t, st, uint(aID))
 
 	exID := openExchange(t, a, b, bID)

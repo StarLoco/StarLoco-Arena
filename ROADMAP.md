@@ -190,11 +190,17 @@ lists.
    Practice fights count for time (they are excluded from *competitive* records,
    but an hour of sparring is still an hour played). Verified live: a retail
    client session of 1m48s showed as `1m 48s` on the portal.
-3. **`CardLocked` is read in three places and set nowhere.** This used to blame
-   the 5203 stub, but 5203 is a *removal* notice with no lock semantics at all
-   (see backlog item 14), so it was never going to write this flag. Whatever
-   sets it is still unidentified — that is the open question, not 5203.
-
+3. ~~**`CardLocked` is read in three places and set nowhere.**~~ — **resolved:
+   the flag should never have existed.** 2.70 has no per-instance card flag — the
+   card on the wire is `eb_1`'s four bytes (`NT()` == 4), the owned-card view
+   model binds 28 property names and none is locked/cursed/linked, and no i18n
+   string for a cursed card exists in any language. The real rules are
+   per-TEMPLATE: `aPp` field 12 `tp()` (Bound) and field 13 `tq()`
+   (Undestructible), both already parsed and already used for trading. The
+   field, both constants and every `Flag: CardCursed` initialiser are gone;
+   mail now gates on Bound alone, matching the client (an indestructible card
+   may be posted). See BUGS.md B-094 — and B-093, the exchange-opcode fix
+   this investigation uncovered.
 ---
 
 ## 5. Overworld 🟡

@@ -133,10 +133,10 @@
     {{if .Equipped}}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Slot</th><th class="num">Card</th><th class="num">Qty</th><th>Flags</th></tr></thead>
+        <thead><tr><th>Slot</th><th class="num">Card</th><th class="num">Qty</th></tr></thead>
         <tbody>
         {{range .Equipped}}
-          <tr><td>{{slotLabel .Pos}}</td><td class="num">{{.TemplateID}}</td><td class="num">{{.Quantity}}</td><td class="tiny">{{cardFlagLabel .Flag}}</td></tr>
+          <tr><td>{{slotLabel .Pos}}</td><td class="num">{{.TemplateID}}</td><td class="num">{{.Quantity}}</td></tr>
         {{end}}
         </tbody>
       </table>
@@ -149,10 +149,10 @@
     {{if .Bag}}
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="num">Card</th><th class="num">Qty</th><th>Flags</th></tr></thead>
+        <thead><tr><th class="num">Card</th><th class="num">Qty</th></tr></thead>
         <tbody>
         {{range .Bag}}
-          <tr><td class="num">{{.TemplateID}}</td><td class="num">{{.Quantity}}</td><td class="tiny">{{cardFlagLabel .Flag}}</td></tr>
+          <tr><td class="num">{{.TemplateID}}</td><td class="num">{{.Quantity}}</td></tr>
         {{end}}
         </tbody>
       </table>

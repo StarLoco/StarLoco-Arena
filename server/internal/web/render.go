@@ -29,21 +29,6 @@ var templateFuncs = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
 	"sub": func(a, b int) int { return a - b },
 
-	// cardFlagLabel renders the CoachCard flag bits as words.
-	"cardFlagLabel": func(flag uint8) string {
-		var parts []string
-		if flag&domain.CardLocked != 0 {
-			parts = append(parts, "Locked")
-		}
-		if flag&domain.CardCursed != 0 {
-			parts = append(parts, "Cursed")
-		}
-		if len(parts) == 0 {
-			return "—"
-		}
-		return strings.Join(parts, ", ")
-	},
-
 	// slotLabel names a card position: 0 is the bag, anything else is an
 	// equipped slot (the wire numbers them from 0, the column from 1).
 	"slotLabel": func(pos int16) string {
