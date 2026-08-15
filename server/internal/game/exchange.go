@@ -3,9 +3,17 @@ package game
 import "sync"
 
 // StagedCard is a card a coach has put on the trade table.
+//
+// The table is keyed by TemplateID, not by row id, because that is the only
+// identity the client has: every card message in 2.70 carries just the i32
+// reference-card id (eb_1.b reads four bytes and invents its own local uid), so
+// a row id would be meaningless to it. The rest of the codebase already treats
+// (coach, template, pos=0) as unique — see ConsumeAndGrant — so nothing is lost.
+//
+// CardID is still carried for the commit, which debits the exact row.
 type StagedCard struct {
-	CardID     uint  // CoachCard row id (uid)
-	TemplateID int32 // reference card id
+	CardID     uint  // CoachCard row id, resolved when staged
+	TemplateID int32 // reference card id — the key the client uses
 	Quantity   int16
 }
 
@@ -16,8 +24,8 @@ type Exchange struct {
 	A, B *Session // A = initiator (side 0), B = target (side 1)
 
 	mu       sync.Mutex
-	accepted bool                   // both answered the invite (trade UI open)
-	staged   [2]map[uint]StagedCard // per side: cardID -> staged card
+	accepted bool                    // both answered the invite (trade UI open)
+	staged   [2]map[int32]StagedCard // per side: templateID -> staged card
 	ready    [2]bool
 }
 
@@ -46,8 +54,8 @@ func (m *ExchangeManager) Start(a, b *Session) *Exchange {
 		return nil
 	}
 	ex := &Exchange{ID: m.nextID, A: a, B: b}
-	ex.staged[0] = make(map[uint]StagedCard)
-	ex.staged[1] = make(map[uint]StagedCard)
+	ex.staged[0] = make(map[int32]StagedCard)
+	ex.staged[1] = make(map[int32]StagedCard)
 	m.nextID++
 	m.byCoach[a.Coach.ID] = ex
 	m.byCoach[b.Coach.ID] = ex
@@ -111,15 +119,15 @@ func (ex *Exchange) setAccepted() {
 // "ready then sneak a card in").
 func (ex *Exchange) stageCard(side int, c StagedCard) {
 	ex.mu.Lock()
-	ex.staged[side][c.CardID] = c
+	ex.staged[side][c.TemplateID] = c
 	ex.ready = [2]bool{false, false}
 	ex.mu.Unlock()
 }
 
 // unstageCard removes a card from a side's table and resets both ready flags.
-func (ex *Exchange) unstageCard(side int, cardID uint) {
+func (ex *Exchange) unstageCard(side int, templateID int32) {
 	ex.mu.Lock()
-	delete(ex.staged[side], cardID)
+	delete(ex.staged[side], templateID)
 	ex.ready = [2]bool{false, false}
 	ex.mu.Unlock()
 }

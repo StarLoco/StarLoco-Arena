@@ -53,18 +53,23 @@ const (
 	OpUpdatedFighterInventory = 6010 // S2C
 
 	// Exchange
+	// These match the retail client's own numbering, which is NOT contiguous:
+	// see internal/protocol/opcodes.go. The test client previously used the
+	// 2006 layout, which made the exchange e2e tests agree with a server that
+	// the real client could not talk to.
 	OpExchangeInvite      = 5101
 	OpExchangeInvitationS = 5102
 	OpExchangeAnswer      = 5103
 	OpExchangeConfirm     = 5104
 	OpExchangeAddCard     = 5105
-	OpExchangeRemoveCard  = 5106
-	OpExchangeSetReady    = 5107
-	OpExchangeCancel      = 5108
-	OpExchangeCardAdded   = 5109
-	OpExchangeCardRemoved = 5110
-	OpExchangeEnd         = 5111
-	OpExchangeUserReady   = 5112
+	OpExchangeRemoveCard  = 5107
+	OpExchangeSetReady    = 5109
+	OpExchangeCardAdded   = 5110
+	OpExchangeCancel      = 5111
+	OpExchangeCardRemoved = 5112
+	OpExchangeError       = 5113
+	OpExchangeEnd         = 5114
+	OpExchangeUserReady   = 5116
 
 	// Social & chat
 	OpUserPrivateContent = 3155 // C2S whisper

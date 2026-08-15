@@ -74,14 +74,23 @@ const (
 	OpExchangeInvitationRequest = 5102 // S2C: [i64 exId][i64 inviterId][u8 len][name]
 	OpExchangeAnswer            = 5103 // C2S: [i64 exId][i8 accept]
 	OpExchangeConfirmation      = 5104 // S2C: [i8 result][i64 exId][i64 otherId]
-	OpExchangeAddCard           = 5105 // C2S: [i64 exId][i64 cardUid][i16 qty]
-	OpExchangeRemoveCard        = 5106 // C2S: [i64 exId][i64 cardUid][i16 qty]
-	OpExchangeSetReady          = 5107 // C2S: [i64 exId] (toggle)
-	OpExchangeCancel            = 5108 // C2S: [i64 exId]
-	OpExchangeCardAdded         = 5109 // S2C: [i64 exId][i8 userIdx][card][i16 qty]
-	OpExchangeCardRemoved       = 5110 // S2C: [i64 exId][i8 userIdx][card][i16 qty]
-	OpExchangeEnd               = 5111 // S2C: [i8 reason][i64 exId] (0=success,1=cancel)
-	OpExchangeUserReady         = 5112 // S2C: [i64 exId][i8 userIdx]
+	// The exchange block is NOT contiguous in 2.70 — it was renumbered from the
+	// 2006-era layout, and the old numbering (5105..5112 in order) would have the
+	// server sending 5109/5111, which are C2S in this build and absent from the
+	// client's decode factory (gz_1) entirely. Each entry below names the client
+	// class that proves it.
+	OpExchangeAddCard     = 5105 // C2S ua_2/pv_2: [i64 exId][i32 refCardId][i16 qty]
+	OpExchangeRemoveCard  = 5107 // C2S wd_0/pv_2: same shape as 5105
+	OpExchangeSetReady    = 5109 // C2S ahJ:       [i64 exId] (toggle)
+	OpExchangeCardAdded   = 5110 // S2C asH:       [i64 exId][i8 userIdx][i32 refCardId][i16 qty]
+	OpExchangeCancel      = 5111 // C2S any:       [i64 exId]
+	OpExchangeCardRemoved = 5112 // S2C aaz_1:    same shape as 5110
+	// OpExchangeError is new in 2.70: the client shows a specific message for
+	// code 1 ("that unique card is already there") and the linked-card refusal
+	// for anything else. See pg_1 case 5113.
+	OpExchangeError     = 5113 // S2C Or:   [i8 code][i64 exId]
+	OpExchangeEnd       = 5114 // S2C aqX:  [i8 reason][i64 exId] (0=success,1=cancel)
+	OpExchangeUserReady = 5116 // S2C dl_0: [i64 exId][i8 userIdx]
 
 	// Exchange end reasons
 	ExchangeEndSuccess = 0

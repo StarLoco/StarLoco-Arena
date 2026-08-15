@@ -106,11 +106,15 @@ func (s *Session) exchangeMoveCard(f *protocol.C2SFrame, add bool) error {
 	if s.Coach == nil {
 		return nil
 	}
+	// pv_2.encode writes a 14-byte payload: the exchange id, the REFERENCE CARD
+	// id, and a quantity. There is no per-instance uid on the wire — eb_1.b
+	// reads four bytes and generates its own local uid — so the card is
+	// identified by template, exactly as the client sees it.
 	r := protocol.NewReader(f.Payload)
 	if _, err := r.I64(); err != nil { // exchangeId
 		return err
 	}
-	cardUID, err := r.I64()
+	templateID, err := r.I32()
 	if err != nil {
 		return err
 	}
@@ -127,44 +131,74 @@ func (s *Session) exchangeMoveCard(f *protocol.C2SFrame, add bool) error {
 		return nil
 	}
 
-	// Resolve + validate the card belongs to this coach, unlocked, unequipped.
-	var card domain.CoachCard
-	err = s.deps.Store.DB().Where("id = ? AND coach_id = ?", cardUID, s.Coach.ID).
-		First(&card).Error
-	if err != nil {
-		return nil // not owned / gone
-	}
-	if add {
-		if card.Flag&domain.CardLocked != 0 || card.Pos != 0 {
-			return nil // can't stake a locked/equipped card
+	// Removing needs no lookup: the table is keyed by template, and a card the
+	// coach no longer owns should still come off the table.
+	if !add {
+		ex.unstageCard(side, templateID)
+		frame, err := buildExchangeCardMove(protocol.OpExchangeCardRemoved,
+			ex.ID, uint8(side), templateID, int16(qty))
+		if err != nil {
+			return err
 		}
-		// Template-level tradability. The client refuses these itself
-		// ("error.exchange.linkedCard" / "coachInventory.undestructibleCard"), but
-		// a forged 5105 would otherwise trade a card that must never move: 171 of
-		// the 907 shipped cards are Bound and 65 Undestructible.
-		if !s.deps.cardIsTradable(card.TemplateID) {
-			s.log.Debug("exchange: refused a non-tradable card",
-				"coach", s.Coach.ID, "template", card.TemplateID)
-			return nil
-		}
-		useQty := int16(qty)
-		if useQty < 1 {
-			useQty = 1
-		}
-		if useQty > card.Quantity {
-			useQty = card.Quantity
-		}
-		ex.stageCard(side, StagedCard{CardID: card.ID, TemplateID: card.TemplateID, Quantity: useQty})
-	} else {
-		ex.unstageCard(side, card.ID)
+		s.broadcastExchange(ex, frame)
+		return nil
 	}
 
-	// Broadcast the move to both parties.
-	opcode := uint16(protocol.OpExchangeCardAdded)
-	if !add {
-		opcode = protocol.OpExchangeCardRemoved
+	// Resolve the card in the coach's BAG. pos = 0 is part of the key rather
+	// than a check afterwards: an equipped copy is a different row and must not
+	// be found here at all.
+	var card domain.CoachCard
+	err = s.deps.Store.DB().
+		Where("coach_id = ? AND template_id = ? AND pos = 0", s.Coach.ID, templateID).
+		First(&card).Error
+	if err != nil {
+		return nil // not owned / equipped / gone
 	}
-	frame, err := buildExchangeCardMove(opcode, ex.ID, uint8(side), card, int16(qty))
+	// Template-level tradability. The client refuses these itself
+	// ("error.exchange.linkedCard" / "coachInventory.undestructibleCard"), but
+	// a forged 5105 would otherwise trade a card that must never move: 171 of
+	// the 907 shipped cards are Bound and 65 Undestructible.
+	if !s.deps.cardIsTradable(card.TemplateID) {
+		s.log.Debug("exchange: refused a non-tradable card",
+			"coach", s.Coach.ID, "template", card.TemplateID)
+		// Tell the client why rather than letting the card silently fail to
+		// appear; pg_1 case 5113 renders the linked-card message for any code
+		// other than 1.
+		if frame, err := buildExchangeError(ex.ID, exchangeErrLinkedCard); err == nil {
+			_ = s.Send(frame)
+		}
+		return nil
+	}
+	// A unique card cannot be handed to somebody who already owns one: the
+	// client refuses to take it (ky_2.a returns 2 when isUnique() and the id is
+	// already held), so the trade would commit server-side and then desync the
+	// receiver's inventory. Checked here because the giver's client cannot see
+	// the receiver's collection.
+	if s.deps.cardIsUnique(card.TemplateID) {
+		if other := ex.Other(s.Coach.ID); other != nil && other.Coach != nil {
+			var n int64
+			if err := s.deps.Store.DB().Model(&domain.CoachCard{}).
+				Where("coach_id = ? AND template_id = ?", other.Coach.ID, card.TemplateID).
+				Count(&n).Error; err == nil && n > 0 {
+				if frame, err := buildExchangeError(ex.ID, exchangeErrUniqueExists); err == nil {
+					_ = s.Send(frame)
+				}
+				return nil
+			}
+		}
+	}
+
+	useQty := int16(qty)
+	if useQty < 1 {
+		useQty = 1
+	}
+	if useQty > card.Quantity {
+		useQty = card.Quantity
+	}
+	ex.stageCard(side, StagedCard{CardID: card.ID, TemplateID: card.TemplateID, Quantity: useQty})
+
+	frame, err := buildExchangeCardMove(protocol.OpExchangeCardAdded,
+		ex.ID, uint8(side), card.TemplateID, useQty)
 	if err != nil {
 		return err
 	}
@@ -286,17 +320,33 @@ func (s *Session) broadcastExchange(ex *Exchange, frame []byte) {
 
 // --- packet builders ---
 
-// buildExchangeCardMove builds 5109/5110: [i64 exId][i8 userIdx]
-// [i32 refCardId][i64 uid][i8 flags][i16 qty].
-func buildExchangeCardMove(opcode uint16, exID int64, userIdx uint8, card domain.CoachCard, qty int16) ([]byte, error) {
+// buildExchangeCardMove builds 5110 (added) / 5112 (removed):
+// [i64 exId][i8 userIdx][i32 refCardId][i16 qty] — 15 bytes.
+//
+// asH/aaz_1 read exactly that and stop. There is no uid and no flags byte in
+// 2.70: the card object on the wire is eb_1's four-byte reference id (NT() == 4)
+// and nothing else. Sending the extra 9 bytes the 2006 layout had would leave
+// the client's ByteBuffer short of the quantity it reads next.
+func buildExchangeCardMove(opcode uint16, exID int64, userIdx uint8, templateID int32, qty int16) ([]byte, error) {
 	w := protocol.NewWriter().
 		I64(exID).
 		U8(userIdx).
-		I32(card.TemplateID).
-		I64(int64(card.ID)).
-		U8(card.Flag).
+		I32(templateID).
 		U16(uint16(qty))
 	return protocol.EncodeS2C(opcode, w.Bytes())
+}
+
+// Exchange refusal codes carried by 5113. The client special-cases 1 and shows
+// the linked-card message for everything else (pg_1 case 5113).
+const (
+	exchangeErrUniqueExists uint8 = 1
+	exchangeErrLinkedCard   uint8 = 2
+)
+
+// buildExchangeError builds 5113: [i8 code][i64 exId].
+func buildExchangeError(exID int64, code uint8) ([]byte, error) {
+	w := protocol.NewWriter().U8(code).I64(exID)
+	return protocol.EncodeS2C(protocol.OpExchangeError, w.Bytes())
 }
 
 // buildExchangeUserReady builds 5112: [i64 exId][i8 userIdx].
@@ -338,6 +388,17 @@ func otherCoachID(other *Session) uint {
 //
 // Unknown templates (or an absent catalog) are permissive, so a server running
 // without data files behaves as before rather than blocking every trade.
+// cardIsUnique reports whether only one copy of a template may be owned
+// (aPp field 9, isUnique()). Unknown or missing data means "not unique", so an
+// operator without game data is not blocked from trading.
+func (d *Deps) cardIsUnique(templateID int32) bool {
+	if d == nil || d.Cards == nil {
+		return false
+	}
+	tmpl := d.Cards.Get(templateID)
+	return tmpl != nil && tmpl.IsUnique
+}
+
 func (d *Deps) cardIsTradable(templateID int32) bool {
 	if d == nil || d.Cards == nil {
 		return true

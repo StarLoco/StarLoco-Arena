@@ -72,6 +72,58 @@ belongs to the coach.
 
 ## Fixed
 
+### B-093 - The whole card-exchange block was on 2006 opcode numbering
+
+Trading could never have worked with the retail client. The exchange messages
+were implemented as a contiguous run, 5105–5112 in order, which is the 2006
+layout. 2.70 renumbered the block, and the mapping is not contiguous:
+
+| Ours (2006) | 2.70 | Client class | Direction |
+|---|---|---|---|
+| 5105 add card | **5105** | `ua_2` | C2S |
+| 5106 remove card | **5107** | `wd_0` | C2S |
+| 5107 set ready | **5109** | `ahJ` | C2S |
+| 5108 cancel | **5111** | `any` | C2S |
+| 5109 card added | **5110** | `asH` | S2C |
+| 5110 card removed | **5112** | `aaz_1` | S2C |
+| 5111 end | **5114** | `aqX` | S2C |
+| 5112 user ready | **5116** | `dl_0` | S2C |
+| — | **5113** | `Or` | S2C (new: refusal notice) |
+
+Two of the opcodes the server *broadcast* — 5109 and 5111 — are **client-sent**
+messages in 2.70 (`extends so_0`, `encode()` only) and have no case in the
+client's decode factory `gz_1`, so the client could not have instantiated them.
+Meanwhile the client's real remove-card (5107) would have arrived at the
+server's set-ready handler.
+
+The card payload was wrong too. The server wrote the 2006 shape
+`[i32 refCardId][i64 uid][i8 flags]`, but 2.70's card object is `eb_1`'s four
+bytes and nothing else (`NT()` returns 4, `b()` reads a single `getInt()`), so
+`asH` reads `[i64 exId][i8 userIdx][i32 refCardId][i16 qty]` — 15 bytes against
+the 24 being sent. There is **no per-instance uid on the wire at all**: the
+client generates its own locally in `eb_1.b` via `uq_1.ahR()`. Cards are
+therefore identified by **template id**, and the server now resolves them as
+`(coach, template, pos = 0)`, which is how the rest of the codebase already
+treats inventory (`ConsumeAndGrant`).
+
+**Why it was not caught:** `COVERAGE.md` recorded all twelve opcodes as
+*audited & correct*, and the end-to-end tests passed — because
+`internal/testclient` had the same 2006 numbers hard-coded. The server was only
+ever tested against itself. Both are fixed, and `TestExchangeOpcodesMatchTheClient`
+now pins every opcode and direction to the client class that implements it, so a
+server message can never again land on an opcode the client only sends.
+
+Also added: **5113**, the refusal notice, which 2.70 has and the server did not.
+It is now sent when the server refuses a stake — for a non-tradable card, and
+for a unique card the receiver already owns (`ky_2.a` returns 2 in that case, so
+the client would have rejected the incoming card and desynced its inventory
+against a trade the server had already committed).
+
+*Verified:* unit (opcode/direction table, byte-exact payload shapes for
+5110/5112/5113/5114/5116), e2e (the exchange flow now runs over the corrected
+numbering). Mutation-checked: restoring the 2006 numbering and re-adding the
+uid+flags bytes each fail a named test.
+
 ### B-092 - The two play-time statistics were never incremented
 
 `Coach.TimeInFightSecs` and `Coach.TotalPlaySecs` were fully wired *except* for

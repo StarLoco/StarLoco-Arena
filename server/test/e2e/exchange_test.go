@@ -58,9 +58,9 @@ func TestExchangeTransfersCard(t *testing.T) {
 	a.DrainReceived(150 * time.Millisecond)
 	b.DrainReceived(150 * time.Millisecond)
 
-	// 3. A stakes the card: [i64 exId][i64 cardUid][i16 qty].
+	// 3. A stakes the card: [i64 exId][i32 refCardId][i16 qty]. The client has
 	_ = a.Send(3, testclient.OpExchangeAddCard,
-		testclient.NewW().I64(exID).I64(int64(giveCard.ID)).U16(uint16(giveCard.Quantity)).Bytes())
+		testclient.NewW().I64(exID).I32(giveCard.TemplateID).U16(uint16(giveCard.Quantity)).Bytes())
 	// Both should see 5109 CardAdded.
 	if _, _, err := b.WaitFor(testclient.OpExchangeCardAdded, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("B never saw card added: %v", err)
@@ -127,16 +127,16 @@ func TestExchangeRemoveCard(t *testing.T) {
 
 	// A stakes the card, both see 5109.
 	_ = a.Send(3, testclient.OpExchangeAddCard,
-		testclient.NewW().I64(exID).I64(int64(giveCard.ID)).U16(uint16(giveCard.Quantity)).Bytes())
+		testclient.NewW().I64(exID).I32(giveCard.TemplateID).U16(uint16(giveCard.Quantity)).Bytes())
 	if _, _, err := b.WaitFor(testclient.OpExchangeCardAdded, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("B never saw card added: %v", err)
 	}
 	a.DrainReceived(150 * time.Millisecond)
 	b.DrainReceived(150 * time.Millisecond)
 
-	// A un-stakes it: [i64 exId][i64 cardUid][u16 qty]; both see 5110.
+	// A un-stakes it: [i64 exId][i32 refCardId][u16 qty]; both see 5112.
 	_ = a.Send(3, testclient.OpExchangeRemoveCard,
-		testclient.NewW().I64(exID).I64(int64(giveCard.ID)).U16(uint16(giveCard.Quantity)).Bytes())
+		testclient.NewW().I64(exID).I32(giveCard.TemplateID).U16(uint16(giveCard.Quantity)).Bytes())
 	if _, _, err := b.WaitFor(testclient.OpExchangeCardRemoved, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("B never saw card removed: %v", err)
 	}
