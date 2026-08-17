@@ -818,15 +818,16 @@ func (d *Deps) checkFightEnd(f *Fight) {
 				continue
 			}
 			end, err := buildEndFightFull(f.nextActionUID(), winners, losers,
-				reports, standingByCoach[t.Coach.ID], killed, injured,
+				reportsFor(reports, t.Coach.ID), standingByCoach[t.Coach.ID], killed, injured,
 				wonCardsByCoach[t.Coach.ID])
 			if err == nil {
 				_ = t.Session.Send(end)
 			}
 		}
 		// Spectators still need the result, without any reputation of their own.
+		// Spectators have no roster of their own to resolve reports against.
 		if end, err := buildEndFightFull(f.nextActionUID(), winners, losers,
-			reports, 0, killed, injured, nil); err == nil {
+			nil, 0, killed, injured, nil); err == nil {
 			f.broadcastSpectators(end)
 		}
 	} else if len(wonCardsByCoach) > 0 {
@@ -836,6 +837,9 @@ func (d *Deps) checkFightEnd(f *Fight) {
 			if t == nil || t.Coach == nil || t.Session == nil {
 				continue
 			}
+			// This branch is only reached when progression did NOT run
+			// (fightFeedsProgression is false for practice and challenge fights), so
+			// there are no per-fighter debriefs to send - only the cards won.
 			end, err := buildEndFightFull(f.nextActionUID(), winners, losers,
 				nil, 0, killed, injured, wonCardsByCoach[t.Coach.ID])
 			if err == nil {

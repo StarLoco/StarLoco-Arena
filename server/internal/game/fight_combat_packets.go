@@ -204,9 +204,20 @@ type endFightCoach struct {
 //	[i16 lostCards=0][i16 wonCards=0][i8 objStats=0][i8 cbI=0][i8 cbH=0][i32 cbG=0].
 //
 // endFightReport is one fighter's debrief blob, addressed by wire id.
+// endFightReport is one fighter's post-fight debrief record.
+//
+// FighterID is the ROSTER id (the database fighter id), not the fight wire id.
+// That distinction is load-bearing: the client resolves each report against its
+// own roster with `adY.atu().dz(id)` and dereferences the result **without a
+// nil check** (y_0.run). A wire id finds nothing there, throws, and aborts the
+// whole end-of-fight action before it can open the result dialog — see B-096.
+//
+// CoachID is who owns the fighter, so a coach is only ever sent reports for
+// fighters that are actually in its roster.
 type endFightReport struct {
-	WireID int64
-	Blob   []byte
+	FighterID int64
+	CoachID   uint
+	Blob      []byte
 }
 
 func buildEndFight(uid int32, winners, losers []endFightCoach) ([]byte, error) {
@@ -260,7 +271,7 @@ func buildEndFightFull(uid int32, winners, losers []endFightCoach,
 	// fields; with no reports the evolution debrief panel renders blank.
 	w.U8(uint8(len(reports)))
 	for _, rep := range reports {
-		w.I64(rep.WireID).U16(uint16(len(rep.Blob))).Raw(rep.Blob)
+		w.I64(rep.FighterID).U16(uint16(len(rep.Blob))).Raw(rep.Blob)
 	}
 
 	// cbI / cbH: fighters killed / injured this fight, consumed by the client's
@@ -273,6 +284,26 @@ func buildEndFightFull(uid int32, winners, losers []endFightCoach,
 	// pops coachLevelUpDialog when the evolution level changes.
 	w.I32(standingWon)
 	return protocol.EncodeS2C(protocol.OpEndFight, w.Bytes())
+}
+
+// reportsFor narrows the post-fight debriefs to the ones a given coach can
+// actually resolve — its own fighters.
+//
+// The client looks every report up in ITS roster and dereferences the result
+// unguarded, so handing a coach its opponent's fighters is as fatal as using
+// the wrong id space (B-096). A coach id of 0 means "nobody's roster", which is
+// what spectators get: they receive the result with no reports at all.
+func reportsFor(reports []endFightReport, coachID uint) []endFightReport {
+	if coachID == 0 || len(reports) == 0 {
+		return nil
+	}
+	out := make([]endFightReport, 0, len(reports))
+	for _, rep := range reports {
+		if rep.CoachID == coachID {
+			out = append(out, rep)
+		}
+	}
+	return out
 }
 
 // writeCardBlob writes one [u16 len][u8 groupCount]{[u8 n]{[i32 cardId]}} blob.

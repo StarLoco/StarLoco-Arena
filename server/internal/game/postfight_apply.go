@@ -179,7 +179,15 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 				_ = d.Store.Fighters.SaveProgress(fr)
 				_ = d.Store.Fighters.SaveConditions(fr.ID, fr.Conditions)
 			}
-			reports = append(reports, endFightReport{WireID: ff.WireID, Blob: rep.encode()})
+			// Keyed by the ROSTER id, and tagged with its owner: the client looks
+			// each one up in its own fighter list, so a wire id - or another
+			// coach's fighter - resolves to nothing and takes the result dialog
+			// down with it (B-096).
+			reports = append(reports, endFightReport{
+				FighterID: int64(fr.ID),
+				CoachID:   t.Coach.ID,
+				Blob:      rep.encode(),
+			})
 		}
 
 		// Coach reputation for the fight itself, plus any set bonus.

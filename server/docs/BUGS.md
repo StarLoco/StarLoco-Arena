@@ -64,17 +64,71 @@ belongs to the coach.
   is one turn (`arm_0.lQ(1)`, a literal), which is the granularity `CastMaxPerTarget`
   already has, and all 6 spells are already bound at least as tightly by an enforced
   limit. Pinned by `TestMaxActiveIsRedundantInShippedData`.
-- **No end-of-fight dialog appears at all in the retail client.** A challenge fight
-  and an evolution fight were each driven to a settled result live (2026-08-16); the
-  server sent END_FIGHT and the chat confirmed the outcome, but the client opened
-  neither the challenge panel, nor the evolution debrief, nor the ordinary result
-  screen. B-095 fixed the fight-kind slot, which those panels need, so the remaining
-  cause is upstream of it — the next thing to chase is `WE` case 8300's guard
-  (`apN.aDK().aDL()` returning null) and `y_0`'s own dialog condition.
+- **No end-of-fight dialog appears at all in the retail client.** Still open after
+  B-095 and B-096. A challenge fight and an evolution fight were each driven to a
+  settled result live; the server sent 8300 (`post-fight meta ... reports=5`) and
+  the chat confirmed the outcome, but no result screen, challenge panel or evolution
+  debrief opened.
+
+  Eliminated so far, each by reading the client and matching the server against it:
+  the 8300 payload decodes (`YP.a` read field-by-field against our writer, including
+  the two-i32 action header `ue_0.o` and the `len >= 9` guard); the fight kind now
+  reaches `aKl()` (B-095); the per-fighter reports are now resolvable in the
+  recipient's roster (B-096); and the coach ids in the winner/loser lists match the
+  ones `writeFightCoachBlock` registers, so `bv.ef(id)` can find them.
+
+  Next suspects inside `y_0.run()`, which is where the dialog is pushed:
+  the `fight.team0` / `fight.team1` properties it reads into `teArray` and then
+  dereferences unconditionally (`teArray[0].hM(...)`) — if either is unset the
+  method throws just before `apN.aDK().a(ajo_1.azb())` — and `bC`'s `OW` blob
+  length, since `new OW(bytes)` may itself be strict about the 40-byte record.
 
 ---
 
 ## Fixed
+
+### B-096 - END_FIGHT's per-fighter reports were keyed in the wrong id space
+
+The post-fight debriefs in 8300 are keyed by an id the client resolves against
+its **own roster**, and it does so without a nil check:
+
+```java
+// y_0.run(), after every other end-of-fight update
+object22 = this.bC.eJ();
+for (int j = 0; j < object22.length; ++j) {
+    adY.atu().dz((long)object22[j]).a((OW)this.bC.t((long)object22[j]));
+}
+apN.aDK().a(ajo_1.azb());   // <- the line that opens the result dialog
+```
+
+`adY` is filled from the fighter list, which sends the raw database fighter id
+(`buildFighterList` → `w.I64(int64(fighters[i].ID))`). The server was keying the
+reports by the **fight wire id** instead — `FighterWireIDBase + fr.ID*16 + …`,
+a value around 1.1e12 that is not in the roster at all. `dz()` returns null, the
+`.a(...)` throws, and `run()` dies **before** the line that opens the dialog.
+
+There is a second instance of the same mistake in the same place: the reports
+were built once and sent to *both* coaches, so even with the right id space each
+client received the opponent's fighters, which are equally unresolvable in its
+roster.
+
+Fixed by keying reports with the roster id and tagging each with its owning
+coach, then narrowing per recipient (`reportsFor`). Spectators get none — they
+have no roster to resolve against.
+
+*Verified:* unit (the id is a roster id and specifically not in the wire-id
+space; the scoping helper). Both of those passed against the broken code, since
+they only exercise the builder — so the real guard is an e2e that runs a ranked
+fight with **real roster fighters** (progression skips placeholder fighters with
+id 0, and `fightFeedsProgression` excludes practice and challenge bouts, which
+is why the obvious existing tests carry no reports at all) and checks the ids in
+the actual frame against each recipient's roster. Mutation-checked: reverting to
+wire ids, and dropping the per-coach scoping, each fail it with the specific id
+named.
+
+**This did not, on its own, make the result dialog appear** — see the open item.
+It is a real fault that would have thrown every time; it is simply not the only
+one.
 
 ### B-095 - CREATE_FIGHT's fight kind was written into a byte the client never reads
 
