@@ -234,8 +234,20 @@ const (
 	// here (no live match graph): the client shows "tree unavailable" and closes.
 	OpTournamentRegister      = 4607  // C2S aik_0 (arch 3): [i64 tid][i64 coachId][i16 teamPreset][i32 cardId]
 	OpTournamentRegisterReply = 28608 // S2C dy_0: [i64 tid][i8 errorCode] (0=accepted, 2=full, else refused)
-	OpTournamentTreeReq       = 28649 // C2S alf_0 (arch 2): [i64 tid][i32 round][i32 nameLen][name]
-	OpTournamentTree          = 28650 // S2C IL: [i32 treeSize][i32 count]{[i32 id][i32 nameLen][name]}[i32 bib]
+	// Tournament opponent search — the third member of the "ready up and look for
+	// an opponent" pattern (client frame ds_2, twin of vu_1 / wp_0). It is NOT a
+	// clean twin: the request, cancel and result all carry a tournament id, and
+	// the error has a SECOND byte (kw_1.pa(), fed to zN.M() when code == 2).
+	// Sent by the Tournois tab AND by Légendes (which passes preset 9999).
+	OpTournamentSearchCancel       = 28609 // C2S bt_0 (arch 2): [i64 tid][i64 coachId][i16 preset]
+	OpTournamentSearchCancelResult = 28610 // S2C de_0: [i8 accepted]
+	OpTournamentSearchRequest      = 28611 // C2S ly_1 (arch 2): [i64 tid][i64 coachId][i16 preset]
+	OpTournamentSearchResult       = 28612 // S2C DR: [i64 tid][i16 preset][i8 accepted]
+	OpTournamentFightStarting      = 28614 // S2C azj_0: [i64 tid]
+	OpTournamentSearchError        = 28616 // S2C kw_1: [i8 code][i8 subCode]
+
+	OpTournamentTreeReq = 28649 // C2S alf_0 (arch 2): [i64 tid][i32 round][i32 nameLen][name]
+	OpTournamentTree    = 28650 // S2C IL: [i32 treeSize][i32 count]{[i32 id][i32 nameLen][name]}[i32 bib]
 
 	// Evolution mode / graveyard. The client applies both of these OPTIMISTICALLY
 	// and consumes no reply, so the server must reproduce the same state machine

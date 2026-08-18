@@ -26,6 +26,8 @@ func registerTotemHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpTournamentListReq, handleTournamentListRequest)
 	r.Register(protocol.OpTournamentRegister, handleTournamentRegister)
 	r.Register(protocol.OpTournamentTreeReq, handleTournamentTreeRequest)
+	r.Register(protocol.OpTournamentSearchRequest, handleTournamentSearchRequest)
+	r.Register(protocol.OpTournamentSearchCancel, handleTournamentSearchCancel)
 }
 
 // handleDemonLadderRequest handles DEMON_LADDER_REQUEST (27510):
@@ -170,5 +172,81 @@ func handleTournamentTreeRequest(s *Session, _ *protocol.C2SFrame) error {
 		return err
 	}
 	s.log.Debug("tournament tree (empty)", "coach", s.Coach.Name)
+	return s.Send(frame)
+}
+
+// --- Tournament opponent search (28609/28610/28611/28612/28614/28616) ---
+//
+// The third member of the "ready up and look for an opponent" pattern: the
+// client's ds_2 frame is the same shape as vu_1 (classic) and wp_0 (evolution),
+// and 28611 is sent by the Tournois tab's "Combattre" AND by Légendes (which
+// passes the legend pseudo-preset 9999). Both sender sites pop the team panel
+// themselves (`hu_2` ... `apN.aDK().b(this)`) after pushing the fight frame, so
+// an unanswered 28611 is the SEVERE variant of the B-098/B-099 defect: the panel
+// closes, no overlay appears, and there is nothing left to click.
+//
+// WHY THIS REFUSES INSTEAD OF QUEUEING. For the other two families, accepting the
+// search is truthful — two coaches really can pair and fight. A tournament match
+// is not a free pairing: it is a specific bracket fixture between two registered
+// entrants, and this server has no bracket/match layer (28649 is answered with an
+// empty tree). Pairing arbitrary searchers would invent semantics and produce
+// fights that advance nothing, i.e. it would silently pretend tournaments work.
+// So the honest answer is the client's own "impossible to start the search",
+// which shows a message and leaves no overlay behind.
+//
+// When the bracket layer lands, this becomes: verify the coach is an entrant of
+// `tid`, accept with 28612, pair by fixture, then 28614 (which carries the
+// tournament id and prunes the overworld actors for it) followed by CREATE_FIGHT.
+func handleTournamentSearchRequest(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	r := protocol.NewReader(f.Payload)
+	tid, err := r.I64()
+	if err != nil {
+		return err
+	}
+	if _, err := r.I64(); err != nil { // coach id (trust the session)
+		return err
+	}
+	preset, err := r.U16()
+	if err != nil {
+		return err
+	}
+	s.log.Info("tournament search refused: no bracket/match layer yet",
+		"coach", s.Coach.Name, "tournament", tid, "preset", preset)
+	return s.sendTournamentSearchError(searchErrCannotStart, 0)
+}
+
+// handleTournamentSearchCancel (28609 bt_0) answers the tournament overlay's
+// Cancel. Nothing can currently be queued, but the reply is what closes that
+// overlay and unregisters ds_2, so it is sent unconditionally — the same reason
+// the classic and evolution cancels do.
+func handleTournamentSearchCancel(s *Session, _ *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	if s.deps.Matchmaker.CancelSearch(s.Coach.ID) {
+		s.log.Info("tournament search cancelled", "coach", s.Coach.Name)
+	}
+	w := protocol.NewWriter().U8(boolU8(true))
+	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchCancelResult, w.Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// sendTournamentSearchError sends OpTournamentSearchError (28616 kw_1):
+// [i8 code][i8 subCode]. Note the SECOND byte, which the other two families do
+// not have: when code == 2 the client ignores the usual message table and calls
+// zN.M(subCode) instead, i.e. subCode selects a generic error string. For every
+// other code it is read but unused, so it goes out as 0.
+func (s *Session) sendTournamentSearchError(code, subCode uint8) error {
+	w := protocol.NewWriter().U8(code).U8(subCode)
+	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchError, w.Bytes())
+	if err != nil {
+		return err
+	}
 	return s.Send(frame)
 }

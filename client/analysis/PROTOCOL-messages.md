@@ -203,6 +203,59 @@ Most are fixed-size (see `payloads.md`); all fight S2C messages carry the
 ### 23116 (`aex_0`, C2S, flag=2) — cancel
 `i32 n` + `i64`* (reverse).
 
+### The "ready up and look for an opponent" pattern — THREE parallel families
+
+The team panel's tabs each have their own copy of the same six-message exchange,
+consumed by three client frames that are near-identical classes: `vu_1`
+(classic/Elite), `wp_0` (evolution) and `ds_2` (tournament + Légendes).
+
+| role | classic | evolution | tournament | payload |
+|---|---|---|---|---|
+| cancel (C2S, flag=2) | 23101 `bm_1` | 23001 `abn_0` | 28609 `bt_0` | `[i64 coachId][i16 preset]` (+ leading `i64 tid` for 28609) |
+| cancel result (S2C) | 23102 `ada_1` | 23002 `wf_2` | 28610 `de_0` | `[i8 accepted]` |
+| search (C2S, flag=2) | 23103 `atj_0` | 23003 `ajw_0` | 28611 `ly_1` | `[i64 coachId][i16 preset]` (+ leading `i64 tid` for 28611) |
+| search result (S2C) | 23104 `aLi` | 23004 `amh_0` | 28612 `DR` | `[i16 preset][i8 accepted]` (+ leading `i64 tid` for 28612) |
+| fight starting (S2C) | 23106 `ads_2` | 23006 `azl_0` | 28614 `azj_0` | empty (`[i64 tid]` for 28614) |
+| error (S2C) | 23108 `M` | 23008 `KL` | 28616 `kw_1` | `[i8 code]` — **but 28616 is `[i8 code][i8 subCode]`** |
+
+**The tournament family is NOT a clean twin.** Its request/cancel/result carry a
+tournament id, `28614` carries one too (and prunes the matching overworld actors),
+and `28616` has a second byte: when `code == 2` the client ignores the usual
+message table and calls `zN.M(subCode)` instead. Assuming symmetry here produces a
+short frame and a decode failure.
+
+The `preset` i16 is a team id, except for two synthetic sentinels from `sw_1`:
+**99** = the evolution team (`sw_1.bMm`, and `xz_0` sets it in its constructor),
+**9999** = legend (`bMn`), **10000** = graveyard (`bMo`). `-1` means "no preset
+selected". Note 28611 is sent by *both* the Tournois tab (real team id) and
+Légendes (9999).
+
+Behaviour that matters when implementing a server:
+
+- The sender pushes the FIGHT frame (`do_2`) *before* sending the search, so
+  CREATE_FIGHT is routable immediately; and it pops its own panel (evolution and
+  tournament) or lets the result message pop it (classic).
+- The accepted `search result` is what opens the `*SearchStatusDialog` overlay
+  ("Recherche en cours……" + Cancel). Only `fight starting`, `cancel result`, or an
+  `error` with code **3, 4 or 5** closes it again — codes 1 and 2 show a message
+  and leave it up.
+- A `search result` with `accepted = 0` is a **dead end**: the client pops the
+  team panels either way but opens nothing, leaving a bare screen. Refusals must
+  be an `error`, not a rejected result.
+- Nothing pops `do_2`, so a search that never becomes a fight leaks that frame
+  until something else removes it.
+
+### Client defect: `error.noTournamentSelected` is an unresolvable i18n key
+
+Clicking the Tournois tab's "Combattre" with no tournament selected renders the
+literal placeholder **`!error.noTournamentSelected!`** in the retail client.
+`hu_2:814` (and `aon_0:121`) ask for `error.noTournamentSelected`, but all four
+`texts_*.properties` define the string under **`tournaments.noTournamentSelected`**
+instead — a namespace mismatch, so the lookup always misses. Nothing to do
+server-side; recorded because the broken message makes the gate hard to diagnose
+from the UI, and because it is a reminder that the shipped i18n and the shipped
+code disagree in places.
+
 ---
 
 ## Calendar / events (17000 range, new in 2.70)

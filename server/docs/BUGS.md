@@ -114,6 +114,46 @@ belongs to the coach.
 
 ## Fixed
 
+### B-100 - the TOURNAMENT "Combattre" was also unanswered; refused visibly
+
+The third and last member of the pattern (client frame `ds_2`, twin of `vu_1` /
+`wp_0`). Its C2S pair — **28611** `ly_1` search and **28609** `bt_0` cancel — was
+unserved, so the Tournois tab's "Combattre" went silent exactly like B-098/B-099.
+28611 is sent by **two** tabs: Tournois (with a real team id) and **Légendes**
+(with the legend pseudo-preset 9999).
+
+**It is NOT a clean twin, and assuming it was would have shipped a broken frame.**
+The request, cancel and result all carry a leading tournament id, 28614 carries one
+too, and **28616 has a SECOND byte**: when `code == 2` the client ignores the usual
+message table and calls `zN.M(subCode)`. A one-byte error — the shape the other two
+families use — is a short frame and a decode failure.
+
+**This REFUSES rather than queues, deliberately.** For the other two families
+accepting the search is truthful: two coaches really can pair and fight. A
+tournament match is not a free pairing — it is a specific bracket fixture between
+two registered entrants, and this server has no bracket/match layer (28649 is
+answered with an empty tree, and the live-match layer is deliberately deferred).
+Pairing arbitrary searchers would invent semantics and produce fights that advance
+nothing, i.e. silently pretend tournaments work. So the answer is the client's own
+`matchfinder.impossibleToStartOpponentsSearch` (code 1), which shows a message and
+leaves no overlay behind, and 28609 is answered so the Cancel path works.
+
+When the bracket layer lands this becomes: verify the coach is an entrant of `tid`,
+accept with 28612, pair by fixture, then 28614 followed by CREATE_FIGHT.
+
+**Verified** `e2e` — refusal with an exactly-2-byte payload and code 1, the same
+for the Légendes preset 9999, and the cancel reply. Mutation-checked: shortening
+28616 to one byte (i.e. treating it as a clean twin) fails the test.
+
+**NOT verified live**, stated plainly: reaching 28611 from the UI needs a team, a
+saved preset AND a selected tournament, and the client cannot even say so —
+clicking "Combattre" with no tournament selected renders the literal
+`!error.noTournamentSelected!`, because `hu_2:814` asks for
+`error.noTournamentSelected` while all four `texts_*.properties` define it as
+`tournaments.noTournamentSelected`. That is a **retail client defect**, not ours;
+recorded in `client/analysis/PROTOCOL-messages.md` along with the full three-family
+table.
+
 ### B-099 - the CLASSIC "Combattre" had the same silent-queue defect, plus a double-queue bug
 
 Found by asking, after B-098, whether the classic twin had the same gap. It did.

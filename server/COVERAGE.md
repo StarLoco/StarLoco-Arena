@@ -210,6 +210,12 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23114 | MatchAccept | C2S | ✓ | A | — | ✓ |
 | 2308 | MatchAcceptAlt | C2S | ✓ | A | — | — |
 | 23116 | MatchConfirm | S2C | ✓ | — | — | — |
+| 28609 | `bt_0` TournamentSearchCancel | C2S | ✓ | A (`[i64 tid][i64 coachId][i16 preset]`) | — | ✓ |
+| 28610 | `de_0` TournamentSearchCancelResult | S2C | ✓ | A (`[i8 accepted]`) | — | ✓ |
+| 28611 | `ly_1` TournamentSearchRequest | C2S | ✓ refuses | A (`[i64 tid][i64 coachId][i16 preset]`) | — | ✓ |
+| 28612 | `DR` TournamentSearchResult | S2C | — | A (`[i64 tid][i16 preset][i8 accepted]`) | — | — |
+| 28614 | `azj_0` TournamentFightStarting | S2C | — | A (`[i64 tid]`) | — | — |
+| 28616 | `kw_1` TournamentSearchError | S2C | ✓ | A (`[i8 code][i8 subCode]`) | — | ✓ |
 | 23101 | `bm_1` ClassicSearchCancel | C2S | ✓ | A (`[i64 coachId][i16 teamId]`) | — | ✓ **live** |
 | 23102 | `ada_1` ClassicSearchCancelResult | S2C | ✓ | A (`[i8 accepted]`) | — | ✓ **live** |
 | 23104 | `aLi` ClassicSearchResult | S2C | ✓ | A (`[i16 teamId][i8 accepted]`) | — | ✓ **live** |
@@ -222,18 +228,28 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23006 | `azl_0` EvolutionFightStarting | S2C | ✓ | A (empty) | — | ✓ **live** |
 | 23008 | `KL` EvolutionSearchError | S2C | ✓ | A (`[i8 code]`) | — | ✓ |
 
-These two blocks are byte-identical twins and share one implementation
-(`searchFamily` in `search_handshake.go`); the client frames that consume them,
-`vu_1` (classic) and `wp_0` (evolution), are the same class with one dialog name
-changed. Until B-098/B-099 neither was served: Evolution → COMBATTRE waited
-forever and **no evolution fight was startable from the retail client at all**,
-while the classic tab queued the coach but showed no overlay and so offered no way
-to cancel out of the queue.
+**There are THREE parallel copies of this handshake**, one per team-panel tab,
+consumed by three near-identical client frames: `vu_1` (classic/Elite), `wp_0`
+(evolution) and `ds_2` (tournament + Légendes). None of the three was served until
+B-098/B-099/B-100: Evolution → COMBATTRE waited forever and **no evolution fight
+was startable from the retail client at all**, while classic queued the coach but
+showed no overlay — and since the Cancel button lives inside that overlay, no way
+out of the queue.
 
-One asymmetry: the evolution `preset` is not a database team id — `sw_1.bMm = 99`
-is the synthetic "evolution team" pseudo-preset (peer of graveyard 10000 / legend
-9999), mapping to the coach's titular line-up — whereas the classic i16 IS a real
-team id, and may be -1 for "no preset selected".
+Classic and evolution share one implementation (`searchFamily` in
+`search_handshake.go`). Two asymmetries are load-bearing:
+
+- The evolution `preset` is **not** a database team id — `sw_1.bMm = 99` is a
+  synthetic pseudo-preset (peer of graveyard 10000, legend 9999) mapping to the
+  coach's titular line-up. The classic i16 IS a real team id and may be -1.
+- The **tournament family is not a clean twin**: its request/cancel/result carry a
+  leading tournament id, and 28616 has a **second byte** (`subCode`, fed to
+  `zN.M()` when code == 2). It therefore does not use `searchFamily`.
+
+28611 is **refused** with code 1 rather than queued, because a tournament match is
+a bracket fixture rather than a free pairing and the bracket layer is deferred —
+pairing arbitrary searchers would silently pretend tournaments work. See BUGS.md
+B-100.
 
 Order is load-bearing — 23004 opens the client's "Searching…" overlay and only
 23006/23002/23008(3,4,5) close it, so 23006 must precede CREATE_FIGHT. A 23004

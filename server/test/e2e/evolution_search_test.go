@@ -286,6 +286,82 @@ func TestClassicReadyTwiceDoesNotQueueTwice(t *testing.T) {
 	}
 }
 
+// --- the TOURNAMENT third of the pattern (28609/28610/28611/28612/28616) ---
+
+const (
+	opTournamentSearchCancel       = 28609
+	opTournamentSearchCancelResult = 28610
+	opTournamentSearchRequest      = 28611
+	opTournamentSearchError        = 28616
+)
+
+// tournamentSearchPayload: [i64 tournamentId][i64 coachId][i16 preset].
+func tournamentSearchPayload(tid, coachID int64, preset uint16) []byte {
+	return testclient.NewW().I64(tid).I64(coachID).U16(preset).Bytes()
+}
+
+// TestTournamentSearchIsRefusedVisibly: there is no bracket/match layer yet, so
+// the tournament "Combattre" must FAIL VISIBLY rather than go silent. Silence is
+// the actual bug here — both client senders pop the team panel themselves, so an
+// unanswered 28611 leaves the player on a bare screen with nothing to click.
+//
+// The reply must also be TWO bytes: kw_1 reads a code and a sub-code, unlike the
+// classic/evolution error which is one byte. A short frame is a decode failure.
+func TestTournamentSearchIsRefusedVisibly(t *testing.T) {
+	addr := testServer(t)
+	c, coachID := dialLogin(t, addr, "tsr_a", "TsrA")
+	reachWorld(t, c)
+	c.DrainReceived(200 * time.Millisecond)
+
+	_ = c.Send(2, opTournamentSearchRequest, tournamentSearchPayload(1, coachID, 1))
+	f, _, err := c.WaitFor(opTournamentSearchError, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no TournamentSearchError(28616): the tournament Combattre goes "+
+			"silent and the player is left on a bare screen: %v", err)
+	}
+	if n := len(f.Payload); n != 2 {
+		t.Fatalf("28616 payload = %d bytes, want 2 ([i8 code][i8 subCode] — kw_1 "+
+			"reads both)", n)
+	}
+	r := testclient.NewR(f.Payload)
+	if code := r.U8(); code != 1 {
+		t.Errorf("error code = %d, want 1 (impossibleToStartOpponentsSearch)", code)
+	}
+}
+
+// TestTournamentSearchFromLegendsTabIsAlsoAnswered: the Légendes tab sends the
+// same 28611 with the legend pseudo-preset 9999, so it must not fall through to
+// silence either.
+func TestTournamentSearchFromLegendsTabIsAlsoAnswered(t *testing.T) {
+	addr := testServer(t)
+	c, coachID := dialLogin(t, addr, "tsr_b", "TsrB")
+	reachWorld(t, c)
+	c.DrainReceived(200 * time.Millisecond)
+
+	_ = c.Send(2, opTournamentSearchRequest, tournamentSearchPayload(0, coachID, 9999))
+	if _, _, err := c.WaitFor(opTournamentSearchError, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("Légendes (preset 9999) got no answer to 28611: %v", err)
+	}
+}
+
+// TestTournamentSearchCancelIsAnswered: the cancel reply is what closes the
+// overlay and unregisters ds_2, so it goes out even though nothing was queued.
+func TestTournamentSearchCancelIsAnswered(t *testing.T) {
+	addr := testServer(t)
+	c, coachID := dialLogin(t, addr, "tsr_c", "TsrC")
+	reachWorld(t, c)
+	c.DrainReceived(200 * time.Millisecond)
+
+	_ = c.Send(2, opTournamentSearchCancel, tournamentSearchPayload(1, coachID, 1))
+	f, _, err := c.WaitFor(opTournamentSearchCancelResult, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no TournamentSearchCancelResult(28610): %v", err)
+	}
+	if ok := testclient.NewR(f.Payload).U8(); ok != 1 {
+		t.Errorf("cancel accepted = %d, want 1", ok)
+	}
+}
+
 // TestEvolutionFightFeedsProgression: the fight a paired search produces must be
 // a real EVOLUTION fight, not a practice one — that is the whole point of the
 // mode. Proven from the outside by its effect: an evolution fight banks XP onto
