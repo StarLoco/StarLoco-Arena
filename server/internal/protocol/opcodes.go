@@ -277,6 +277,27 @@ const (
 	OpMatchAccept                = 23114 // C2S: [i64 id][i64 opp][i16][i16][ids][i8 accept]
 	OpMatchConfirm               = 23116 // S2C/C2S: [i32 N][i64×N] confirmed roster
 
+	// Evolution opponent search (23000 block) — the EVOLUTION tab's "Combattre".
+	// Byte-identical twins of the classic 23101/23102/23103/23104/23106/23108
+	// family, and the client frames mirror each other exactly (wp_0 vs vu_1).
+	//
+	// The handshake the client waits for, in order:
+	//
+	//	C2S 23003            -> S2C 23004 {preset, 1}   opens the "Searching…" overlay
+	//	   (opponent found)  -> S2C 23006 {}            closes it, then CREATE_FIGHT (8000)
+	//	   (cancelled)       -> S2C 23002 {1}
+	//	   (failed)          -> S2C 23008 {code}
+	//
+	// The client pushes its FIGHT frame (do_2) BEFORE sending 23003, so 8000 is
+	// already routable when the server answers. Nothing here is optional: an
+	// accepted 23004 with no following 23006 leaves the overlay up forever.
+	OpEvolutionSearchCancel       = 23001 // C2S (arch 2): [i64 coachId][i16 preset] — abn_0
+	OpEvolutionSearchCancelResult = 23002 // S2C: [i8 accepted] — wf_2
+	OpEvolutionSearchRequest      = 23003 // C2S (arch 2): [i64 coachId][i16 preset=99] — ajw_0
+	OpEvolutionSearchResult       = 23004 // S2C: [i16 preset][i8 accepted] — amh_0
+	OpEvolutionFightStarting      = 23006 // S2C: empty — azl_0, "Lancement du combat"
+	OpEvolutionSearchError        = 23008 // S2C: [i8 code] — KL
+
 	// Ladder — the ranking window has SEVEN tabs, one opcode pair each (client
 	// afl_1, dialog ladderInformationDialog.xml). All C2S arch 2; strings are
 	// [i32 len][utf8]; no length field is bounds-checked. Row loops index a

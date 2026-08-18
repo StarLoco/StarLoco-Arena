@@ -1287,11 +1287,11 @@ is a signing certificate or SignPath); no published Docker image.
     refresh was gated on a *downed* fighter existing, so a roll-death never
     reached the client until relog.
 
-    **Newly blocked on:** opcode **23003** is unhandled, so an evolution fight
-    cannot be started from the retail client at all (see BUGS.md). Every
-    evolution fight to date has been harness-created. That makes the evolution
-    result dialog — the one that renders these deaths as tombstones — the next
-    thing to verify, once 23003 answers.
+    **Verified live**, once B-098 made the mode reachable: a real evolution fight
+    won by wiping the opposing team reported `killed=0`, and the client's own
+    achievement panel said *"Hélas, vous n'avez pas occasionné de mort définitive
+    chez les combattants adverses"* — the exact string quoted as evidence for the
+    fix, shown in exactly the situation the old rule made impossible.
 22. 🟡 **Fusion** — **there is no recipe table; type 1100 is the ALTARS.** Decoded
     (4/4 fields: power / quality / slots): 30 tiered altars. The mechanic is a
     power check against a **player-chosen target**, and the client's own panel

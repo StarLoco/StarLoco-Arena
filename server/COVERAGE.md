@@ -210,14 +210,25 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23114 | MatchAccept | C2S | ✓ | A | — | ✓ |
 | 2308 | MatchAcceptAlt | C2S | ✓ | A | — | — |
 | 23116 | MatchConfirm | S2C | ✓ | — | — | — |
-| 23003 | `ajw_0` — evolution COMBATTRE | C2S | **—** | A (`{i64 coachId, i16 = 99}`) | — | — |
-| 23004 | `amh_0` — its reply | S2C | **—** | A (`{i16, bool}`) | — | — |
+| 23001 | `abn_0` EvolutionSearchCancel | C2S | ✓ | A (`[i64 coachId][i16 preset]`) | — | ✓ |
+| 23002 | `wf_2` EvolutionSearchCancelResult | S2C | ✓ | A (`[i8 accepted]`) | — | ✓ |
+| 23003 | `ajw_0` EvolutionSearchRequest | C2S | ✓ | A (`[i64 coachId][i16 preset=99]`) | — | ✓ **live** |
+| 23004 | `amh_0` EvolutionSearchResult | S2C | ✓ | A (`[i16 preset][i8 accepted]`) | — | ✓ **live** |
+| 23006 | `azl_0` EvolutionFightStarting | S2C | ✓ | A (empty) | — | ✓ **live** |
+| 23008 | `KL` EvolutionSearchError | S2C | ✓ | A (`[i8 code]`) | — | ✓ |
 
-**23003 is the gap that blocks evolution mode entirely.** The retail client sends
-it from the team panel's Evolution → COMBATTRE, gets no answer and waits forever,
-so no evolution fight has ever been startable from the real client — every one to
-date was harness-created. All four call sites hardcode the i16 to 99, and `WE`
-(the END_FIGHT handler) re-sends it on fight end. See BUGS.md → Open.
+The evolution block is the byte-identical twin of the classic 23101-23108 family
+(client frames `wp_0` vs `vu_1`), and until B-098 none of it was served — so the
+team panel's Evolution → COMBATTRE waited forever and **no evolution fight was
+startable from the retail client at all**. The `preset` is not a database team
+id: `sw_1.bMm = 99` is the synthetic "evolution team" pseudo-preset (peer of
+graveyard 10000 / legend 9999), and it maps to the coach's titular line-up.
+
+Order is load-bearing — 23004 opens the client's "Searching…" overlay and only
+23006/23002/23008(3,4,5) close it, so 23006 must precede CREATE_FIGHT. A 23004
+carrying accepted=0 is a dead end (the panels close, nothing opens); refusals go
+out as 23008. Verified live end to end: overlay → pair → fight → the evolution
+result dialog.
 
 ## Fight lifecycle & combat
 

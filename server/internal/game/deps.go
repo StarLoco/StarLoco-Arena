@@ -64,6 +64,7 @@ func RegisterAll(r *Router, d *Deps) {
 	registerLadderHandlers(r, d)
 	registerFightHandlers(r, d)
 	registerFightCreationHandlers(r, d)
+	registerEvolutionSearchHandlers(r, d)
 	registerReconnectHandlers(r, d)
 	registerSpectateHandlers(r, d)
 	registerChallengeHandlers(r, d)

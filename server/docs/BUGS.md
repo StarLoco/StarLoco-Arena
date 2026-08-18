@@ -13,61 +13,6 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### Opcode 23003 is unhandled, so an EVOLUTION fight cannot be started at all
-
-Found by driving the retail client's own UI: team panel → Evolution tab →
-**COMBATTRE**. The client passes its local checks and then sends
-
-```
-level=INFO msg="unhandled opcode" opcode=23003 arch=2 len=10
-```
-
-and sits there. No error, no fight, nothing further on the wire. **Every
-evolution fight this server has ever run was created by the test harness**; the
-mode the whole progression system exists for has never been reachable from the
-retail client.
-
-`ajw_0` (23003, C2S) is 10 bytes — `{i64, i16}` — and all four of its call sites
-are character-for-character identical:
-
-```java
-apN.aDK().a(do_2.Mm());                  // waiting/loading screen
-ajw_0 m = new ajw_0();
-m.aj(apN.aDK().Ln().getId());            // i64 = this coach's own id
-m.C((short)99);                          // i16 = 99, hardcoded at ALL FOUR sites
-apN.aDK().vJ().b(m);
-apN.aDK().b(nb_0.aaI());                 // then move to the next screen
-```
-
-(`aor_2:18`, `nb_0:571`, `hu_2:556`, and — note — `WE:105`, the END_FIGHT handler
-itself, which re-sends it when `sj_13.yQ()` is set.) The reply is **23004**
-`amh_0` (S2C), `{i16, bool}` — the same i16 back, plus an accepted flag.
-
-So this is the opponent-search / queue request, and the constant 99 is the mode.
-The fact that `WE` re-sends it on fight end suggests one queue slot re-armed
-after each match rather than a one-shot.
-
-Two client-side gates sit in front of it, both worth knowing because they make
-this awkward to reach by hand (both were hit in this order while testing):
-
-1. **≥ 5000 budget points** across the fielded team — *"Les démons des heures
-   aiment voir de jolis combats. Ce n'est pas avec si peu de budget que tu vas
-   les amuser…"*. Budget is `breed base (400) + Σ FIGHTER-card values`, and a
-   fighter has only 2 card slots, so this needs a full 6-fighter team; 3 maxed
-   fighters cannot reach it.
-2. **Breed diversity** — *"Ton équipe contient trop de combattants de même
-   race"*.
-
-That first message naming *les démons* is the strongest hint at what the server
-owes: evolution COMBATTRE looks like PvE against a demon team, not player
-matchmaking — which would make it very close to the challenge-fight path we
-already have.
-
-**Next step:** decode `sj_13.yQ()` / mode 99, answer 23004, and build the
-opponent. Until then the evolution end-of-fight dialog
-(`fightResultEvolutionDialog`, the one with the tombstones) remains unverified
-against a real client, because no evolution fight can be started to produce it.
-
 ### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
 The wrong-namespace half is fixed (B-088). The remaining question was what should
@@ -119,10 +64,15 @@ belongs to the coach.
   is one turn (`arm_0.lQ(1)`, a literal), which is the granularity `CastMaxPerTarget`
   already has, and all 6 spells are already bound at least as tightly by an enforced
   limit. Pinned by `TestMaxActiveIsRedundantInShippedData`.
-- **The end-of-fight dialog is UNVERIFIED, and the earlier "it never appears" claim
-  was wrong.** It rested on fights started by injecting CREATE_FIGHT at a client
-  that had not asked for one. Capturing the client's own log (see the tooling note
-  below) showed what really happened:
+- **[RESOLVED — kept for the reasoning trail] The end-of-fight dialog.** It now
+  renders: see B-098, which found the actual cause (the evolution mode that
+  produces it could not be started at all, because 23003 went unanswered), and
+  B-096, verified live by the same run. The investigation below is left in place
+  because the *method* mistake it records is the reusable lesson.
+
+  The earlier "it never appears" claim was wrong. It rested on fights started by
+  injecting CREATE_FIGHT at a client that had not asked for one. Capturing the
+  client's own log (see the tooling note below) showed what really happened:
 
   ```
   WARN [DEFAUT DE CONCEPTION] Message (aAt) non traite, de type 8000, ...
@@ -136,11 +86,12 @@ belongs to the coach.
   server fault. The screenshots agree: they show arena scenery with no fighters, no
   timeline and no fight HUD — the map had loaded from ENTER_INSTANCE and nothing more.
 
-  What still needs doing is a fight the client STARTS ITSELF (its own Tester button,
-  a demon it walks into, or a real match it accepts), then watching for the result
-  screen. B-095 and B-096 are both prerequisites for that dialog and are both real
-  faults on their own evidence, but neither has been shown to change what a player
-  sees.
+  What was still needed was a fight the client STARTS ITSELF, then watching for the
+  result screen. Doing that produced the real answer twice over: the "Tester"
+  button gave a genuine client-initiated fight that ran and ended cleanly but
+  carries no reports (practice and challenge fights skip progression by design),
+  and Evolution → COMBATTRE, the mode that DOES produce the dialog, turned out to
+  be unreachable — B-098.
 
   *Confirmed live in passing:* the client's **calendar** renders the three standing
   tournaments from the database across the month, so the 17003 path works end to end
@@ -162,6 +113,97 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-098 - the EVOLUTION tab's "Combattre" was unanswered, so the mode was unreachable
+
+**Symptom.** Team panel → Evolution → **COMBATTRE** did nothing at all. The client
+passed its own checks, sent one message and waited forever on a silent screen:
+
+```
+level=INFO msg="unhandled opcode" opcode=23003 arch=2 len=10
+```
+
+**Every evolution fight this server had ever run was created by the test
+harness.** The mode the whole progression system exists for — XP, morale,
+fatigue, wounds, permanent death, the graveyard — had never once been reachable
+from the retail client.
+
+**What the client is asking for.** `ajw_0` (23003, C2S, arch 2) is
+`{i64 coachId, i16 preset}`, and it is the byte-identical twin of the classic
+`atj_0` (23103) this server already served. Its whole family mirrors the classic
+one, frame for frame (`wp_0` vs `vu_1`):
+
+| evolution | classic | dir | payload | role |
+|---|---|---|---|---|
+| 23001 `abn_0` | 23101 | C2S | `{i64 coachId, i16 preset}` | cancel the search |
+| 23002 `wf_2` | 23102 | S2C | `{i8 accepted}` | reply to the cancel |
+| 23003 `ajw_0` | 23103 | C2S | `{i64 coachId, i16 preset}` | start the search |
+| 23004 `amh_0` | 23104 | S2C | `{i16 preset, i8 accepted}` | reply to the search |
+| 23006 `azl_0` | 23106 | S2C | *(empty)* | "Lancement du combat" |
+| 23008 `KL` | 23108 | S2C | `{i8 code}` | search error |
+
+**The 99 is not a mode** — an earlier revision of this entry said it was, and that
+was wrong. `sw_1.bMm = 99` is a synthetic **team preset id** meaning "the
+evolution team", a peer of graveyard (`10000`) and legend (`9999`); the object
+carrying it (`xz_0`, bound to the Lua property `evolutionTeam`) sets it in its own
+constructor, and the tournament path sends `xz_0.amc().tI()` rather than a
+literal. The client's own minimum-budget rule is gated on it —
+`hu_2:1073`, `xz_02.afr() && getValue() < 5000`, where `afr()` is `tI() == 99`.
+It is therefore **not a database team id** and must map to the coach's TITULAR
+line-up; looking it up in the teams table would miss, or worse, hit an unrelated
+coach's real team.
+
+**The handshake is not optional, and the order is load-bearing:**
+
+```
+C2S 23003            ->  S2C 23004 {preset, 1}   opens the "Searching…" overlay
+   (opponent found)  ->  S2C 23006 {}            closes it, then CREATE_FIGHT
+   (cancelled)       ->  S2C 23002 {1}
+   (failed)          ->  S2C 23008 {code}
+```
+
+Two traps found by reading `wp_0`:
+
+- **`23004` with accepted=0 is a dead end.** The client pops the team panels
+  either way, but only opens the overlay when the flag is true — a refusal that
+  way leaves the player on a bare screen with no message. A refusal must be
+  `23008`, not a rejected search.
+- **`23008` codes 1 and 2 show their message but leave the overlay up**; only
+  3, 4 and 5 tear it down. So codes 1/2 are safe only *before* an accepted
+  23004.
+
+**Fix.** `handlers_evolution_search.go`: 23003 validates the preset, refuses an
+empty line-up with 23008/2, accepts with 23004, and enqueues in the existing
+matchmaker under a dedicated mode so evolution searchers only ever pair with each
+other. On pairing both sides get 23006 and then the fight — created with
+`evolution=true`, so it feeds progression. 23001 cancels and answers 23002.
+Because `WE` re-sends 23003 unprompted at end-of-fight, a stale queue entry is
+dropped first so a coach cannot pair with itself.
+
+**Verified** `live` — the payoff run, with a synthetic second coach
+(`internal/testclient`) to pair against:
+
+1. COMBATTRE → the retail client showed **"Recherche en cours……"** with its
+   Cancel button (the `evolutionSearchStatusDialog` overlay) — 23004 working.
+2. The partner searched → server logged
+   `evolution search: paired -> starting fight a=Chrono b=Sparrer` and
+   `fight started practice=false evolution=true challenge=0`, the overlay closed
+   and **a real evolution fight rendered in the retail client**.
+3. Ending it opened the **`fightResultEvolutionDialog`** — see B-096/B-097 below,
+   which this finally verified end to end.
+
+Also `e2e` — `evolution_search_test.go`: accept-and-wait, cancel, empty-team
+refusal, pairing, and that the produced fight actually banks XP (i.e. is not a
+practice fight). The pairing test asserts 23006 arrives **before** CREATE_FIGHT
+by inspecting the frames `WaitFor` saw ahead of it; deleting the 23006 send fails
+it on both clients.
+
+> Note on that ordering: it is structural, not delicate. CREATE_FIGHT is emitted
+> from the fight goroutine (`startFightWithTeams` → `f.Post`), so anything sent
+> synchronously from the handler necessarily precedes it. Reordering the two
+> statements in the handler is therefore *not* observable and the test cannot
+> catch it — what it does catch is the send being dropped or moved into the fight
+> actor, which is the change that would actually break the client.
 
 ### B-097 - being knocked out in an evolution fight killed the fighter for good
 
@@ -233,6 +275,18 @@ fighter and the survivor is the one who hit the floor, which is the whole point)
 mutation-tested: reinstating the old `HP <= 0` branch fails them with the exact
 diagnostics quoted above.
 
+**Verified** `live` (once B-098 made evolution mode reachable) - a real evolution
+fight in the retail client, won by wiping the opposing team. Server:
+`post-fight meta reports=9 killed=0 injured=0`. The result dialog's achievement
+panel read, in the client's own words:
+
+> **IMPITOYABLE** — *Hélas, vous n'avez pas occasionné de mort définitive chez les
+> combattants adverses.*
+
+That is the exact string quoted as evidence above, displayed after downing every
+enemy — which is precisely the outcome the old rule made impossible, and the
+clearest possible confirmation that a KO is not a permanent death.
+
 ### B-096 - END_FIGHT's per-fighter reports were keyed in the wrong id space
 
 The post-fight debriefs in 8300 are keyed by an id the client resolves against
@@ -272,9 +326,18 @@ the actual frame against each recipient's roster. Mutation-checked: reverting to
 wire ids, and dropping the per-coach scoping, each fail it with the specific id
 named.
 
-**This did not, on its own, make the result dialog appear** — see the open item.
-It is a real fault that would have thrown every time; it is simply not the only
-one.
+**Verified** `live` (after B-098 made evolution mode reachable at all): a real
+evolution fight between two coaches ended with `post-fight meta reports=9` — 6
+for one side, 3 for the other — and the retail client **opened the
+`fightResultEvolutionDialog`** with a per-fighter XP breakdown for its own six
+and nothing for the opponent's. That is the first time this dialog has been seen,
+and it is what the wrong id space and the unscoped send would each have thrown
+before reaching.
+
+*Historical note:* this entry used to end "this did not, on its own, make the
+result dialog appear — see the open item". That open item was itself wrong (the
+earlier evidence came from injected fights the client never entered), and the
+dialog was in fact unreachable for a completely different reason: B-098.
 
 ### B-095 - CREATE_FIGHT's fight kind was written into a byte the client never reads
 
