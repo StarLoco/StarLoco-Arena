@@ -277,6 +277,16 @@ const (
 	OpMatchAccept                = 23114 // C2S: [i64 id][i64 opp][i16][i16][ids][i8 accept]
 	OpMatchConfirm               = 23116 // S2C/C2S: [i32 N][i64×N] confirmed roster
 
+	// Classic opponent search (23100 block) — the CLASSIC tab's "Combattre".
+	// 23103 is the request; the rest is the same handshake as the evolution block
+	// below, handled by the client's vu_1 frame. Unlike the evolution preset, the
+	// i16 here IS a real team id (and may be -1 for "no preset selected").
+	OpClassicSearchCancel       = 23101 // C2S (arch 2): [i64 coachId][i16 teamId] — bm_1
+	OpClassicSearchCancelResult = 23102 // S2C: [i8 accepted] — ada_1
+	OpClassicSearchResult       = 23104 // S2C: [i16 teamId][i8 accepted] — aLi
+	OpClassicFightStarting      = 23106 // S2C: empty — ads_2, "Lancement du combat"
+	OpClassicSearchError        = 23108 // S2C: [i8 code] — M
+
 	// Evolution opponent search (23000 block) — the EVOLUTION tab's "Combattre".
 	// Byte-identical twins of the classic 23101/23102/23103/23104/23106/23108
 	// family, and the client frames mirror each other exactly (wp_0 vs vu_1).

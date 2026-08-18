@@ -12,6 +12,7 @@ import (
 func registerFightCreationHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpTeamTest, handleTeamTest)
 	r.Register(protocol.OpClassicReadyForFight, handleClassicReadyForFight)
+	r.Register(protocol.OpClassicSearchCancel, handleClassicSearchCancel)
 	r.Register(protocol.OpFightReadyConfirm, handleFightReadyConfirm)
 }
 
@@ -129,9 +130,22 @@ func (s *Session) sendFightCreationError(code uint8) error {
 
 // handleClassicReadyForFight (23103 atj_0: [i64 coachId][i16 teamId]) is the
 // "Combattre" ready-up: the coach declares its team ready and is paired with the
-// next coach that does the same. When paired the fight starts immediately (no
-// accept prompt); otherwise the coach waits (the client shows
-// "waitingForOpponentCoach") until an opponent readies.
+// next coach that does the same. When paired the fight starts immediately — there
+// is no accept prompt — otherwise the coach waits in the queue.
+//
+// While waiting, the client shows the "Recherche en cours……" overlay, but ONLY
+// once we accept the search with 23104. An earlier version of this comment said
+// the client showed "waitingForOpponentCoach" by itself; that was wrong — that
+// string belongs to the fight-INVITATION flow (`B`, `aqr_0`), not here. Without
+// 23104 the player got no overlay, no feedback and, since the Cancel button lives
+// inside that overlay, **no way to leave the queue**. Same defect as B-098 in the
+// evolution twin, and the same fix.
+//
+// Unlike the evolution preset (a synthetic 99), the i16 here is a real team id —
+// and may be -1 ("no preset selected", `hu_2:969-973`), which arrives as 65535
+// and resolves to no roster. That is tolerated, not refused: buildFightTeamFor
+// falls back to the coach's own fighters, which is the long-standing behaviour of
+// this path and not something to tighten while fixing the overlay.
 func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
@@ -145,9 +159,16 @@ func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 	if s.deps.Fights.ByCoach(s.Coach.ID) != nil {
-		return nil // already in a fight
+		return classicSearchFamily.sendError(s, searchErrCannotStart)
 	}
 	roster := s.deps.resolveTeamRoster(s.Coach.ID, uint(teamID))
+
+	// Clicking "Combattre" twice must not put the coach in the queue twice.
+	s.deps.Matchmaker.CancelSearch(s.Coach.ID)
+
+	if err := classicSearchFamily.sendResult(s, teamID, true); err != nil {
+		return err
+	}
 	pm := s.deps.Matchmaker.Search(s, modeClassicReady, 0, roster)
 	if pm == nil {
 		s.log.Info("combattre: waiting for opponent", "coach", s.Coach.Name, "team", teamID)
@@ -158,7 +179,22 @@ func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 	s.deps.Matchmaker.Discard(pm)
 	s.log.Info("combattre: paired -> starting fight",
 		"a", pm.a.session.Coach.Name, "b", pm.b.session.Coach.Name)
+	announceFightStarting(classicSearchFamily, pm)
 	return s.deps.startFight(pm)
+}
+
+// handleClassicSearchCancel (23101 bm_1: [i64 coachId][i16 teamId]) is the
+// classic overlay's Cancel button (Lua dofusarena.classicSearchStatus:
+// cancelSearch, which sends the coach id and preset it stashed in mh_1). The
+// reply is what closes the overlay, so it goes out even if nothing was queued.
+func handleClassicSearchCancel(s *Session, _ *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	if s.deps.Matchmaker.CancelSearch(s.Coach.ID) {
+		s.log.Info("combattre: search cancelled", "coach", s.Coach.Name)
+	}
+	return classicSearchFamily.sendCancelResult(s, true)
 }
 
 // handleFightReadyConfirm (26303 bl_1: [i64 coachId][i16 teamId]) serves two

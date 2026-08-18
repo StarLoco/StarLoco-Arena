@@ -114,6 +114,62 @@ belongs to the coach.
 
 ## Fixed
 
+### B-099 - the CLASSIC "Combattre" had the same silent-queue defect, plus a double-queue bug
+
+Found by asking, after B-098, whether the classic twin had the same gap. It did.
+
+**Symptom.** 23103 was served — the coach really did enter the queue and really did
+get a fight when someone else readied — but **none of the replies were sent**. So
+while waiting the player saw nothing at all: no "Recherche en cours" overlay, and
+because the Cancel button lives *inside* that overlay
+(`avl_0.cancelSearch` is registered by the 23104 handler), **no way to leave the
+queue**. Clicking "Combattre" again just queued them a second time.
+
+**A stale comment had covered this up.** The handler documented itself as "the
+coach waits (the client shows `waitingForOpponentCoach`) until an opponent
+readies". That string exists, but it belongs to the fight-INVITATION flow
+(`B:96,125,154`, `aqr_0:25`) and is never used on the 23103 path. Checking it was
+what exposed the bug — the premise-check habit paying off on our own prose rather
+than on the roadmap's.
+
+**Root cause.** `vu_1` (classic) is character-for-character `wp_0` (evolution)
+with one string changed, `classicSearchStatusDialog` for
+`evolutionSearchStatusDialog` — same four cases, same branches, same teardown
+rules. The whole family was simply unimplemented:
+
+| classic | evolution | dir | payload |
+|---|---|---|---|
+| 23101 `bm_1` | 23001 | C2S | `[i64 coachId][i16 teamId]` cancel |
+| 23102 `ada_1` | 23002 | S2C | `[i8 accepted]` |
+| 23103 `atj_0` | 23003 | C2S | `[i64 coachId][i16 teamId]` search |
+| 23104 `aLi` | 23004 | S2C | `[i16 teamId][i8 accepted]` |
+| 23106 `ads_2` | 23006 | S2C | *(empty)* |
+| 23108 `M` | 23008 | S2C | `[i8 code]` |
+
+**Fix.** The handshake now lives in one place (`search_handshake.go`,
+`searchFamily`) and both tabs share it, so the traps only had to be written once
+and the twin relationship is explicit. 23103 accepts with 23104, announces 23106
+to both sides on pairing, and 23101 is handled and answered with 23102. A
+`CancelSearch` before enqueueing makes a double click idempotent.
+
+One deliberate asymmetry: the evolution preset is the synthetic 99 and is refused
+if it is anything else, but the classic i16 is a **real team id and may be -1**
+("no preset selected", `hu_2:969-973`), arriving as 65535 and resolving to no
+roster. That is tolerated — `buildFightTeamFor` falls back to the coach's own
+fighters, which is this path's long-standing behaviour and not something to
+tighten while fixing an overlay.
+
+**Verified** `live` — Elite tab → COMBATTRE showed **"Recherche en cours……"** with
+its Cancel button (`combattre: waiting for opponent team=1`), and clicking
+**Annuler** closed it and logged `combattre: search cancelled`. That button was
+unreachable before this fix.
+
+Also `e2e` — accept + cancel (including the -1 preset passing through), pairing
+with 23106 ahead of CREATE_FIGHT, and a double-click guard that pairs a third
+coach against a stale duplicate entry if the dedupe is removed. All three
+mutation-checked: dropping the 23104 send, the 23106 send, or the dedupe each
+fails its own test with the specific diagnostic.
+
 ### B-098 - the EVOLUTION tab's "Combattre" was unanswered, so the mode was unreachable
 
 **Symptom.** Team panel → Evolution → **COMBATTRE** did nothing at all. The client

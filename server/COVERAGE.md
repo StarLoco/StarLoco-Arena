@@ -210,6 +210,11 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23114 | MatchAccept | C2S | ✓ | A | — | ✓ |
 | 2308 | MatchAcceptAlt | C2S | ✓ | A | — | — |
 | 23116 | MatchConfirm | S2C | ✓ | — | — | — |
+| 23101 | `bm_1` ClassicSearchCancel | C2S | ✓ | A (`[i64 coachId][i16 teamId]`) | — | ✓ **live** |
+| 23102 | `ada_1` ClassicSearchCancelResult | S2C | ✓ | A (`[i8 accepted]`) | — | ✓ **live** |
+| 23104 | `aLi` ClassicSearchResult | S2C | ✓ | A (`[i16 teamId][i8 accepted]`) | — | ✓ **live** |
+| 23106 | `ads_2` ClassicFightStarting | S2C | ✓ | A (empty) | — | ✓ |
+| 23108 | `M` ClassicSearchError | S2C | ✓ | A (`[i8 code]`) | — | — |
 | 23001 | `abn_0` EvolutionSearchCancel | C2S | ✓ | A (`[i64 coachId][i16 preset]`) | — | ✓ |
 | 23002 | `wf_2` EvolutionSearchCancelResult | S2C | ✓ | A (`[i8 accepted]`) | — | ✓ |
 | 23003 | `ajw_0` EvolutionSearchRequest | C2S | ✓ | A (`[i64 coachId][i16 preset=99]`) | — | ✓ **live** |
@@ -217,12 +222,18 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23006 | `azl_0` EvolutionFightStarting | S2C | ✓ | A (empty) | — | ✓ **live** |
 | 23008 | `KL` EvolutionSearchError | S2C | ✓ | A (`[i8 code]`) | — | ✓ |
 
-The evolution block is the byte-identical twin of the classic 23101-23108 family
-(client frames `wp_0` vs `vu_1`), and until B-098 none of it was served — so the
-team panel's Evolution → COMBATTRE waited forever and **no evolution fight was
-startable from the retail client at all**. The `preset` is not a database team
-id: `sw_1.bMm = 99` is the synthetic "evolution team" pseudo-preset (peer of
-graveyard 10000 / legend 9999), and it maps to the coach's titular line-up.
+These two blocks are byte-identical twins and share one implementation
+(`searchFamily` in `search_handshake.go`); the client frames that consume them,
+`vu_1` (classic) and `wp_0` (evolution), are the same class with one dialog name
+changed. Until B-098/B-099 neither was served: Evolution → COMBATTRE waited
+forever and **no evolution fight was startable from the retail client at all**,
+while the classic tab queued the coach but showed no overlay and so offered no way
+to cancel out of the queue.
+
+One asymmetry: the evolution `preset` is not a database team id — `sw_1.bMm = 99`
+is the synthetic "evolution team" pseudo-preset (peer of graveyard 10000 / legend
+9999), mapping to the coach's titular line-up — whereas the classic i16 IS a real
+team id, and may be -1 for "no preset selected".
 
 Order is load-bearing — 23004 opens the client's "Searching…" overlay and only
 23006/23002/23008(3,4,5) close it, so 23006 must precede CREATE_FIGHT. A 23004

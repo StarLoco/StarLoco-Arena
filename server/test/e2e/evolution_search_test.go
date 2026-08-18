@@ -169,6 +169,123 @@ func TestEvolutionSearchPairsAndStartsFight(t *testing.T) {
 	}
 }
 
+// --- the CLASSIC twin (23101/23102/23103/23104/23106) ---
+//
+// Same handshake, same client frame shape (vu_1 instead of wp_0), and it had the
+// same gap: 23103 was served but none of the replies were, so the player got no
+// "Recherche en cours" overlay — and since the Cancel button lives inside that
+// overlay, no way to leave the queue.
+
+const (
+	opClassicSearchCancel       = 23101
+	opClassicSearchCancelResult = 23102
+	opClassicReadyForFight      = 23103
+	opClassicSearchResult       = 23104
+	opClassicFightStarting      = 23106
+)
+
+// TestClassicReadyAcceptsAndCancels: the classic "Combattre" must accept the
+// search (23104) so the overlay opens, and must answer its Cancel (23101 →
+// 23102) so the player can get out of the queue again.
+func TestClassicReadyAcceptsAndCancels(t *testing.T) {
+	addr := testServer(t)
+	c, coachID := dialLogin(t, addr, "cls_a", "ClsA")
+	reachWorld(t, c)
+	c.DrainReceived(200 * time.Millisecond)
+
+	// teamId -1 = "no preset selected", which the client really does send; it
+	// must be tolerated (the roster falls back), not refused.
+	_ = c.Send(2, opClassicReadyForFight, testclient.NewW().I64(coachID).U16(0xFFFF).Bytes())
+	f, _, err := c.WaitFor(opClassicSearchResult, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no ClassicSearchResult(23104): no overlay, and no way to "+
+			"cancel out of the queue: %v", err)
+	}
+	if ok := testclient.NewR(f.Payload).U16(); ok != 0xFFFF {
+		t.Errorf("echoed teamId = %d, want 65535 (-1 passed through)", ok)
+	}
+
+	_ = c.Send(2, opClassicSearchCancel, testclient.NewW().I64(coachID).U16(0xFFFF).Bytes())
+	cf, _, err := c.WaitFor(opClassicSearchCancelResult, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no ClassicSearchCancelResult(23102): %v", err)
+	}
+	if ok := testclient.NewR(cf.Payload).U8(); ok != 1 {
+		t.Errorf("cancel accepted = %d, want 1", ok)
+	}
+}
+
+// TestClassicReadyPairsAndStartsFight: two coaches ready up, pair, and both get
+// 23106 before CREATE_FIGHT — the same ordering requirement as the evolution
+// twin, asserted the same way (from the frames that preceded 8000).
+func TestClassicReadyPairsAndStartsFight(t *testing.T) {
+	addr := testServer(t)
+	a, aID := dialLogin(t, addr, "cls_b", "ClsB")
+	reachWorld(t, a)
+	b, bID := dialLogin(t, addr, "cls_c", "ClsC")
+	reachWorld(t, b)
+	a.DrainReceived(200 * time.Millisecond)
+	b.DrainReceived(200 * time.Millisecond)
+
+	_ = a.Send(2, opClassicReadyForFight, testclient.NewW().I64(aID).U16(0xFFFF).Bytes())
+	_ = b.Send(2, opClassicReadyForFight, testclient.NewW().I64(bID).U16(0xFFFF).Bytes())
+
+	for name, cl := range map[string]*testclient.Client{"A": a, "B": b} {
+		_, before, err := cl.WaitFor(testclient.OpCreateFight, testclient.DefaultTimeout)
+		if err != nil {
+			t.Fatalf("%s: no CREATE_FIGHT from a paired classic ready-up: %v", name, err)
+		}
+		var sawStarting bool
+		for _, f := range before {
+			if f.Opcode == opClassicFightStarting {
+				sawStarting = true
+			}
+		}
+		if !sawStarting {
+			t.Errorf("%s: ClassicFightStarting(23106) did not arrive before "+
+				"CREATE_FIGHT(8000) — the fight runs under the overlay", name)
+		}
+	}
+}
+
+// TestClassicReadyTwiceDoesNotQueueTwice: clicking "Combattre" twice must not
+// leave two entries for the same coach in the queue. Guard: after A readies
+// twice, ONE opponent B pairs with it and the queue is then empty — so a third
+// coach C finds nobody and waits.
+func TestClassicReadyTwiceDoesNotQueueTwice(t *testing.T) {
+	addr := testServer(t)
+	a, aID := dialLogin(t, addr, "cls_d", "ClsD")
+	reachWorld(t, a)
+	b, bID := dialLogin(t, addr, "cls_e", "ClsE")
+	reachWorld(t, b)
+	cc, cID := dialLogin(t, addr, "cls_f", "ClsF")
+	reachWorld(t, cc)
+	for _, cl := range []*testclient.Client{a, b, cc} {
+		cl.DrainReceived(200 * time.Millisecond)
+	}
+
+	ready := func(cl *testclient.Client, id int64) {
+		_ = cl.Send(2, opClassicReadyForFight, testclient.NewW().I64(id).U16(0xFFFF).Bytes())
+	}
+	ready(a, aID)
+	ready(a, aID) // double click
+	if _, _, err := a.WaitFor(opClassicSearchResult, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("A: no 23104: %v", err)
+	}
+	ready(b, bID)
+	if _, _, err := b.WaitFor(testclient.OpCreateFight, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("B did not pair with A: %v", err)
+	}
+
+	// A's duplicate entry, if it existed, would still be sitting in the queue and
+	// would wrongly pair with C.
+	ready(cc, cID)
+	if _, _, err := cc.WaitFor(testclient.OpCreateFight, 2*time.Second); err == nil {
+		t.Error("C paired with a STALE duplicate queue entry for A — clicking " +
+			"Combattre twice enqueued the same coach twice")
+	}
+}
+
 // TestEvolutionFightFeedsProgression: the fight a paired search produces must be
 // a real EVOLUTION fight, not a practice one — that is the whole point of the
 // mode. Proven from the outside by its effect: an evolution fight banks XP onto
