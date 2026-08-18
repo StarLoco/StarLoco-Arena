@@ -17,10 +17,13 @@ Copyrighted game material — © Ankama Games
   - Decompiled DofusArena 2.70 client source ............. client/decompiled/
   - Deobfuscation mappings derived from it ............... client/deobf-lab/mappings/
   - Protocol / data-format analysis derived from it ...... client/analysis/
-  - Server game data: the card/spell/arena records the
-    server's own logic needs (~2.5 MB; no art, audio, or
-    executable code) — ships in git and in every release ... server/data-dist/
-                                                              (data.bdat, indexes.bdat, maps/)
+  - Server game data: the card/spell/arena records and the
+    overworld element layouts the server's own logic needs
+    (~3 MB; no art, audio, or executable code — the map
+    layers carry ids, positions and descriptors, not
+    sprites) — ships in git and in every release .......... server/data-dist/
+                                                              (data.bdat, indexes.bdat,
+                                                               maps/{fight,tplg,env}/)
 
   NOT COMMITTED HERE, BUT LINKED TO AN EXTERNAL MIRROR (git-ignored; the
   repository, git clone and release archives do not contain it — the

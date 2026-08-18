@@ -24,12 +24,15 @@ respective owners.
   - `client/decompiled/` — decompiled client code, reproduced only as an
     interoperability and study reference, together with the mappings and
     analysis derived from it (`client/deobf-lab/mappings/`, `client/analysis/`).
-  - `server/data-dist/` (`data.bdat`, `indexes.bdat`, `maps/`) — the card,
-    spell and arena **records** the server's own logic needs to run a fight
-    (no art, audio, or executable code). This is a small (~2.5 MB), deliberate
-    subset the maintainer has chosen to include so the server runs without
-    requiring every operator to separately source a client. It ships in every
-    downloadable release and in `git clone`.
+  - `server/data-dist/` (`data.bdat`, `indexes.bdat`, `maps/` — the latter
+    holding `fight/`, `tplg/` and `env/`) — the card, spell, arena and
+    **overworld-layout records** the server's own logic needs to run a fight and
+    place the interactive elements players click (no art, audio, or executable
+    code: `env/` carries element ids, positions and descriptors, not the sprites
+    they display). This is a small (~3 MB), deliberate subset the maintainer has
+    chosen to include so the server runs without requiring every operator to
+    separately source a client. It ships in every downloadable release and in
+    `git clone`.
 - **Not committed to this repository, but linked to an external mirror**
   (© Ankama Games):
   - `client/compiled/` — the full retail game client (launcher, `core.jar`,

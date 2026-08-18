@@ -1334,8 +1334,42 @@ is a signing certificate or SignPath); no published Docker image.
 
     Still deferred: brackets, scheduled fights and rewards — i.e. turning that
     refusal into a real fixture. See item 32.
-24. ⚠️ **Interactive elements from data** — **restated: type 360 is NOT part of
-    this, and the item is blocked on a maintainer decision, not on code.**
+24. [x] **Interactive elements from data** — DONE. The env jars were added to
+    `data-dist` (maintainer decision, all 114), and the table is now
+    **generated** from them by `cmd/genelements` into
+    `internal/game/elements_data.go` instead of being transcribed by hand.
+
+    Generated rather than read at runtime on purpose: the server keeps no startup
+    dependency on map data for "what can the player click", the table stays
+    reviewable in git, and every consumer keeps taking stable pointers into it.
+
+    **It reproduced the hand table 139/139** on instance id, kind, cell, payload
+    bytes, and the Card Master / Fusion altar descriptor arguments — and found a
+    real bug doing it: world 28's Card Master had a **direction byte typed 03
+    where the jar says 01**, which had been going onto the wire on every spawn.
+
+    **The arrival altitude was the hard part, and two hypotheses were wrong before
+    the right one.** The env element's own authored z is NOT it (that is the
+    Zaap platform's height), and neither is the highest walkable tplg layer. It is
+    the **LOWEST** walkable layer. Only one Zaap in retail data distinguishes them
+    — world 25's, the login spawn, whose cell has floors at 8 and 30 — and the
+    live client settled it: spawning at 30 rendered no coach at all. The earlier
+    note claiming the hand-typed 8 was a transcription error was itself wrong; 8
+    was right, and `elements_golden_test.go` now says so.
+
+    Also fixed on the way: the topology reader silently dropped tile kinds 0 and 1
+    (a size guard assumed type 0 "carries no per-cell data" — it carries a uniform
+    altitude for all 324 cells — and type 1 was unhandled). They are most of the
+    overworld. Added under an explicit `topoScope`, so **arena decoding is
+    deliberately unchanged**: admitting those chunks widens an arena's bounding box
+    without adding a playable cell, and arena bounds feed placement, movement
+    clamping and sudden death.
+
+    Still authored, and correctly so: which 11 of the 114 worlds to serve (110/113
+    have env layers but no elements and would strand a player; 111/112 are
+    staff-only), and the `zaapCardDest` routing.
+
+    <details><summary>Superseded investigation notes</summary>
 
     Investigated before starting, which changed the shape of it:
 
@@ -1366,12 +1400,12 @@ is a signing certificate or SignPath); no published Docker image.
       would strand a player), which Zaap is primary, and the `zaapCardDest`
       routing.
 
-    **BLOCKED (maintainer decision — constraint 4):** the env jars are not in
-    `server/data-dist/`, and adding them (~0.49 MB for all 114, ~183 KB for the 11
-    we use) is StarLoco's call, with `DISCLAIMER.md`/`NOTICE` to match. Until then
-    a data-driven `elements.go` would have to degrade to *no elements* whenever env
-    is absent, which is strictly worse than today's table that always works. **Do
-    not start the decoder before that decision.**
+    The `data-dist` question that blocked this was answered: all 114 env jars are
+    committed (+0.49 MB, taking the curated set to ~3 MB), with `DISCLAIMER.md` and
+    `NOTICE` updated to say what they contain (ids, positions, descriptors - no
+    sprites). CI needs them, because the gate tests read them.
+
+    </details>
 25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)
     and guild/team-scoped routing.
 26. **Achievements** — types 800/801/802, 350 records, one client tab.

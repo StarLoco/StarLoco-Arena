@@ -47,9 +47,19 @@ const (
 	// stores one palette-indexed layer per cell; type 5 (ajj_2) stores a sorted
 	// list of packed entries, several layers deep. The remaining kinds (0/1/3/6)
 	// are placeholders or render-only and contribute no floor.
-	tileTypeFlat    = 2
-	tileTypePacked  = 3
-	tileTypeLayered = 5
+	// Tile chunk kinds — client `afg.az(type & 0x0F)`.
+	//
+	// 0 and 1 were long unhandled here: type 0 is exactly 8 bytes and was dropped
+	// by a "no per-cell data" size guard, and type 1 fell through to default. Both
+	// assumptions were wrong — 0 carries a UNIFORM altitude+ground for all 324
+	// cells and 1 a 4-bit palette grid. Together they are the majority of the
+	// overworld (roughly 55-90% of a world's chunks), so overworld altitude
+	// lookups read void without them.
+	tileTypeUniform = 0 // ajo_2
+	tileTypeNibble  = 1 // ajq_2
+	tileTypeFlat    = 2 // ajg_2
+	tileTypePacked  = 3 // aji_2
+	tileTypeLayered = 5 // ajj_2
 	// voidAltitude is the palette entry the client uses for "no floor at all".
 	// It is Short.MIN_VALUE after the wp offset wraps.
 	voidAltitude int16 = -32768
@@ -233,12 +243,7 @@ func (m *FightMap) loadTopology(jarPath string) error {
 	}
 	defer zr.Close()
 
-	type chunk struct {
-		originX, originY int32
-		alt              [chunkSide * chunkSide]int16
-		ground           [chunkSide * chunkSide]bool
-	}
-	var chunks []chunk
+	var chunks []topoChunk
 	minX, minY := int32(1<<30), int32(1<<30)
 	maxX, maxY := int32(-(1 << 30)), int32(-(1 << 30))
 
@@ -246,8 +251,8 @@ func (m *FightMap) loadTopology(jarPath string) error {
 		if strings.HasPrefix(f.Name, "META-INF") || f.Name == "coord" || f.FileInfo().IsDir() {
 			continue
 		}
-		if f.UncompressedSize64 <= 8 {
-			continue // uniform placeholder tile: no per-cell data
+		if f.UncompressedSize64 < 8 {
+			continue // shorter than the common header + a uniform tile's one byte
 		}
 		data, err := readZipFile(f)
 		if err != nil {
@@ -261,79 +266,14 @@ func (m *FightMap) loadTopology(jarPath string) error {
 		if r.err {
 			continue
 		}
-		var c chunk
+		var c topoChunk
 		c.originX, c.originY = originX, originY
 		for i := range c.alt {
 			c.alt[i] = voidAltitude
 		}
 
-		switch typ {
-		case tileTypeFlat: // ajg_2: one layer, palette-indexed
-			var altPalette [16]int16
-			for i := range altPalette {
-				altPalette[i] = wp + int16(r.u16())
-			}
-			var groundPalette [4]int8
-			for i := range groundPalette {
-				groundPalette[i] = int8(r.u8())
-			}
-			for i := 0; i < chunkSide*chunkSide; i++ {
-				b := r.u8()
-				c.alt[i] = altPalette[b&0x0F]
-				c.ground[i] = groundPalette[(b&0x30)>>4] != -1
-			}
-
-		case tileTypePacked: // aji_2: one packed i16 per cell
-			for i := 0; i < chunkSide*chunkSide; i++ {
-				raw := r.u16()
-				// cCJ is read from the SIGN-EXTENDED short, so a negative value
-				// yields -1 ("no floor"); the low 10 bits are the altitude.
-				cc := int8(uint32(uint32(int32(int16(raw)))&0xFFFFF000) >> 12)
-				altRaw := int32(raw) & 0x3FF
-				alt := voidAltitude
-				if altRaw != 0 {
-					alt = wp - 512 + int16(altRaw)
-				}
-				c.alt[i] = alt
-				c.ground[i] = cc != -1
-			}
-
-		case tileTypeLayered: // ajj_2: a sorted list of packed per-layer entries
-			for i := 0; i < 64; i++ {
-				r.u8() // dSi palette: render data only
-			}
-			n := int(int16(r.u16()))
-			seen := make([]bool, chunkSide*chunkSide)
-			for i := 0; i < n; i++ {
-				v := r.u32()
-				cx := int32(v & 0x1F)
-				cy := int32((v >> 5) & 0x1F)
-				if cx >= chunkSide || cy >= chunkSide {
-					continue
-				}
-				idx := cy*chunkSide + cx
-				altRaw := int32((v >> 10) & 0x3FF)
-				alt := voidAltitude
-				if altRaw != 0 {
-					alt = wp - 512 + int16(altRaw)
-				}
-				ground := ((v >> 22) & 0xF) != 15 // 15 encodes -1: no floor
-				// A cell can carry several stacked layers (a bridge over a pit, a
-				// platform above ground). The surface a fighter stands on is the
-				// HIGHEST one with real floor — verified against every arena's
-				// .fmd, whose start cells record the exact z the client expects.
-				// With no floor layer at all, keep the first entry so the cell is
-				// still classified (scenery vs void).
-				switch {
-				case !seen[idx]:
-					seen[idx], c.alt[idx], c.ground[idx] = true, alt, ground
-				case ground && (!c.ground[idx] || alt > c.alt[idx]):
-					c.alt[idx], c.ground[idx] = alt, ground
-				}
-			}
-
-		default:
-			continue // other tile kinds carry no per-cell floor data
+		if !decodeTopoTiles(r, typ, wp, &c, topoArena) {
+			continue
 		}
 		if r.err {
 			return fmt.Errorf("truncated chunk %s", f.Name)

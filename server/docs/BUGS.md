@@ -114,6 +114,44 @@ belongs to the coach.
 
 ## Fixed
 
+### B-102 - a hand-typed direction byte was wrong on the wire for one Card Master
+
+Found by generating the overworld element table from the client's own env layers
+and diffing it against the hand transcription it replaced (ROADMAP item 24). 138 of
+139 payloads matched byte for byte. The one that did not:
+
+```
+ env jar  ...001a0001010101000000000004303b313500
+ hand     ...001a0001010103000000000004303b313500
+                       ^^ direction
+```
+
+World 28's Card Master (instance 16): the RU part's **direction** byte was typed
+`03` where `maps/env/28.jar` says `01`. The payload is copied onto the wire verbatim
+in INTERACTIVE_ELEMENT_SPAWN, so every client that entered Magmara was told that
+element faced the wrong way. Confirmed against the raw jar bytes before changing
+anything (the jar contains the `01` form and not the `03` form).
+
+Cosmetic in effect, but it is the exact class of error the generator exists to
+remove, and it was invisible to every test that only checked the table's shape.
+
+**Verified** `unit` — `TestGeneratedTableMatchesTheHandTranscription` compares the
+generated table against the transcription on kind, cell, payload, arg/mode and Zaap
+altitude, and `TestCommittedTableIsStillWhatTheDataSays` re-derives from the jars.
+Mutation-checked: swapping the Card Master descriptor's two fields in the generator
+fails the golden comparison with the specific ids.
+
+**A second suspected error was NOT one, and that matters more.** The same diff
+flagged world 25's Zaap altitude (hand: 8, element's authored z: 30) and a first
+pass "corrected" it to 30. The live client refuted it immediately: at 30 the coach
+does not render at all, while 8 is where it has always correctly appeared. The
+cell has two stacked walkable floors, 8 and 30, and the arrival altitude is the
+**lowest** — not the element's own z, and not the highest layer, which were the two
+plausible rules. The hand value was right, the generator was wrong, and the
+altitude rule is now derived correctly for all 21 Zaaps. Recorded because the
+tempting reading — "the data disagrees with the table, so the table is wrong" — was
+the wrong one exactly once, and it was the case that could freeze a player.
+
 ### B-101 - every restart silently un-registered everyone from every tournament
 
 `TournamentManager` held registrations in a plain `map[uint]map[int64]bool` and
