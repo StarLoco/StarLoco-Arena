@@ -144,12 +144,20 @@ server.tool(
     try { writeFileSync(P.clientLog, ""); } catch {}
 
     // Start the client with the agent, JOGL natives and a real heap.
+    //
+    // stdout+stderr are captured into clientLog. The client's log4j has no file
+    // appender configured, so everything it reports -- decode failures, and the
+    // stack traces from any exception thrown inside a UI action -- goes to the
+    // console. This used to be `stdio: "ignore"`, which discarded all of it and
+    // left arena_client_log permanently empty, so a client-side exception was
+    // invisible and looked exactly like "the server sent nothing".
+    const cliFd = openSync(P.clientLog, "a");
     cliProc = spawn(P.java, [
       `-javaagent:${P.agentJar}=port=${P.agentPort}`,
       "-Xmx768m",
       `-Djava.library.path=${P.natives}`,
       "-cp", "core.jar", P.mainClass,
-    ], { cwd: P.game, windowsHide: true, stdio: "ignore" });
+    ], { cwd: P.game, windowsHide: true, stdio: ["ignore", cliFd, cliFd] });
 
     // Wait for the login screen to be INTERACTIVE (health ready=true), not just
     // for the agent HTTP server to answer — the agent starts early in premain,

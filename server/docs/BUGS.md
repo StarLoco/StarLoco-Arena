@@ -64,11 +64,32 @@ belongs to the coach.
   is one turn (`arm_0.lQ(1)`, a literal), which is the granularity `CastMaxPerTarget`
   already has, and all 6 spells are already bound at least as tightly by an enforced
   limit. Pinned by `TestMaxActiveIsRedundantInShippedData`.
-- **No end-of-fight dialog appears at all in the retail client.** Still open after
-  B-095 and B-096. A challenge fight and an evolution fight were each driven to a
-  settled result live; the server sent 8300 (`post-fight meta ... reports=5`) and
-  the chat confirmed the outcome, but no result screen, challenge panel or evolution
-  debrief opened.
+- **The end-of-fight dialog is UNVERIFIED, and the earlier "it never appears" claim
+  was wrong.** It rested on fights started by injecting CREATE_FIGHT at a client
+  that had not asked for one. Capturing the client's own log (see the tooling note
+  below) showed what really happened:
+
+  ```
+  WARN [DEFAUT DE CONCEPTION] Message (aAt) non traite, de type 8000, ...
+  WARN [DEFAUT DE CONCEPTION] Message (YP)  non traite, de type 8300, ...
+  ```
+
+  **CREATE_FIGHT itself was never handled.** `WE` — the only handler for 8300 — is
+  registered in exactly one place, `adu_0` line 244, i.e. by the fight object the
+  client builds *when it processes 8000*. A client that never entered fight mode has
+  no 8300 handler, so the absent dialog was an artefact of the test method, not a
+  server fault. The screenshots agree: they show arena scenery with no fighters, no
+  timeline and no fight HUD — the map had loaded from ENTER_INSTANCE and nothing more.
+
+  What still needs doing is a fight the client STARTS ITSELF (its own Tester button,
+  a demon it walks into, or a real match it accepts), then watching for the result
+  screen. B-095 and B-096 are both prerequisites for that dialog and are both real
+  faults on their own evidence, but neither has been shown to change what a player
+  sees.
+
+  *Confirmed live in passing:* the client's **calendar** renders the three standing
+  tournaments from the database across the month, so the 17003 path works end to end
+  in the real UI.
 
   Eliminated so far, each by reading the client and matching the server against it:
   the 8300 payload decodes (`YP.a` read field-by-field against our writer, including

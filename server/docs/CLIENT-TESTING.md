@@ -1,3 +1,39 @@
+# Client testing — notes
+
+## The client's own log is the fastest oracle
+
+`arena_client_log` tails `client/compiled/game/output.log`. That file is only
+useful because the MCP now spawns the client with its stdout and stderr
+redirected into it (`server.mjs`, `stdio: ["ignore", cliFd, cliFd]`). It used to
+spawn with `stdio: "ignore"`, and since the client's log4j has no file appender
+configured, **everything it said was discarded** — the log was permanently empty,
+and a client-side exception was indistinguishable from the server sending
+nothing at all.
+
+Read it first, because the client reports far more than it shows on screen:
+
+- `Unable to unserialize AbstractCoachCard : referenceCard not found : N` — a
+  card id the client's data does not contain, usually a wrong id space.
+- `[DEFAUT DE CONCEPTION] Message (X) non traité, de type N` — **the message
+  decoded, but no handler consumed it.** Easy to misread as a server bug: most
+  of the client's handlers are installed by a UI state, so this usually means
+  the client was not in the state that listens for that opcode.
+
+### An injected message is not the same as one the client asked for
+
+Most notably, the 8300 end-of-fight handler (`WE`) is registered in exactly one
+place — inside the fight object the client builds *when it processes 8000*.
+Injecting a fight into a client that never asked for one therefore yields
+"non traité" for **both** 8000 and 8300, no fight UI at all (just the arena
+scenery from ENTER_INSTANCE), and no result dialog — none of which indicates
+anything wrong with the server.
+
+So for anything gated behind a UI state — fights, exchanges, the end-of-fight
+dialog — drive the client's own flow, or bring in a second real participant (see
+the synthetic trade partner built on `internal/testclient` for B-093).
+
+---
+
 # E2E fight-test flakiness — diagnosis and current state
 
 The three full-fight e2e tests (`TestCombatSpellDamage`, `TestFighterMoveInFight`,
