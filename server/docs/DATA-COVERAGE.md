@@ -132,10 +132,15 @@ card's `CardSet` field. Each effect carries its own **threshold** (`akw_0.aAm()`
 entry's trailing byte): it applies once the coach has that many of the set's cards
 equipped. 138 sets, 88 effects, thresholds 2..10.
 
-The effects are `AI`-enum coach META bonuses. Only **resurrection** (10 effects) has a
-consumer in this server today and is wired up; XP (28), fatigue (9), morale (9),
-reputation (6), death chance (5) and wound-cancellation (4) are decoded and **inert** —
-each is blocked on its own unimplemented mechanic, not on the data.
+The effects are `AI`-enum coach META bonuses, and they are **all wired now** —
+resurrection (10), XP (28), fatigue (9), morale (9), reputation (6), death chance
+(5) and wound-cancellation (4) — through the post-fight meta pass (B-066) and its
+`sessionSetBonus`/`opposingSetBonus` lookups. An earlier revision of this
+document called everything but resurrection "decoded and **inert**"; that has not
+been true since B-066, and the death-chance five (AI 7/8, the *Sacrifice /
+Défense / Meurtre / Fair-play* cards) only started to matter in practice with
+B-097, which stopped an invented `HP <= 0 → dead` rule from pre-empting the roll
+they modify.
 
 ### Biggest gaps, by impact
 1. **902 fighter conditions (111 records)** — `[i16 id][i8 grade][i16 type][u8 n + gfx
@@ -355,6 +360,7 @@ server-side; the condition is recovered, the arbitration is ours (see B-074).
 
 | Date | Change |
 |---|---|
+| 2026-08-18 | Corrected the card-set effect status: the `AI` META bonuses are all wired (since B-066), not "inert bar resurrection". The death-chance five (AI 7/8) only became observable with B-097, which removed an invented `HP <= 0 → dead` rule that pre-empted the roll they modify. No decode change. |
 | 2026-08-10 | Recovered the full type-210 trigger enum from `he_1.a` / `aeb_0` and wired forced displacement into the enter trigger (B-076). 10002/10003/10006/10008 documented but still unimplemented; template 1016 can never fire here, and 1017/1018/1019 ship with empty trigger arrays. |
 | 2026-08-10 | Wired np_1 types 12 and 14 (B-074): fight-start effects and victory conditions now drive fights instead of being carried inert. Added target-condition bits 512/1024 (breed-is-zero), corrected the validator's provenance from `aap.a` to `aLc.a`, renamed the `mp_2` scalars to the client's own SQL column names, and documented the `qk_1` subtypes and the 913-930 parameter block. |
 | 2026-08-05 | Inline unlength-prefixed Ht effects parsed exactly; challenges now 39/39 with zero residual (B-073). |

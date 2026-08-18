@@ -853,7 +853,7 @@ off HP, so downing the loser would destroy fighters permanently).
 | Token reward + live wallet push | ✅ |
 | Challenge reward cards in the won-cards blob | ✅ |
 | Per-fighter post-fight report (40-byte blob ×N) | ✅ |
-| Evolution deaths persisted | 🟡 all downed fighters die; the retail per-fighter death *chance* is not modelled |
+| Evolution deaths persisted | ✅ the per-fighter death *chance* decides it (B-066); a KO is not a death (B-097) |
 | **Card staking / bets** | ⬜ fights carry a bet field, nothing is wagered; the lost-cards blob is hardcoded empty |
 
 ### 8.22 Spectating & reconnect ✅
@@ -1275,7 +1275,23 @@ is a signing certificate or SignPath); no published Docker image.
 
     This investigation is what turned up B-095 (the fight kind was in the wrong
     wire slot), which was a real bug hiding behind the "bet" field next to it.
-21. **Evolution per-fighter death chance** (currently: all downed fighters die).
+21. [x] **Evolution per-fighter death chance** — DONE, but the premise was
+    backwards. The chance was already modelled (B-066: `death%` =
+    `(totalXp/1000)²/100`, plus the 3-serious-wounds escalation). What was
+    actually wrong is that an **invented** `HP <= 0 → dead` override ran instead
+    of it, killing every downed fighter and pre-empting the roll for exactly the
+    fighters it mattered for. The client is unambiguous that a KO is not a
+    permanent death — `fightEndAchievementDeathDescriptionFailed` ("pas de
+    **mort définitive**") would be unreachable after a win otherwise. Fixed by
+    deletion (B-097), which also uncovered a second bug behind it: the roster
+    refresh was gated on a *downed* fighter existing, so a roll-death never
+    reached the client until relog.
+
+    **Newly blocked on:** opcode **23003** is unhandled, so an evolution fight
+    cannot be started from the retail client at all (see BUGS.md). Every
+    evolution fight to date has been harness-created. That makes the evolution
+    result dialog — the one that renders these deaths as tombstones — the next
+    thing to verify, once 23003 answers.
 22. 🟡 **Fusion** — **there is no recipe table; type 1100 is the ALTARS.** Decoded
     (4/4 fields: power / quality / slots): 30 tiered altars. The mechanic is a
     power check against a **player-chosen target**, and the client's own panel

@@ -807,7 +807,7 @@ func (d *Deps) checkFightEnd(f *Fight) {
 	}
 	// Coach META pass: XP / morale / fatigue per fighter + coach reputation. It
 	// must run BEFORE the packet is built, because its output IS part of 8300.
-	reports, standingByCoach, killed, injured := d.runPostFightMeta(f, winnerTeam)
+	reports, standingByCoach, killed, injured, diedByCoach := d.runPostFightMeta(f, winnerTeam)
 
 	// `standingWon` is a single scalar in 8300, so each coach must receive its
 	// own frame when the awards differ (they do: a win pays more than a loss).
@@ -854,11 +854,9 @@ func (d *Deps) checkFightEnd(f *Fight) {
 		f.broadcast(end)
 	}
 
-	// Evolution mode: a fighter that fell to 0 HP dies for good. Persist those
-	// deaths and push the refreshed roster so the graveyard fills from real play.
-	if f.Evolution {
-		d.persistEvolutionDeaths(f)
-	}
+	// Whoever the post-fight roll actually killed needs a roster refresh, so the
+	// graveyard fills from real play.
+	d.announceDeaths(f, diedByCoach)
 
 	f.setPhase(PhaseEnded)
 	f.stopClock()
@@ -868,42 +866,35 @@ func (d *Deps) checkFightEnd(f *Fight) {
 	d.Log.Info("fight ended", "id", f.ID, "winnerTeam", winnerTeam)
 }
 
-// persistEvolutionDeaths marks every fighter that fell to 0 HP in an evolution
-// fight as DEAD (state 2), persists it, and pushes the refreshed roster (6006) to
-// its online coach. This is the only path that fills the graveyard from real play
-// (state 2→3 burial and 2→0 resurrection are the player's own actions).
+// announceDeaths pushes the refreshed roster (6006) to every coach the post-fight
+// roll killed someone from, so the client's in-memory fighter list picks up the
+// new state and the graveyard fills from real play (state 2→3 burial and 2→0
+// resurrection are the player's own actions afterwards).
 //
-// Rules (from the client's evolution end-fight path): both sides' downed fighters
-// can die — we take the minimal-correct "all downed fighters die" (the retail
-// per-fighter death-CHANCE, modifiable by effect-7 cards, is not modelled). Only
-// real persisted fighters count: synthetic opponents (sparring dummy, challenge
-// demons) have no DB row and no real coach, so they are skipped.
+// It does NOT decide who dies and it does NOT persist anything: `runPostFightMeta`
+// already ran the client-exact roll and banked the result through SaveProgress,
+// which writes `state`. This used to be a second, independent pass that killed
+// every fighter at 0 HP — see `deathIsRolledNotDealt` for why that was wrong
+// (B-097). Being the one that pushed the roster, it also gated that push on a
+// DOWNED fighter existing, so a fighter killed by the roll alone never triggered
+// a refresh and stayed alive on screen until relog. Keying the push off the roll
+// fixes both halves.
 //
 // Fighters land in state 2 (dead), NOT 3 (graveyard); the client shows them as
 // "dead but present" until the player buries (23000) or resurrects (22099) them.
-func (d *Deps) persistEvolutionDeaths(f *Fight) {
-	if d.Store == nil {
+func (d *Deps) announceDeaths(f *Fight, diedByCoach map[uint][]string) {
+	if f == nil || len(diedByCoach) == 0 {
 		return
 	}
 	for _, t := range f.Teams {
 		if t == nil || t.Coach == nil || isSyntheticCoach(t.Coach.ID) {
 			continue
 		}
-		var dead []string
-		for _, ff := range t.Fighters {
-			if ff.HP > 0 || ff.Fighter == nil || ff.Fighter.ID == 0 {
-				continue // survived, or a synthetic/placeholder fighter with no DB row
-			}
-			if err := d.Store.Fighters.SetState(ff.Fighter.ID, domain.FighterStateDead); err != nil {
-				d.Log.Warn("persist fight death", "fighter", ff.Fighter.ID, "err", err)
-				continue
-			}
-			dead = append(dead, ff.Fighter.Name)
-		}
+		dead := diedByCoach[t.Coach.ID]
 		if len(dead) == 0 {
 			continue
 		}
-		d.Log.Info("evolution fight deaths", "coach", t.Coach.Name, "dead", dead)
+		d.Log.Info("fight deaths", "coach", t.Coach.Name, "dead", dead)
 		if t.Session != nil {
 			_ = t.Session.pushFighterList() // 6006: the client applies the new states
 		}

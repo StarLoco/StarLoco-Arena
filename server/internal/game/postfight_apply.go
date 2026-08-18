@@ -12,8 +12,6 @@ package game
 import (
 	"math/rand"
 	"time"
-
-	"github.com/StarLoco/arena-2.70/internal/domain"
 )
 
 // AI-enum action ids that this META pass consumes. The full list lives in the
@@ -53,19 +51,56 @@ const baseXPPerFight int32 = 100
 // multiplier. Not used yet — recorded here so the next person does not re-derive
 // it. See docs/DATA-COVERAGE.md.
 
+// deathIsRolledNotDealt records WHY being downed does not kill a fighter, since
+// the opposite is the intuitive guess and was what this server did until B-097.
+//
+// Permanent death in evolution mode is a per-fighter PROBABILITY, computed from
+// that fighter's own lifetime XP (`adl_0.atd()`: death% = (totalXp/1000)²/100)
+// and spent at the end of the fight. It has no HP input anywhere. Four
+// independent pieces of the client say a KO is not a death:
+//
+//   - `fightEndAchievementDeathDescriptionFailed` — "vous n'avez pas occasionné
+//     de MORT DÉFINITIVE chez les combattants adverses". You down the enemy team
+//     to win, so if downing killed, this string could never be shown after a win.
+//     The client also distinguishes the two words: `fight.die` ("[#1] est mort")
+//     is the in-fight KO, "mort définitive" is the permanent one.
+//   - `content.29.301` — "et un grand nombre de BLESSURES peut provoquer la
+//     mort". Death is the terminal stage of an injury/fatigue chain, reached
+//     over many fights, not the consequence of one knockdown.
+//   - `bf_1.b` (the wound roller) kills only on an upgrade roll landing while the
+//     fighter ALREADY holds 3 serious wounds — again cumulative, never HP-driven.
+//   - Opcode 4520 `FighterDiesMessage` (`cd_2`) carries a bare fighter id and no
+//     permanence flag, and NO client code links HP==0 to `isDead()`/state 2.
+//
+// So the two real death paths — the quadratic XP roll and the 3-serious-wounds
+// escalation — are both already implemented (B-066), and the HP<=0 override we
+// used to run on top of them was invented, not derived. It fired for exactly the
+// fighters most likely to be affected and hid the modelled mechanic completely.
+//
+// HONEST LIMIT: `adl_0.atd()` and `bf_1.b` have no callers in the client (they
+// are server logic shipped inside core.jar), so we cannot prove from the client
+// whether retail ran the roll for every fielded fighter or gated it on some
+// participation test. We roll for every fielded fighter. What the evidence does
+// settle is that a KO does not REPLACE the roll with certain death.
+const deathIsRolledNotDealt = true
+
 // runPostFightMeta produces the per-fighter debrief reports for a finished fight
 // and applies their results. Returns the reports (wire-ready), the reputation
-// each coach won, and the killed/injured tallies for the achievement counters.
+// each coach won, the killed/injured tallies for the achievement counters, and
+// the fighters this fight actually KILLED, per coach — the caller uses that last
+// one to refresh the affected rosters.
 //
 // Practice and challenge fights are excluded: they must not feed progression (the
 // client says as much for time challenges — "tu n'auras pas de fatigue ni de
 // blessure ou de mort dans un défi du temps").
 func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
-	reports []endFightReport, standingByCoach map[uint]int32, killed, injured uint8) {
+	reports []endFightReport, standingByCoach map[uint]int32, killed, injured uint8,
+	diedByCoach map[uint][]string) {
 
 	standingByCoach = map[uint]int32{}
+	diedByCoach = map[uint][]string{}
 	if f == nil || !fightFeedsProgression(f) {
-		return nil, standingByCoach, 0, 0
+		return nil, standingByCoach, 0, 0, diedByCoach
 	}
 	now := time.Now().Unix()
 	rng := f.rngSource()
@@ -140,12 +175,11 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 				rep.addTiredness(int8(tirednessMod))
 				rep.finaliseTiredness()
 			}
-			// 6. Wounds and death. A fighter the FIGHT already killed skips the
-			//    roll — it cannot be hurt twice — but is still reported dead.
-			if f.Evolution && ff.HP <= 0 {
-				rep.dead = true
-				fr.State = domain.FighterStateDead
-			} else if d.Conditions != nil {
+			// 6. Wounds and death. Every fielded fighter takes the SAME roll,
+			//    whether it finished the fight standing or at 0 HP: falling in
+			//    the fight is a KO, not a death. See the block comment above
+			//    `deathIsRolledNotDealt` for why.
+			if d.Conditions != nil {
 				rep.rollInjuryChances(fr.TotalXP, rng)
 				// Card/set modifiers shift the chances, guarded exactly as the
 				// client guards them: `jT` only applies once the roll happened,
@@ -165,6 +199,7 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 			}
 			if rep.dead {
 				killed++
+				diedByCoach[t.Coach.ID] = append(diedByCoach[t.Coach.ID], fr.Name)
 			}
 			if rep.woundID != 0 {
 				injured++
@@ -215,7 +250,7 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 		d.Log.Info("post-fight meta", "fight", f.ID, "reports", len(reports),
 			"killed", killed, "injured", injured, "standing", standingByCoach)
 	}
-	return reports, standingByCoach, killed, injured
+	return reports, standingByCoach, killed, injured, diedByCoach
 }
 
 // fightFeedsProgression decides whether a finished fight runs the META pass.

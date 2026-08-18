@@ -13,6 +13,61 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
+### Opcode 23003 is unhandled, so an EVOLUTION fight cannot be started at all
+
+Found by driving the retail client's own UI: team panel → Evolution tab →
+**COMBATTRE**. The client passes its local checks and then sends
+
+```
+level=INFO msg="unhandled opcode" opcode=23003 arch=2 len=10
+```
+
+and sits there. No error, no fight, nothing further on the wire. **Every
+evolution fight this server has ever run was created by the test harness**; the
+mode the whole progression system exists for has never been reachable from the
+retail client.
+
+`ajw_0` (23003, C2S) is 10 bytes — `{i64, i16}` — and all four of its call sites
+are character-for-character identical:
+
+```java
+apN.aDK().a(do_2.Mm());                  // waiting/loading screen
+ajw_0 m = new ajw_0();
+m.aj(apN.aDK().Ln().getId());            // i64 = this coach's own id
+m.C((short)99);                          // i16 = 99, hardcoded at ALL FOUR sites
+apN.aDK().vJ().b(m);
+apN.aDK().b(nb_0.aaI());                 // then move to the next screen
+```
+
+(`aor_2:18`, `nb_0:571`, `hu_2:556`, and — note — `WE:105`, the END_FIGHT handler
+itself, which re-sends it when `sj_13.yQ()` is set.) The reply is **23004**
+`amh_0` (S2C), `{i16, bool}` — the same i16 back, plus an accepted flag.
+
+So this is the opponent-search / queue request, and the constant 99 is the mode.
+The fact that `WE` re-sends it on fight end suggests one queue slot re-armed
+after each match rather than a one-shot.
+
+Two client-side gates sit in front of it, both worth knowing because they make
+this awkward to reach by hand (both were hit in this order while testing):
+
+1. **≥ 5000 budget points** across the fielded team — *"Les démons des heures
+   aiment voir de jolis combats. Ce n'est pas avec si peu de budget que tu vas
+   les amuser…"*. Budget is `breed base (400) + Σ FIGHTER-card values`, and a
+   fighter has only 2 card slots, so this needs a full 6-fighter team; 3 maxed
+   fighters cannot reach it.
+2. **Breed diversity** — *"Ton équipe contient trop de combattants de même
+   race"*.
+
+That first message naming *les démons* is the strongest hint at what the server
+owes: evolution COMBATTRE looks like PvE against a demon team, not player
+matchmaking — which would make it very close to the challenge-fight path we
+already have.
+
+**Next step:** decode `sj_13.yQ()` / mode 99, answer 23004, and build the
+opponent. Until then the evolution end-of-fight dialog
+(`fightResultEvolutionDialog`, the one with the tombstones) remains unverified
+against a real client, because no evolution fight can be started to produce it.
+
 ### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
 The wrong-namespace half is fixed (B-088). The remaining question was what should
@@ -107,6 +162,76 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-097 - being knocked out in an evolution fight killed the fighter for good
+
+**Symptom.** Every fighter that finished an evolution fight at 0 HP was written
+to the database as permanently dead (state 2) - on the winning side too. The
+modelled per-fighter death *chance* (B-066) therefore almost never decided
+anything, because it was skipped for exactly the fighters most likely to be
+affected.
+
+**Root cause.** Two independent passes, neither of them derived from the client:
+
+```go
+// postfight_apply.go - the meta pass, per fighter
+if f.Evolution && ff.HP <= 0 {
+    rep.dead = true                       // skips the roll entirely
+    fr.State = domain.FighterStateDead
+} else if d.Conditions != nil { ... }     // the client-exact roll lives here
+
+// handlers_fight_combat.go - a SECOND unconditional sweep, after the first
+for _, ff := range t.Fighters {
+    if ff.HP > 0 { continue }
+    d.Store.Fighters.SetState(ff.Fighter.ID, domain.FighterStateDead)
+}
+```
+
+The comment on the first (*"a fighter the FIGHT already killed... cannot be hurt
+twice"*) reads like a derivation but is invented: nothing in the client links
+HP to permanent death. B-043 introduced it honestly as a placeholder
+(*"minimal-correct"*), and it then outlived the mechanic that replaced it.
+
+**What the client actually says.** Permanent death is a per-fighter probability
+computed from that fighter's own lifetime XP (`adl_0.atd()`:
+`death% = (totalXp/1000)²/100`), with no HP input anywhere:
+
+- `fightEndAchievementDeathDescriptionFailed` - *"vous n'avez pas occasionné de
+  **mort définitive** chez les combattants adverses"*. You down the enemy team to
+  win, so this string could never appear after a win if downing killed. The
+  client also keeps the two words apart: `fight.die` (*"[#1] est mort"*) is the
+  in-fight KO; *"mort définitive"* is the permanent one.
+- `content.29.301` - *"et un **grand nombre de blessures** peut provoquer la
+  mort"*: death is the end of an injury/fatigue chain built up over many fights.
+- `bf_1.b` kills only when an upgrade roll lands on a fighter already holding 3
+  serious wounds - cumulative, never HP-driven.
+- Opcode 4520 `FighterDiesMessage` (`cd_2`) carries a bare fighter id and no
+  permanence flag, and **no client code links `HP == 0` to `isDead()`/state 2**.
+
+**Fix.** Delete the override; every fielded fighter takes the same roll. The
+second sweep no longer decides or persists anything either - `runPostFightMeta`
+already banks the result through `SaveProgress`, which writes `state` - so it is
+now `announceDeaths`, whose only job is the 6006 roster refresh.
+
+That rename fixed a **second bug hiding inside the first**: being the code that
+pushed the roster, it gated the push on *a downed fighter existing*. A fighter
+killed by the roll alone (i.e. every death that will now actually happen) never
+triggered a refresh and stayed alive on the player's screen until relog. The
+push is now keyed off who the roll killed.
+
+`deathIsRolledNotDealt` in `postfight_apply.go` carries the evidence, including
+the honest limit: `adl_0.atd()` and `bf_1.b` have no callers in the client (they
+are server logic shipped inside `core.jar`), so we cannot prove whether retail
+gated the *roll* on participation. What the evidence settles is that a KO does
+not replace the roll with certain death.
+
+**Verified** `unit` - `TestDownedFighterIsNotKilled` (a downed rookie survives,
+death% being 0 at TotalXP 0) and `TestVeteranDiesFromTheRoll` (a fighter at 100%
+death chance dies *while standing at full HP* - the dead one is the untouched
+fighter and the survivor is the one who hit the floor, which is the whole point).
+`TestDeathIsReportedForTheRosterPush` covers the push keying. All three were
+mutation-tested: reinstating the old `HP <= 0` branch fails them with the exact
+diagnostics quoted above.
 
 ### B-096 - END_FIGHT's per-fighter reports were keyed in the wrong id space
 

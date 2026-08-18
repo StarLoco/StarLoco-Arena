@@ -210,6 +210,14 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23114 | MatchAccept | C2S | ✓ | A | — | ✓ |
 | 2308 | MatchAcceptAlt | C2S | ✓ | A | — | — |
 | 23116 | MatchConfirm | S2C | ✓ | — | — | — |
+| 23003 | `ajw_0` — evolution COMBATTRE | C2S | **—** | A (`{i64 coachId, i16 = 99}`) | — | — |
+| 23004 | `amh_0` — its reply | S2C | **—** | A (`{i16, bool}`) | — | — |
+
+**23003 is the gap that blocks evolution mode entirely.** The retail client sends
+it from the team panel's Evolution → COMBATTRE, gets no answer and waits forever,
+so no evolution fight has ever been startable from the real client — every one to
+date was harness-created. All four call sites hardcode the i16 to 99, and `WE`
+(the END_FIGHT handler) re-sends it on fight end. See BUGS.md → Open.
 
 ## Fight lifecycle & combat
 
