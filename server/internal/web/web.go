@@ -56,7 +56,7 @@ type Live struct {
 	// the client, so an admin must not be able to save one.
 	TournamentDefs *gamedata.Tournaments
 	// TournamentRegistrations reports how many coaches have signed up for a
-	// tournament, by wire id. Registrations live in memory in the game process,
+	// tournament, by wire id. Registrations are cached in the game process,
 	// so the portal cannot query them directly.
 	TournamentRegistrations func(wireID int64) int
 }

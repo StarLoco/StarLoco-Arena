@@ -50,6 +50,29 @@ type Tournament struct {
 
 func (Tournament) TableName() string { return "tournaments" }
 
+// TournamentRegistration is one coach's entry into one standing tournament.
+//
+// Keyed by the tournament's WIRE id rather than its row id, because that is what
+// the client sends in 4607 and what every reply is keyed by. The wire id is
+// derived from the row id (see WireID), so it is stable across restarts — which
+// is precisely what makes storing it safe.
+//
+// This used to live only in memory, so every restart silently un-registered
+// everyone (B-101).
+// The field is deliberately named for what it holds — the WIRE id, not the
+// tournament row id — because the two differ by TournamentWireBase and confusing
+// them would silently register people for the wrong thing.
+type TournamentRegistration struct {
+	ID      uint `gorm:"primaryKey"`
+	CoachID uint `gorm:"index;not null;uniqueIndex:idx_tourn_reg_coach_tid"`
+
+	TournamentWireID int64 `gorm:"index;not null;uniqueIndex:idx_tourn_reg_coach_tid"`
+
+	CreatedAt time.Time
+}
+
+func (TournamentRegistration) TableName() string { return "tournament_registrations" }
+
 // TournamentWireBase keeps synthetic tournament handles clear of coach and
 // fighter wire ids. The value only has to be stable, unique and non-zero.
 //

@@ -114,6 +114,48 @@ belongs to the coach.
 
 ## Fixed
 
+### B-101 - every restart silently un-registered everyone from every tournament
+
+`TournamentManager` held registrations in a plain `map[uint]map[int64]bool` and
+nothing else. A player signed up, the server bounced, and their entry was gone —
+no message, no trace, and the client happily showed the "S'inscrire" button again
+as though they had never registered. The web console had to apologise for it in
+the UI.
+
+**Fix.** A `tournament_registrations` table keyed by `(coach_id,
+tournament_wire_id)` with a unique index, written through on register/unregister
+and loaded into the same in-memory cache at boot. The manager takes the store as a
+small interface and is nil-tolerant, so unit tests and any store-less dev run
+behave exactly as before. `Unregister` is new (nothing called it, but persisting
+only half the transition would have been a trap for whoever adds withdrawal).
+
+Keyed by the **wire** id, not the row id, because that is what the client sends in
+4607 and what everything else is keyed by. That is only safe because
+`Tournament.WireID()` derives from the row id and is stable across restarts — and
+it is why `TournamentRepo.Delete` now purges a tournament's registrations: they
+have no foreign key, so they would otherwise survive as orphans and then be
+inherited by whatever row later reused that id. The domain field is named
+`TournamentWireID` rather than `TID` to keep the two id spaces from being confused.
+
+**A fake store hid a real bug, and the real-DB test caught it.** The manager tests
+run against an in-process fake, which passed immediately. The store test against a
+temp database failed with `no such column: tid` — gorm maps a field named `TID` to
+`t_id`, so every query was wrong. The manager had been tested against itself; only
+the repo test touched actual SQL. Same lesson as the exchange block (B-093), which
+is why both layers now have their own tests.
+
+**Verified** `unit` (write-through, load-back across a simulated restart,
+idempotent register, persisted unregister, nil-store fallback) + `store` (real
+round-trip, idempotency against the unique index, and delete-purges-registrations).
+Mutation-checked: dropping the write-through, and dropping the purge in `Delete`,
+each fail their own test.
+
+**Verified** `live`: registered for "Tournoi 1v1 Classique" from the retail
+client's calendar (`tournament register tid=2600001 code=0`), restarted the
+server — `tournament registrations restored count=1` — and re-opened the same
+tournament, where the client now reads **"Vous êtes inscrit au premier tour"**
+instead of offering the register button.
+
 ### B-100 - the TOURNAMENT "Combattre" was also unanswered; refused visibly
 
 The third and last member of the pattern (client frame `ds_2`, twin of `vu_1` /

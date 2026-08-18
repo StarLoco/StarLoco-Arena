@@ -257,7 +257,117 @@ func TestTournamentListReportsClosedRegistration(t *testing.T) {
 	}
 }
 
-// TestTournamentManagerRegister covers the in-memory registration tracker:
+// fakeRegStore is an in-process stand-in for the registration store, so the
+// write-through and load-back paths can be tested without a database.
+type fakeRegStore struct {
+	rows    []domain.TournamentRegistration
+	addErr  error
+	loadErr error
+}
+
+func (f *fakeRegStore) ListRegistrations() ([]domain.TournamentRegistration, error) {
+	return f.rows, f.loadErr
+}
+
+func (f *fakeRegStore) AddRegistration(coachID uint, tid int64) error {
+	if f.addErr != nil {
+		return f.addErr
+	}
+	for _, r := range f.rows {
+		if r.CoachID == coachID && r.TournamentWireID == tid {
+			return nil
+		}
+	}
+	f.rows = append(f.rows, domain.TournamentRegistration{CoachID: coachID, TournamentWireID: tid})
+	return nil
+}
+
+func (f *fakeRegStore) RemoveRegistration(coachID uint, tid int64) error {
+	out := f.rows[:0]
+	for _, r := range f.rows {
+		if r.CoachID == coachID && r.TournamentWireID == tid {
+			continue
+		}
+		out = append(out, r)
+	}
+	f.rows = out
+	return nil
+}
+
+// TestTournamentRegistrationSurvivesRestart is the B-101 guard: a registration
+// must be written through to the store and come back when a fresh manager is
+// built from it. Before this, every restart silently un-registered everybody.
+func TestTournamentRegistrationSurvivesRestart(t *testing.T) {
+	st := &fakeRegStore{}
+	tid := testTournaments()[0].WireID()
+	const coach = uint(9)
+
+	first, err := NewTournamentManagerWithStore(st)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !first.Register(coach, tid) {
+		t.Fatal("first Register returned false")
+	}
+	if len(st.rows) != 1 {
+		t.Fatalf("store holds %d rows, want 1 — the registration was not written "+
+			"through, so a restart would lose it", len(st.rows))
+	}
+
+	// "Restart": a brand-new manager over the same store.
+	second, err := NewTournamentManagerWithStore(st)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if !second.IsRegistered(coach, tid) {
+		t.Error("registration did not survive the restart")
+	}
+	if second.Loaded() != 1 {
+		t.Errorf("Loaded() = %d, want 1", second.Loaded())
+	}
+	if second.CountFor(tid) != 1 {
+		t.Errorf("CountFor = %d, want 1", second.CountFor(tid))
+	}
+}
+
+// TestTournamentUnregisterIsPersisted: withdrawing must also reach the store, or
+// a restart would resurrect a registration the player cancelled.
+func TestTournamentUnregisterIsPersisted(t *testing.T) {
+	st := &fakeRegStore{}
+	tid := testTournaments()[0].WireID()
+	const coach = uint(9)
+
+	tm, _ := NewTournamentManagerWithStore(st)
+	tm.Register(coach, tid)
+	if !tm.Unregister(coach, tid) {
+		t.Fatal("Unregister returned false for a live registration")
+	}
+	if tm.Unregister(coach, tid) {
+		t.Error("second Unregister should return false (idempotent)")
+	}
+	if len(st.rows) != 0 {
+		t.Errorf("store still holds %d rows after unregister", len(st.rows))
+	}
+	if again, _ := NewTournamentManagerWithStore(st); again.IsRegistered(coach, tid) {
+		t.Error("a cancelled registration came back after restart")
+	}
+}
+
+// TestTournamentManagerWithoutStoreStillWorks: the store is optional, and a
+// manager built without one must behave exactly as the old in-memory tracker did
+// (unit tests and any store-less dev run depend on it).
+func TestTournamentManagerWithoutStoreStillWorks(t *testing.T) {
+	tm, err := NewTournamentManagerWithStore(nil)
+	if err != nil {
+		t.Fatalf("nil store returned an error: %v", err)
+	}
+	tid := testTournaments()[0].WireID()
+	if !tm.Register(1, tid) || !tm.IsRegistered(1, tid) {
+		t.Error("registration does not work without a store")
+	}
+}
+
+// TestTournamentManagerRegister covers the registration tracker:
 // Register is idempotent and IsRegistered reflects it.
 func TestTournamentManagerRegister(t *testing.T) {
 	tm := NewTournamentManager()

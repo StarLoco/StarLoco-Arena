@@ -969,11 +969,14 @@ Working: the calendar (17002/17003), the list (28601/28602), registration
 always open, referencing real client definition ids (chosen so registration always
 completes — a fake id would crash the client).
 
-Missing: record types 1000 (22 real definitions) and 1001 (4 level lists) are not
-decoded; there is no bracket, no scheduled match, no prize table, no tournament
-points; registrations are process-lived and reset on restart. The whole
-**live-match layer** (opponent search, scheduling, bracket progression, rewards)
-is deferred — it needs many coaches and wall-clock scheduling.
+Since done: types 1000/1001 are decoded (item 23), registrations are persisted
+(B-101), and the opponent-search opcodes 28609/28611 are answered — refused
+visibly with the client's own "impossible to start the search" rather than left
+silent (B-100).
+
+Missing: there is no bracket, no scheduled match, no prize table and no tournament
+points. The rest of the **live-match layer** (scheduling, bracket progression,
+rewards) is deferred — it needs many coaches and wall-clock scheduling.
 
 ### Ladder / ranking — 7 tabs 🟡
 
@@ -1324,9 +1327,13 @@ is a signing certificate or SignPath); no published Docker image.
     retail client (3 → 4), hiding one took it away again (→ 3), and the
     client logged no decode errors throughout.
 
-    Still deferred (unchanged): the live-match layer — opponent search
-    28609/28611, brackets, scheduled fights and rewards. Registrations remain
-    in-memory and reset on restart, which the console says on the page.
+    Registrations are now persisted and restored on boot (B-101) — they used to
+    be process-lived, so every restart silently un-registered everybody. The
+    opponent-search opcodes 28609/28611 are answered too, refusing visibly rather
+    than going silent (B-100).
+
+    Still deferred: brackets, scheduled fights and rewards — i.e. turning that
+    refusal into a real fixture. See item 32.
 24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and
     retire the hand-transcribed table.
 25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)

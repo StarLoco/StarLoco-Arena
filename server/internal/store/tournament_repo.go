@@ -80,7 +80,45 @@ func (r *TournamentRepo) Delete(id uint) error {
 	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
-	return nil
+	// Registrations are keyed by WIRE id and have no FK, so they would otherwise
+	// outlive the tournament as orphans — and, because the wire id is derived
+	// from the row id, be inherited by whatever row reused that id later.
+	return r.DeleteRegistrationsFor(domain.TournamentWireBase + int64(id))
+}
+
+// --- registrations ---
+//
+// Keyed by the tournament's WIRE id: that is what the client sends in 4607 and
+// what the manager caches, and it is stable across restarts because it is derived
+// from the row id.
+
+// ListRegistrations returns every stored registration, for loading the in-memory
+// cache at startup.
+func (r *TournamentRepo) ListRegistrations() ([]domain.TournamentRegistration, error) {
+	var out []domain.TournamentRegistration
+	err := r.db.Find(&out).Error
+	return out, err
+}
+
+// AddRegistration records one coach's entry, idempotently: the (coach, tid) pair
+// carries a unique index, and a duplicate insert is not an error here because the
+// caller has usually already decided the registration is new.
+func (r *TournamentRepo) AddRegistration(coachID uint, tid int64) error {
+	reg := domain.TournamentRegistration{CoachID: coachID, TournamentWireID: tid}
+	return r.db.Where("coach_id = ? AND tournament_wire_id = ?", coachID, tid).
+		FirstOrCreate(&reg).Error
+}
+
+// RemoveRegistration withdraws one coach from one tournament.
+func (r *TournamentRepo) RemoveRegistration(coachID uint, tid int64) error {
+	return r.db.Where("coach_id = ? AND tournament_wire_id = ?", coachID, tid).
+		Delete(&domain.TournamentRegistration{}).Error
+}
+
+// DeleteRegistrationsFor drops every registration for one tournament.
+func (r *TournamentRepo) DeleteRegistrationsFor(tid int64) error {
+	return r.db.Where("tournament_wire_id = ?", tid).
+		Delete(&domain.TournamentRegistration{}).Error
 }
 
 // Count returns how many tournaments exist.

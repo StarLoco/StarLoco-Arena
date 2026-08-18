@@ -376,6 +376,20 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 	mm := game.NewMatchmaker()
 	mm.SetRatingBand(int32(cfg.World.MatchBand), int32(cfg.World.MatchBandGrowth))
 
+	// Tournament registrations are persisted, so restore them before serving:
+	// they used to live only in memory and vanish on every restart (B-101).
+	var tm *game.TournamentManager
+	if st != nil {
+		var err error
+		if tm, err = game.NewTournamentManagerWithStore(st.Tournaments); err != nil {
+			log.Warn("tournament registrations failed to load", "err", err)
+		} else if n := tm.Loaded(); n > 0 {
+			log.Info("tournament registrations restored", "count", n)
+		}
+	} else {
+		tm = game.NewTournamentManager()
+	}
+
 	return &game.Deps{
 		Store:          st,
 		World:          game.NewRegistry(cfg.World.AoIRadius),
@@ -396,7 +410,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		Challenges:     game.NewChallengeManager(),
 		Fights:         game.NewFightManager(),
 		Sessions:       game.NewSessionRegistry(),
-		Tournaments:    game.NewTournamentManager(),
+		Tournaments:    tm,
 		Log:            log,
 	}, loc
 }

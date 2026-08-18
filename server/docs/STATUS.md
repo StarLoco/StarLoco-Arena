@@ -159,8 +159,11 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    unknown definition id NPEs the retail client, so an admin cannot save one.
    Verified live: created a tournament in the browser and watched a connected retail
    client go 3 → 4 → 3 as it was added and hidden, with no decode errors.
-   The live-match layer (opponent search 28609/28611, brackets, rewards) remains
-   deferred by the user; registrations are still in-memory and reset on restart.
+   Registrations are persisted and restored on boot (B-101) — they used to vanish
+   on every restart. The opponent-search opcodes 28609/28611 are answered as well,
+   refusing visibly instead of leaving the client on a silent screen (B-100).
+   Still deferred by the user: brackets, scheduling and rewards, i.e. turning that
+   refusal into a real fixture.
 7. **Sphere Board** (types 900/901, 17 542 records) — largest unimplemented system.
 8. **2v2 / multi-coach fights** — deferred by the user.
 8. ~~**e2e residual flake**~~ — **fixed** (B-064): the tests assumed "client A == side 0",

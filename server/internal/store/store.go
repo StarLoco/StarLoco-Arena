@@ -115,6 +115,7 @@ func OpenConfig(c Config) (*Store, error) {
 		&domain.Mail{},
 		&domain.MailCard{},
 		&domain.Tournament{},
+		&domain.TournamentRegistration{},
 	); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}

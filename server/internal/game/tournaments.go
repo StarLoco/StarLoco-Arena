@@ -49,34 +49,116 @@ const (
 	tournamentCoachFirstRound    int8 = 3
 )
 
-// TournamentManager records which coaches have registered for which standing
-// tournaments. It is process-lived (not persisted): registrations survive a relog
-// within one server run but reset on restart, which is acceptable while the
-// live-match layer is deferred. Thread-safe.
-type TournamentManager struct {
-	mu  sync.Mutex
-	reg map[uint]map[int64]bool // coachID -> set of registered tournament ids
+// tournamentRegistrationStore is the slice of the store the manager needs. Kept
+// as an interface so the manager can be built without a database (unit tests, and
+// any dev run without a store) and so this file does not depend on the store
+// package.
+type tournamentRegistrationStore interface {
+	ListRegistrations() ([]domain.TournamentRegistration, error)
+	AddRegistration(coachID uint, tid int64) error
+	RemoveRegistration(coachID uint, tid int64) error
 }
 
-// NewTournamentManager returns an empty registration tracker.
+// TournamentManager records which coaches have registered for which standing
+// tournaments, cached in memory and written through to the store. Thread-safe.
+//
+// It used to be process-lived only, which meant every restart silently
+// un-registered everybody — the player saw themselves signed up, the server
+// bounced, and their entry was gone with no message (B-101). Registrations are
+// keyed by the tournament's WIRE id, which is derived from its row id and so is
+// stable across restarts; that is what makes persisting them meaningful.
+//
+// The store is optional: with none, the manager behaves exactly as it used to.
+type TournamentManager struct {
+	mu    sync.Mutex
+	reg   map[uint]map[int64]bool // coachID -> set of registered tournament wire ids
+	store tournamentRegistrationStore
+}
+
+// NewTournamentManager returns an empty, non-persisting registration tracker.
 func NewTournamentManager() *TournamentManager {
 	return &TournamentManager{reg: make(map[uint]map[int64]bool)}
+}
+
+// NewTournamentManagerWithStore returns a tracker primed from the store and
+// writing through to it. A load failure is returned rather than swallowed: an
+// operator restarting into an empty tournament list should hear about it, not
+// discover it from players.
+func NewTournamentManagerWithStore(s tournamentRegistrationStore) (*TournamentManager, error) {
+	m := &TournamentManager{reg: make(map[uint]map[int64]bool), store: s}
+	if s == nil {
+		return m, nil
+	}
+	regs, err := s.ListRegistrations()
+	if err != nil {
+		return m, err
+	}
+	for _, r := range regs {
+		set := m.reg[r.CoachID]
+		if set == nil {
+			set = make(map[int64]bool)
+			m.reg[r.CoachID] = set
+		}
+		set[r.TournamentWireID] = true
+	}
+	return m, nil
+}
+
+// Loaded reports how many registrations are held, for the startup log.
+func (m *TournamentManager) Loaded() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, set := range m.reg {
+		n += len(set)
+	}
+	return n
 }
 
 // Register marks coachID as registered for tid. It is idempotent; the return value
 // reports whether this call was the one that added the registration.
 func (m *TournamentManager) Register(coachID uint, tid int64) bool {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	set := m.reg[coachID]
 	if set == nil {
 		set = make(map[int64]bool)
 		m.reg[coachID] = set
 	}
 	if set[tid] {
+		m.mu.Unlock()
 		return false
 	}
 	set[tid] = true
+	store := m.store
+	m.mu.Unlock()
+
+	// Write through outside the lock: the store call can block, and nothing else
+	// needs to observe the registration atomically with its persistence.
+	if store != nil {
+		_ = store.AddRegistration(coachID, tid)
+	}
+	return true
+}
+
+// Unregister withdraws coachID from tid. Idempotent; reports whether anything was
+// actually removed.
+func (m *TournamentManager) Unregister(coachID uint, tid int64) bool {
+	m.mu.Lock()
+	set := m.reg[coachID]
+	if !set[tid] {
+		m.mu.Unlock()
+		return false
+	}
+	delete(set, tid)
+	if len(set) == 0 {
+		delete(m.reg, coachID)
+	}
+	store := m.store
+	m.mu.Unlock()
+
+	if store != nil {
+		_ = store.RemoveRegistration(coachID, tid)
+	}
 	return true
 }
 
