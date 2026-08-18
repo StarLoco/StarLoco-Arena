@@ -211,7 +211,7 @@ lists.
 | Coach movement (4501 → 4500) | ✅ | |
 | Area-of-interest scoping | ✅ | Bilateral `known` sets, spawn/despawn on boundary crossing, configurable radius |
 | Actor spawn/despawn (4096 / 4098) | ✅ | 16 missing bytes fixed during the audit |
-| Interactive elements (201) | 🟡 | **132 elements across 15 kinds, hand-transcribed** from the env jars (record type 360 not decoded) |
+| Interactive elements (201) | 🟡 | **139 elements across 15 kinds, hand-transcribed** from the env jars. Reproducible from `maps/env/*.jar` (verified 139/139 on instanceId + kind), but `alt` is not in them - see item 24 |
 | Zaap network (4512) | 🟡 | 12 destinations **hand-mapped**; clan-island card unrouted (`TODO(clan)`); 6 unreleased placeholder cards deliberately unrouted |
 | Fireworks (22095 → 22094) | ✅ | Echoed to launcher + nearby sessions |
 | Direction change (4521 → 4522) | ✅ | Cosmetic only — 2.70 dropped directional damage |
@@ -1334,8 +1334,44 @@ is a signing certificate or SignPath); no published Docker image.
 
     Still deferred: brackets, scheduled fights and rewards — i.e. turning that
     refusal into a real fixture. See item 32.
-24. **Interactive elements from data** — decode type 360 + `maps/env/*.jar` and
-    retire the hand-transcribed table.
+24. ⚠️ **Interactive elements from data** — **restated: type 360 is NOT part of
+    this, and the item is blocked on a maintainer decision, not on code.**
+
+    Investigated before starting, which changed the shape of it:
+
+    - **Type 360 is a sprite table, not the element table.** 42 fixed 19-byte
+      records of `{id, type, gfx, colour, height, unused}`, loaded by `nh_2`
+      ("Loading N interactive elements **views**"). Three of its five live fields
+      are constant across all 42 rows, the sixth has no reader anywhere, and it
+      carries **no instanceId, world, cell, descriptor or behaviour**. The server
+      renders nothing, so it has zero server-side value. Now decoded anyway, with
+      a real-data test that pins those constants so nobody re-chases it as the
+      missing element table.
+    - **Everything the server needs is in `maps/env/<world>.jar`** (`ru_2`/`aEG`:
+      instanceId, env type, view ids, and the opcode-200 payload verbatim), with
+      cell/descriptor inside that payload's part table.
+    - **It is reproducible.** A structural scan of the 11 populated worlds'
+      env jars matched today's hand table **139/139** on instanceId sets and
+      **0/139** kind mismatches, with per-kind counts equal across all 15 types,
+      and spot-checked payload blobs found byte-for-byte in the jars. So the
+      correctness gate for this work already has a known answer.
+    - **`alt` is the catch, and it is not in the env jars.** The env `RU` z is
+      *decoration* height; the 4600 `alt` must be the tplg walkable ground, and
+      **20 of 139 differ** — including the login-spawn Zaap (env 30 vs the correct
+      8). Getting it from data means teaching the tplg reader about overworld
+      worlds (today it only loads worlds that have an arena `.fmd`). A wrong `alt`
+      silently freezes the coach, so this is the risky half.
+    - **Policy stays hand-made regardless:** which of the 114 shipped env worlds
+      to populate (we deliberately spawn 11; 110/113 have env but no elements and
+      would strand a player), which Zaap is primary, and the `zaapCardDest`
+      routing.
+
+    **BLOCKED (maintainer decision — constraint 4):** the env jars are not in
+    `server/data-dist/`, and adding them (~0.49 MB for all 114, ~183 KB for the 11
+    we use) is StarLoco's call, with `DISCLAIMER.md`/`NOTICE` to match. Until then
+    a data-driven `elements.go` would have to degrade to *no elements* whenever env
+    is absent, which is strictly worse than today's table that always works. **Do
+    not start the decoder before that decision.**
 25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)
     and guild/team-scoped routing.
 26. **Achievements** — types 800/801/802, 350 records, one client tab.

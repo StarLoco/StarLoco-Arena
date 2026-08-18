@@ -28,7 +28,7 @@ crit/fumble (5/1 vs 0/0), and the spell cooldown field — which left **97 of 20
 | `bdata/data.bdat` | one zlib stream per record: `[i32 id][i16 ver][i32 len][payload]` | `gamedata.Store.ReadRecord` |
 | `maps/fight/*.jar` | `.fmd` start points + special cells (47 arenas) | `gamedata.LoadFightMaps` |
 | `maps/tplg/*.jar` | per-map topology tiles | `gamedata.LoadFightMaps` |
-| `maps/env/*.jar` | interactive elements | **not read** — element layouts are hand-authored in `game/elements.go` |
+| `maps/env/*.jar` | interactive elements | **not read** — layouts are hand-authored in `game/elements.go`. Reproducible from these jars (verified 139/139 on instanceId + kind), but they are absent from `data-dist` and `alt` needs `tplg` — see ROADMAP item 24 |
 | `i18n/texts_*.properties` | all display strings, keyed `content.<table>.<id>` | **not read** — the server sends ids and the client resolves them (correct: strings are client-side) |
 
 Record types are the `atr_0` enum. A record class is the `lJ` subclass whose `cq()`
@@ -52,7 +52,7 @@ objects.
 | **250** | 75 | `uh_0` → `ve_0` | **Fighter equipment / weapons** | ✅ good | `fightercards.go` |
 | 251 | 11 | `alf_2` → — | Equipment pools granted by Sphere Board nodes | ❌ | — |
 | **300** | 53 | `jz_2` → `aJt` | **Summons** | ✅ 17/17 | `summonings.go` |
-| 360 | 42 | `rb_0` → `yn_2` | Interactive-element rendering (gfx/colour/height) | ❌ | — |
+| 360 | 42 | `rb_0` → `yn_2` | Element sprite **views** (gfx/colour/height) — decoded; no consumer and none expected, the server renders nothing | ✅ | `elementviews.go` |
 | **400** | 39 | `GE` → `afz_0` | **PvE challenges** | ✅ partial | `challenges.go` |
 | 700 | 7 | `fw_2` → `iz_0`* | Calendar events (7 subtypes) | ❌ | hand-built in `tournaments.go` |
 | 800 | 332 | `ru_1` → `aau_1` | Achievements (+ thresholds, required cards) | ❌ | — |
@@ -273,7 +273,7 @@ traps 1 and 1020 are `[10001]`; template 2 is `[10008 10000 10006 10001]` with
 | Close-combat 5 AP / 5 dmg / 7 crit | `game/breed.go` | same (`xq.DO/DP/DQ`) |
 | Fighter states (`stateByAction`) | `game/states.go` | NOT type 902 - that is the persistent condition layer (B-066). These map `mh_2` action ids and are compiled into the client. |
 | Tournaments | `game/tournaments.go` | **type 1000/1001** |
-| Interactive elements | `game/elements.go` | `maps/env/*.jar` + **type 360** |
+| Interactive elements | `game/elements.go` | `maps/env/*.jar` (+ `maps/tplg` for altitude). **NOT type 360** - that is only sprites |
 | Zaap destinations | `game/zaap.go` | `maps/env` descriptors |
 
 `xq` is a Java enum inside `core.jar`, not a data record, so it cannot be read at runtime;
@@ -361,6 +361,7 @@ server-side; the condition is recovered, the arbitration is ours (see B-074).
 | Date | Change |
 |---|---|
 | 2026-08-18 | Corrected the card-set effect status: the `AI` META bonuses are all wired (since B-066), not "inert bar resurrection". The death-chance five (AI 7/8) only became observable with B-097, which removed an invented `HP <= 0 → dead` rule that pre-empted the roll they modify. No decode change. |
+| 2026-08-18 | Decoded record type **360** (42 element sprite views, 5/5 fields) — and established it is **not** the interactive-element table: no instanceId, world, cell or behaviour, three of five live fields constant across all 42 records, one field with no reader in the client. ROADMAP item 24 restated: placements live in `maps/env/*.jar` (+ `tplg` for altitude), and the item is blocked on a `data-dist` maintainer decision rather than on code. Element count corrected 132 → 139. |
 | 2026-08-10 | Recovered the full type-210 trigger enum from `he_1.a` / `aeb_0` and wired forced displacement into the enter trigger (B-076). 10002/10003/10006/10008 documented but still unimplemented; template 1016 can never fire here, and 1017/1018/1019 ship with empty trigger arrays. |
 | 2026-08-10 | Wired np_1 types 12 and 14 (B-074): fight-start effects and victory conditions now drive fights instead of being carried inert. Added target-condition bits 512/1024 (breed-is-zero), corrected the validator's provenance from `aap.a` to `aLc.a`, renamed the `mp_2` scalars to the client's own SQL column names, and documented the `qk_1` subtypes and the 913-930 parameter block. |
 | 2026-08-05 | Inline unlength-prefixed Ht effects parsed exactly; challenges now 39/39 with zero residual (B-073). |

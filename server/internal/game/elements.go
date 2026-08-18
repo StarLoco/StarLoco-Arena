@@ -169,9 +169,13 @@ func mustCardMaster(instanceID int64, x, y int32, alt int16, cardListID int32, m
 // DemonTotems and 2 TournamentTotems — and their flows exist (PvE challenges,
 // breed-master test fights, the tournament calendar).
 //
-// Genuinely NOT spawned, because clicking them would start a flow that cannot
-// complete: env type 12 cardUsingSwitch (the use-card-on-element flow) and type
-// 15 NPCTalker (dialog trees, record type 1500 undecoded).
+// CORRECTION: that "genuinely not spawned" list was itself stale. It named env
+// type 12 (cardUsingSwitch → kindFirework) and type 15 (NPCTalker → kindNPC),
+// but the table below places 5 Fireworks and 6 NPCs. **All 15 env types are
+// spawned.** Both are safe to spawn because both are answered entirely
+// client-side: the firework dialog is filled from the coach's own inventory (we
+// only echo 22095 back as 22094), and NPCTalker runs a dialog tree from client
+// data, so an undecoded record type 1500 costs the player nothing here.
 var worldElements = map[int16][]worldElement{
 	// --- Maknala ---------------------------------------------------------------
 	23: {
