@@ -77,10 +77,24 @@ func (s *Session) socialEdit(f *protocol.C2SFrame, kind socialKind, add bool) er
 		edge := domain.CoachIgnored{OwnerID: s.Coach.ID, IgnoredID: target.ID}
 		db.Where("owner_id = ? AND ignored_id = ?", s.Coach.ID, target.ID).
 			FirstOrCreate(&edge)
+		// Mirror it into the in-memory coach. The edge list is loaded once at
+		// login (CoachRepo preloads it), and chat filtering reads it per message —
+		// so without this an ignore would not take effect until the player relogged.
+		if !ignoresCoach(s.Coach, target.ID) {
+			s.Coach.Ignored = append(s.Coach.Ignored, domain.CoachIgnored{
+				OwnerID: s.Coach.ID, IgnoredID: target.ID, Ignored: target,
+			})
+		}
 		return s.sendSocialAck(protocol.OpIgnoreAdded, target)
 	default: // ignore remove
 		db.Where("owner_id = ? AND ignored_id = ?", s.Coach.ID, target.ID).
 			Delete(&domain.CoachIgnored{})
+		for i := range s.Coach.Ignored {
+			if s.Coach.Ignored[i].IgnoredID == target.ID {
+				s.Coach.Ignored = append(s.Coach.Ignored[:i], s.Coach.Ignored[i+1:]...)
+				break
+			}
+		}
 		return s.sendSocialAck(protocol.OpIgnoreRemoved, target)
 	}
 }

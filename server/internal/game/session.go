@@ -34,6 +34,11 @@ type Session struct {
 	// (Zaaps). Set on login and on Zaap teleport.
 	currentWorld int16
 
+	// chat is this session's chat rate state (trade cooldown + anti-repeat),
+	// mirroring the client's own gates so a modified client cannot skip them.
+	// Touched only by this session's goroutine, so it needs no lock.
+	chat chatGate
+
 	// spectating is the fight this session is watching as a spectator (nil = none).
 	// Touched ONLY by this session's own goroutine (set on spectate-join, cleared
 	// on fight-end ack or disconnect), so it needs no lock; the fight actor owns

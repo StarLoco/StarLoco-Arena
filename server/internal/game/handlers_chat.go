@@ -2,6 +2,7 @@ package game
 
 import (
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/StarLoco/arena-2.70/internal/protocol"
@@ -12,6 +13,8 @@ func registerChatHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpUserPrivateContentMessage, handlePrivateMessageRecv)
 	r.Register(protocol.OpUserChannelContentMessage, handleChannelMessage)
 	r.Register(protocol.OpUserTradeContentMessage, handleTradeMessage)
+	r.Register(protocol.OpUserGroupContentMessage, handleGroupMessage)
+	r.Register(protocol.OpUserClanContentMessage, handleClanMessage)
 }
 
 // handlePrivateMessageRecv routes a whisper (3155) to the named target, sending
@@ -31,6 +34,21 @@ func handlePrivateMessageRecv(s *Session, f *protocol.C2SFrame) error {
 	}
 	online := s.deps.World.GetByName(target)
 	if online == nil {
+		return s.sendUserNotFound(target)
+	}
+	// THE IGNORE LIST MUST BE ENFORCED HERE, and this is the one pipe where the
+	// server is the only line of defence. The client filters General, Trade, Clan
+	// and Group by sender name, but `om_0` case 3154 has no check at all — and
+	// receiving a whisper additionally force-maximises the chat panel and force-
+	// opens chatDialog. Relaying one from an ignored sender therefore lets that
+	// sender pop the recipient's UI at will.
+	//
+	// Answering with UserNotFound rather than silence is deliberate: it is what the
+	// sender already sees for an offline target, so it reveals nothing about having
+	// been ignored.
+	if ignoresCoach(online.Session.Coach, s.Coach.ID) {
+		s.log.Debug("whisper to a coach who ignores the sender — dropped",
+			"from", s.Coach.Name, "to", target)
 		return s.sendUserNotFound(target)
 	}
 	frame, err := buildPrivateMessage(s.Coach.Name, int64(s.Coach.ID), msg)
@@ -72,13 +90,12 @@ func handleVicinityMessage(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	// Deliver ONLY to other coaches within the AoI radius. The sender must NOT
-	// be echoed: the client already displays its own outgoing line locally, so
-	// a server echo would show the sender's message twice.
-	for _, other := range s.deps.World.SessionsNear(s.Coach.PosX, s.Coach.PosY, s.Coach.ID) {
-		_ = other.Send(frame)
-	}
-	s.log.Debug("vicinity chat", "from", s.Coach.Name, "msg", msg)
+	// Deliver ONLY to other coaches within the AoI radius, minus anyone who has
+	// the sender ignored. The sender must NOT be echoed: the client already
+	// displays its own outgoing line locally, so a server echo would show the
+	// sender's message twice.
+	n := deliverChat(frame, s.Coach.ID, s.deps.World.SessionsNear(s.Coach.PosX, s.Coach.PosY, s.Coach.ID))
+	s.log.Debug("vicinity chat", "from", s.Coach.Name, "to", n, "msg", msg)
 	return nil
 }
 
@@ -180,6 +197,19 @@ func handleTradeMessage(s *Session, f *protocol.C2SFrame) error {
 		return handleGMCommand(s, msg)
 	}
 
+	// Trade is the one pipe the client itself throttles (30 s). Mirror it, plus
+	// the global anti-repeat, so a modified client cannot spam what a stock one
+	// physically cannot. A legitimate client never reaches either check.
+	now := time.Now()
+	if !s.chat.allowTrade(now) {
+		s.log.Debug("trade chat throttled", "coach", s.Coach.Name)
+		return nil
+	}
+	if !s.chat.allowRepeat(msg, now) {
+		s.log.Debug("trade chat repeat suppressed", "coach", s.Coach.Name)
+		return nil
+	}
+
 	frame, err := buildTradeMessage(s.Coach.Name, int64(s.Coach.ID), msg)
 	if err != nil {
 		return err
@@ -189,11 +219,147 @@ func handleTradeMessage(s *Session, f *protocol.C2SFrame) error {
 	// consistency matters more here than a judgement call about whether a fighting
 	// player wants to read trade spam. The sender is not echoed: the client
 	// displays its own outgoing line locally, so an echo would duplicate it.
-	for _, other := range s.deps.World.SessionsWithout(s.Coach.ID) {
-		_ = other.Send(frame)
-	}
-	s.log.Debug("trade chat", "from", s.Coach.Name, "msg", msg)
+	n := deliverChat(frame, s.Coach.ID, s.deps.World.SessionsWithout(s.Coach.ID))
+	s.log.Debug("trade chat", "from", s.Coach.Name, "to", n, "msg", msg)
 	return nil
+}
+
+// handleGroupMessage receives a Group chat line (3161, the client's "/p") and
+// delivers it to the sender's fight allies as GroupContent (3170).
+//
+// C2S layout is [i64 targetCoachId][u16 len][message], and THE TARGET ID IS NOT
+// TRUSTED. It is client-supplied, and taking it at face value would turn /p into
+// an unfilterable direct-message channel: a modified client could put any coach
+// id there and reach a player who has it on their ignore list, or who is not in
+// the fight at all. The audience is resolved from the sender's own fight instead.
+//
+// On a 1v1 server that audience is always empty, and the id always arrives as 0 —
+// the client only sets it from CREATE_FIGHT's coach list when a same-team coach
+// other than itself exists, and it never clears it, so it stays 0 forever and the
+// client still sends /p from the overworld. Handling it correctly now means 2v2
+// (roadmap item 30) gets working group chat for free, and means the opcode stops
+// being an unhandled hole in the meantime.
+func handleGroupMessage(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	r := protocol.NewReader(f.Payload)
+	if _, err := r.I64(); err != nil { // advisory target id — deliberately ignored
+		return err
+	}
+	msgLen, err := r.U16()
+	if err != nil {
+		return err
+	}
+	msg, err := r.String(int(msgLen))
+	if err != nil {
+		return err
+	}
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return nil
+	}
+	if strings.HasPrefix(msg, "/") {
+		return handleGMCommand(s, msg)
+	}
+	if !s.chat.allowRepeat(msg, time.Now()) {
+		return nil
+	}
+
+	allies := s.deps.fightAllies(s.Coach.ID)
+	if len(allies) == 0 {
+		// No teammate to talk to. Silent, exactly as the client's own /p is when
+		// it has no target: this is the normal case in 1v1, not an error.
+		s.log.Debug("group chat with no allies", "coach", s.Coach.Name)
+		return nil
+	}
+	frame, err := buildGroupMessage(s.Coach.Name, int64(s.Coach.ID), msg)
+	if err != nil {
+		return err
+	}
+	n := deliverChat(frame, s.Coach.ID, allies)
+	s.log.Debug("group chat", "from", s.Coach.Name, "to", n, "msg", msg)
+	return nil
+}
+
+// handleClanMessage receives a Clan chat line (3199, the client's "/c") and
+// delivers it to the sender's guild as ClanContent (3198).
+//
+// C2S layout is [u16 len][message][i64 guildId] — note the id comes AFTER the
+// body, unlike every other chat message. As with /p, THE ID IS CLIENT-SUPPLIED
+// and is re-validated against the sender's own guild rather than trusted;
+// otherwise a modified client could broadcast into any guild it named.
+//
+// No coach has a guild yet (guilds are roadmap item 31), so this currently always
+// resolves to nobody. That is not a stub: a stock client cannot even send this
+// message without a guild — `GuildContentCommand` self-gates on the coach having
+// a `ca_0`, which is only populated from the 0x20 blob of the coach record in
+// 2052, which we send empty. Confirmed live: /c emits no packet at all. Handling
+// it means the wire side is done and validated when guild membership lands.
+func handleClanMessage(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	r := protocol.NewReader(f.Payload)
+	msgLen, err := r.U16()
+	if err != nil {
+		return err
+	}
+	msg, err := r.String(int(msgLen))
+	if err != nil {
+		return err
+	}
+	claimedGuild, err := r.I64()
+	if err != nil {
+		return err
+	}
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return nil
+	}
+	if strings.HasPrefix(msg, "/") {
+		return handleGMCommand(s, msg)
+	}
+
+	guildID, ok := coachGuildID(s.Coach)
+	if !ok {
+		s.log.Debug("clan chat from a coach with no guild",
+			"coach", s.Coach.Name, "claimed", claimedGuild)
+		return nil
+	}
+	if claimedGuild != guildID {
+		s.log.Warn("clan chat for a guild the sender is not in — dropped",
+			"coach", s.Coach.Name, "claimed", claimedGuild, "actual", guildID)
+		return nil
+	}
+	if !s.chat.allowRepeat(msg, time.Now()) {
+		return nil
+	}
+	frame, err := buildClanMessage(s.Coach.Name, int64(s.Coach.ID), msg)
+	if err != nil {
+		return err
+	}
+	n := deliverChat(frame, s.Coach.ID, s.deps.guildSessions(guildID, s.Coach.ID))
+	s.log.Debug("clan chat", "from", s.Coach.Name, "to", n, "msg", msg)
+	return nil
+}
+
+// buildGroupMessage builds GroupContent (3170) — the vicinity shape again.
+func buildGroupMessage(name string, id int64, msg string) ([]byte, error) {
+	w := protocol.NewWriter().
+		StringU8(sanitizeChatText(name, maxChatName)).
+		I64(id).
+		StringU16(sanitizeChatText(msg, maxChatBody))
+	return protocol.EncodeS2C(protocol.OpGroupContentMessage, w.Bytes())
+}
+
+// buildClanMessage builds ClanContent (3198) — the vicinity shape again.
+func buildClanMessage(name string, id int64, msg string) ([]byte, error) {
+	w := protocol.NewWriter().
+		StringU8(sanitizeChatText(name, maxChatName)).
+		I64(id).
+		StringU16(sanitizeChatText(msg, maxChatBody))
+	return protocol.EncodeS2C(protocol.OpClanContentMessage, w.Bytes())
 }
 
 // buildTradeMessage builds TradeContent (3168). The client's `ayy` is a
@@ -201,9 +367,9 @@ func handleTradeMessage(s *Session, f *protocol.C2SFrame) error {
 // buildVicinityMessage with a different opcode.
 func buildTradeMessage(name string, id int64, msg string) ([]byte, error) {
 	w := protocol.NewWriter().
-		StringU8(name).
+		StringU8(sanitizeChatText(name, maxChatName)).
 		I64(id).
-		StringU16(msg)
+		StringU16(sanitizeChatText(msg, maxChatBody))
 	return protocol.EncodeS2C(protocol.OpTradeContentMessage, w.Bytes())
 }
 
@@ -215,9 +381,9 @@ func buildVicinityMessage(name string, id int64, msg string) ([]byte, error) {
 	// here made every accented chat message arrive mangled and, worse, made the
 	// u16 length disagree with the payload for any non-ASCII character.
 	w := protocol.NewWriter().
-		StringU8(name).
+		StringU8(sanitizeChatText(name, maxChatName)).
 		I64(id).
-		StringU16(msg)
+		StringU16(sanitizeChatText(msg, maxChatBody))
 	return protocol.EncodeS2C(protocol.OpVicinityContentMessage, w.Bytes())
 }
 
@@ -243,8 +409,8 @@ func buildPrivateMessage(name string, id int64, msg string) ([]byte, error) {
 		msg = msg[:cut]
 	}
 	w := protocol.NewWriter().
-		StringU8(name).
+		StringU8(sanitizeChatText(name, maxChatName)).
 		I64(id).
-		StringU8(msg)
+		StringU8(sanitizeChatText(msg, maxPrivateMsg))
 	return protocol.EncodeS2C(protocol.OpPrivateContentMessage, w.Bytes())
 }

@@ -114,6 +114,70 @@ belongs to the coach.
 
 ## Fixed
 
+### B-104 - chat had no server-side safety at all, and one client-side gap was exploitable
+
+Finishing the chat pipes meant deciding what a *modified* client may do, since
+every limit the retail client applies is trivially removed from it. Reading them
+out of the client first turned up one gap that is not merely missing enforcement
+but an actual harassment vector.
+
+**1. Ignored players could still whisper — and pop your UI.** The client filters
+General, Trade, Clan and Group by sender name, but `om_0` case 3154 (private) has
+**no ignore check at all**, and receiving a whisper additionally force-maximises
+the chat panel and force-opens `chatDialog`:
+
+```java
+case 3154: {
+    ais_2 ais_22 = (ais_2)pr_02;
+    ...
+    if (!azs_0.aLV().getBooleanProperty("chat.isMaximize")) {
+        azs_0.aLV().g("chat.isMaximize", true);          // force-maximise
+    }
+    if (!add_1.aOG().kR("chatDialog")) {
+        add_1.aOG().a("chatDialog", ...);                // force-open
+    }
+```
+
+So an ignored player could reopen a victim's chat window at will, and there was no
+client-side backstop to rely on. The server now filters every chat path by the
+recipient's ignore list, and answers the sender `UserNotFound` — the same thing
+they already see for an offline target, so being ignored is not disclosed.
+
+**That fix needed a second one to work at all:** ignore edges were written to the
+database but never mirrored into the in-memory coach, which is loaded once at
+login. An ignore therefore did not take effect until the player relogged.
+
+**2. Chat was a markup-injection channel.** The renderer treats both the message
+body and the sender name as markup and escapes nothing (`rw_2.bJ`), with `<b>`,
+`<c>`, `<text color=…>` and `<image pixmap=…>` all live. The only thing stopping
+players today is the input widget's `restrict="[.*&[^<>]]"`, i.e. a client-side
+filter. `<` and `>` are now stripped on relay, matching what the client's own
+input filter does rather than inventing an escaping scheme.
+
+**3. No rate limiting.** Mirrored from the client:
+
+| Limit | Client | Server |
+|---|---|---|
+| Trade cooldown | `TradeContentCommand.czB` = 30 000 ms, strict `<`, singleton never reset | same, per coach |
+| Anti-repeat | `jd_0`: last 10 lines, 5 s each, only for lines ≥ 6 chars | same window, but keyed on the **trimmed body** |
+
+The anti-repeat is deliberately *stricter* than the client's, which hashes the raw
+input line — so a trailing space, or switching pipe prefix, slips the same text
+straight through. Keying on the body closes that.
+
+**4. Wire bounds.** Bodies are capped at 32767 (the u16 pipes are read with a
+SIGNED `getShort`, so more arrives negative and the client drops the message with
+`NegativeArraySizeException`), names at 255, private bodies at 255 (u8), all cut
+on a rune boundary so a truncation cannot render as mojibake.
+
+**Verified** `unit` for the gates and the sanitiser (including the strict 30 s
+comparison and rune-boundary truncation) and `e2e` over real sockets for the parts
+a helper test cannot prove: an ignored whisper dropped, an ignored trade line
+dropped while an uninvolved third player still receives it, an ignored general
+line dropped, markup stripped on the wire, and the cooldown enforced.
+Mutation-checked twice — removing the whisper ignore check, and removing the
+in-memory mirror of the ignore edge, each fail with the specific diagnostic.
+
 ### B-103 - Trade chat was dropped, and it looked like it had been sent
 
 The client offers four chat pipes — General (`/s`), Private, Trade (`/t`) and

@@ -73,10 +73,10 @@ Audit legend cross-refs the commit that did/verified it.
 | 3140 | ChannelContent | S2C | ✓ | A (xb_1: channel+sender+msg) | — | ✓ |
 | 3159 | UserTradeContent (`/t`) | C2S | ✓ | A (afq_0, arch 3) | — | ✓ **live** |
 | 3168 | TradeContent | S2C | ✓ | A (ayy — byte-identical to 3152) | — | ✓ **live** |
-| 3199 | UserClanContent (`/c`) | C2S | **—** | A (ak, arch 2) | — | — |
-| 3198 | ClanContent | S2C | **—** | A (ano_1) | — | — |
-| 3161 | UserGroupContent (`/p`) | C2S | **—** | A (aux_, arch 3) | — | — |
-| 3170 | GroupContent | S2C | **—** | A (aik_1) | — | — |
+| 3199 | UserClanContent (`/c`) | C2S | ✓ validated | A (ak, arch 2: msg THEN i64 guildId) | ✓ | — |
+| 3198 | ClanContent | S2C | ✓ | A (ano_1) | — | — |
+| 3161 | UserGroupContent (`/p`) | C2S | ✓ | A (aux_, arch 3) | — | ✓ **live** |
+| 3170 | GroupContent | S2C | ✓ | A (aik_1) | — | — |
 
 **The channel pair 3151/3140 is vestigial**, not merely unscoped: the retail
 client cannot send 3151 (`ChannelContentCommand` is referenced by nothing in any
@@ -84,9 +84,15 @@ shipped jar), and a 3140 routes to pipe 3, which `du_1` never registers - so the
 client nulls out and swallows it. It is kept for protocol preservation and is
 exercised by e2e only, which is the only way it CAN be exercised.
 
-Of the three remaining pipes, only **Trade** is servable today: **Clan** is
-guild-scoped and the client emits nothing without a guild, and **Group** targets a
-fight ally, so it needs 2v2. See ROADMAP item 25.
+All four live pipes are served. **Trade** is global. **Group** resolves its
+audience from the sender's own fight rather than the client-supplied coach id -
+trusting that id would turn `/p` into an unfilterable DM channel - so it is
+correct today and gains an audience when 2v2 lands. **Clan** re-validates the
+client-supplied guild id against the sender's actual guild, which no coach has
+yet, so it resolves to nobody until item 31.
+
+Chat delivery is filtered by the recipient's ignore list and stripped of `<`/`>`
+markup, and Trade carries the client's own 30 s cooldown. See BUGS.md B-104.
 | 3129/33 | Add/Remove Friend | C2S | ✓ | A | — | ✓ |
 | 3131/35 | Add/Remove Ignore | C2S | ✓ | A | — | ✓ |
 | 3156 | FriendAdded | S2C | ✓ | **A*** (kz_1: name+note+i64+i16+sex+i16) | — | ✓ |

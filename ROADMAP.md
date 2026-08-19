@@ -234,8 +234,9 @@ Firework 5, TournamentTotem 2, Challenge 2, DemonI 1, DemonIII 1.
 | Channel chat (3151 → 3140) | ⛔ | **Vestigial 2007 feature, unreachable in 2.70.** The client cannot SEND 3151 — `ChannelContentCommand` is referenced by nothing in any shipped jar — and a 3140 we send is dropped: it routes to pipe 3, which `du_1` never registers, so `ql_1.a` dereferences null and the frame loop swallows it. Kept as protocol preservation only |
 | Channel membership family | ⛔ | **Dead code in 2.70** — all six handlers in `om_0` cast the message and `return false`. No C2S counterpart exists (not even in the 2007 reference), no UI, nothing gated. Sending them is unobservable |
 | Trade chat (`/t`, 3159 → 3168) | ✅ | Global. Was dropped as an unhandled opcode while the client rendered the sender's own line locally, so it looked sent (B-103) |
-| Clan chat (`/c`, 3199 → 3198) | ⛔ | Guild-scoped. The client **self-gates**: with no guild it emits no packet at all (confirmed live). Blocked on item 31 |
-| Group chat (`/p`, 3161 → 3170) | ⛔ | Targets the ally coach on your side of a live fight, so it needs 2v2. Blocked on item 30 |
+| Clan chat (`/c`, 3199 → 3198) | 🟡 | Served and **validated** — the client-supplied guild id is re-checked against the sender's own. No coach has a guild yet (item 31), so it resolves to nobody; the client also self-gates and emits nothing without one |
+| Group chat (`/p`, 3161 → 3170) | 🟡 | Served. The audience is resolved from the sender's own fight, **not** the client-supplied coach id — trusting that would make `/p` an unfilterable DM channel. Empty until 2v2 (item 30) |
+| Chat safety (ignore list, markup, rate limits) | ✅ | Ignore filtering on every pipe — private had **no client-side filter** and force-opens the chat window — plus `<`/`>` stripping and the client's own 30 s Trade cooldown (B-104) |
 | Friends add/remove + list | ✅ | All four ack layouts differ per opcode and are individually verified |
 | Ignore add/remove + list | ✅ | |
 | Presence notifications | ✅ | 3148/3150/3164/3166 |
@@ -1436,6 +1437,21 @@ is a signing certificate or SignPath); no published Docker image.
     all*, confirmed live — so it cannot even be exercised before item 31. `/p`
     **Group** (3161) targets the ally coach on your side of a live fight, read out
     of CREATE_FIGHT's coach list, so it needs 2v2 (item 30, deferred).
+
+    **All four live pipes are now served**, and the two that cannot yet reach an
+    audience are served *correctly* rather than skipped: `/p` resolves its
+    audience from the sender's own fight instead of the client-supplied coach id
+    (trusting that id would turn it into an unfilterable DM channel that bypasses
+    the ignore list), and `/c` re-validates the client-supplied guild id against
+    the sender's actual guild. Both gain an audience the moment items 30/31 land,
+    with no protocol work left.
+
+    **Chat safety was added to match the client (B-104).** Reading the client's
+    own limits first found a gap that is not just missing enforcement: private
+    messages have **no ignore filter client-side** and force-open the chat window,
+    so an ignored player could pop a victim's UI at will. Server-side filtering,
+    `<`/`>` stripping (the renderer parses markup and escapes nothing), the
+    client's 30 s Trade cooldown and its 5 s anti-repeat are all enforced now.
 
     Also identified in passing: 3159/3161/3168/3170/3198/3199 were all listed as
     "unidentified" in `OPCODE-INVENTORY.md` and now carry their layouts.
