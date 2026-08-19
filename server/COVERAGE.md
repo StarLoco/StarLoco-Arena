@@ -65,7 +65,7 @@ Audit legend cross-refs the commit that did/verified it.
 | 4500 | ActorMovement | S2C | ✓ | A | — | ✓ (AoI) |
 | 200 | InteractiveElementSpawn (`rz_2`) | S2C | ✓ (streamed per chunk) | A | ✓ | ✓ (element AoI) |
 | 206 | InteractiveElementDespawn (`acc_2`) | S2C | ✓ | A (i16 count, i64 ids) | ✓ | ✓ (element AoI) |
-| 201 | InteractiveElementAction (`bd_2`) | C2S | ✓ | A | — | — (elements do not activate live; see BUGS.md) |
+| 201 | InteractiveElementAction (`bd_2`) | C2S | ✓ | A | — | ✓ **live** (right-click; Zaap + graveyard) |
 
 Elements are **streamed on the client's env-chunk grid** (Chebyshev chunk distance
 ≤ 2, chunks 18 cells), not bulk-sent per world: opcode 200 cannot carry the

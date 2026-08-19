@@ -185,12 +185,32 @@ renames anything colliding with a Java keyword. Comparing a runtime class name
 against the decompiled one reports every element as unhittable - that mistake cost
 real time here.
 
-**Known limits when driving world elements.** On the overworld a double-click is
-consumed as a MOVE, and interactive elements (NPCs, Zaaps) highlight on hover but
-did not open their dialogs in testing. That is not the click: those worlds log
-`Animation 1_AnimStatique_1 not found (.../animations/interactives/<id>)` for the
-very elements involved — see BUGS.md "interactive element animations". Prefer a
-dialog/list target when you need to verify a double-click flow.
+### Interactive world elements need a RIGHT-click (button 3)
+
+Using a Zaap, graveyard, mailbox, card master or NPC is **button 3**, not button 1.
+`wp_2` picks the button by option — `if (clW) { move=1; action=3 } else { move=3;
+action=1 }` — and in this client's state **left-click is MOVE**, so left-clicking an
+element just walks the coach to it and looks like "nothing happened". The game's own
+help text spells it out: *"Après avoir fait un clic droit sur un zaap, double clic
+sur la kard représentant ta destination !"*.
+
+`arena_click` sends button 1, so for an element action use the agent route directly:
+
+```powershell
+Invoke-WebRequest "http://127.0.0.1:8099/click?x=472&y=262&button=3" -UseBasicParsing
+```
+
+Confirm server-side — the flow is `201 element action`, and for a Zaap destination
+card (double-click, button 1) `4512 zaap teleport`:
+
+```
+element action  element=37 kind=zaap action=0 coach=Chrono
+zaap teleport   coach=Chrono card=202 world=23 zaap=35 alt=2
+```
+
+The `Animation <dir>_AnimStatique_<n> not found` errors are cosmetic: the assets are
+present, the client just always appends a state suffix the `.anm` files do not
+carry. Elements render, highlight and activate regardless.
 
 ## Fallback — the PowerShell driver
 

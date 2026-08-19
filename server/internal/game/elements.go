@@ -219,7 +219,7 @@ func buildInteractiveElementSpawn(elems ...worldElement) ([]byte, error) {
 	w := protocol.NewWriter()
 	w.U16(uint16(len(elems)))
 	for _, e := range elems {
-		p := usableElementPayload(e.payload, e.alt)
+		p := elementPayloadAtGroundAltitude(e.payload, e.alt)
 		w.I64(e.instanceID)
 		w.U16(uint16(len(p)))
 		w.Raw(p)
@@ -227,51 +227,81 @@ func buildInteractiveElementSpawn(elems ...worldElement) ([]byte, error) {
 	return protocol.EncodeS2C(protocol.OpInteractiveElementSpawn, w.Bytes())
 }
 
-// elementMaskOffset is where the approach-direction mask sits in the payload: a
-// 14-byte generic part header, then the RU block's
-// i16 world, i32 x, i32 y, i16 z, i16 state, u8, u8, u8 orientation, i16 mask.
-// Verified by decoding all 139 shipped payloads (every one ends exactly on its
-// descriptor + zero properties byte) and cross-checked against the values the
-// live client reports for the same element.
-const elementMaskOffset = 14 + 2 + 4 + 4 + 2 + 2 + 1 + 1 + 1
-
-// elementMaskDisabled is bit 256 of the mask (client agm_2.ctZ). do_1.gh() reads
-// it as "this element is inert" and sets the flag that makes do_1.a(coach) — the
-// "can this coach use it" test — return false no matter where the coach stands.
-const elementMaskDisabled = 0x100
-
-// elementZOffset is the RU block's z field: header + world + x + y.
-const elementZOffset = 14 + 2 + 4 + 4
-
-// usableElementPayload strips the inert bit from an element's approach mask.
+// The payload is the client's env PART TABLE (client aJj.ad):
 //
-// The shipped env blobs all carry mask 0xFFFF, which has every direction bit set
-// AND bit 256, so every element decodes as inert. That value looks like an
-// authoring default rather than a wire value — the same blobs also carry a z of 30
-// for a Zaap standing on ground altitude 8 — which is evidence that the retail
-// server did NOT put its env authoring blob on the wire unaltered, as we do. We
-// cannot recover what it did send (there is no capture), so this is the minimal
-// correction that makes the field self-consistent: keep the eight direction bits
-// the data gives, drop the flag that contradicts them.
+//	u8 partCount, partCount x { u8 partId, i32 offset }
+//	part i data = [offset+1, nextOffset)   (or to the buffer end for the last)
 //
-// Returns the input unchanged when the payload is too short to hold the field.
-func usableElementPayload(payload []byte, groundAlt int16) []byte {
-	if len(payload) < elementMaskOffset+2 {
+// The element's position/mask/descriptor live in the RU part inside it. Its offset
+// is therefore payload-dependent, NOT a fixed header size: every shipped payload
+// has two parts and most put the RU part at byte 14, but one (world 23's card
+// master, instance 5) puts it at 20. Assuming 14 silently writes into the middle
+// of that element's data.
+const (
+	// elementRUZOffset is the z field's position WITHIN the RU part:
+	// i16 world, i32 x, i32 y, then i16 z.
+	elementRUZOffset = 2 + 4 + 4
+	// elementRUMinLen is RU.f's own minimum (it refuses anything shorter), which
+	// is how we tell the RU part from the small sibling part.
+	elementRUMinLen = 23
+)
+
+// elementRUPart returns the bounds of the RU part inside an element payload.
+func elementRUPart(payload []byte) (start, end int, ok bool) {
+	if len(payload) < 1 {
+		return 0, 0, false
+	}
+	n := int(payload[0])
+	if n <= 0 || len(payload) < 1+n*5 {
+		return 0, 0, false
+	}
+	offs := make([]int, n)
+	p := 1
+	for i := 0; i < n; i++ {
+		p++ // part id
+		offs[i] = int(int32(binary.BigEndian.Uint32(payload[p:])))
+		p += 4
+	}
+	for i := 0; i < n; i++ {
+		s := offs[i] + 1
+		e := len(payload)
+		if i < n-1 {
+			e = offs[i+1]
+		}
+		if s < 0 || e > len(payload) || s > e {
+			return 0, 0, false
+		}
+		if e-s >= elementRUMinLen && e-s > end-start {
+			start, end, ok = s, e, true
+		}
+	}
+	return start, end, ok
+}
+
+// elementPayloadAtGroundAltitude rewrites an element's z to its cell's walkable
+// ground altitude.
+//
+// The blob is env AUTHORING data and its z is the sprite's decoration height, not
+// the ground: world 25's Zaap carries 30 where its cell's ground is 8. The view is
+// drawn at that z, so the element renders away from its cell and the client's
+// cell-based pick (wp_2 -> bd(cellX, cellY)) can never reach it. Measured: with the
+// authored z the Zaap is INVISIBLE and un-clickable; with the ground altitude it
+// renders beside the coach and a right-click reaches the server as an element
+// action.
+//
+// Nothing else is touched. An earlier version also cleared bit 256 of the approach
+// mask, on the theory that it made every element inert via do_1.a(coach) — that
+// method turns out to have NO CALLER, and an A/B on the live client confirmed the
+// interaction works with the mask left exactly as shipped. Mutating authentic data
+// for a dead code path is not worth it.
+func elementPayloadAtGroundAltitude(payload []byte, groundAlt int16) []byte {
+	start, _, ok := elementRUPart(payload)
+	if !ok || start+elementRUZOffset+2 > len(payload) {
 		return payload
 	}
 	out := make([]byte, len(payload))
 	copy(out, payload)
-
-	mask := binary.BigEndian.Uint16(out[elementMaskOffset:])
-	binary.BigEndian.PutUint16(out[elementMaskOffset:], mask&^elementMaskDisabled)
-
-	// The blob's z is the sprite's authored DECORATION height, not the cell's
-	// walkable ground: world 25's Zaap carries 30 while its cell's ground is 8.
-	// do_1.gh() builds the approach cells at this z, and the view is drawn at it,
-	// so leaving it authored puts the element's clickable geometry away from the
-	// cell the player can actually stand on. Rewrite it to the ground altitude we
-	// already resolve for every element.
-	binary.BigEndian.PutUint16(out[elementZOffset:], uint16(groundAlt))
+	binary.BigEndian.PutUint16(out[start+elementRUZOffset:], uint16(groundAlt))
 	return out
 }
 
