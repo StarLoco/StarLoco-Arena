@@ -301,6 +301,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		staticEffects *gamedata.StaticEffects
 		challengeDefs *gamedata.Challenges
 		events        *gamedata.Events
+		achievements  *gamedata.Achievements
 		cardSets      *gamedata.CardSets
 		fusionLabs    *gamedata.FusionLabs
 		tournDefs     *gamedata.Tournaments
@@ -355,6 +356,9 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		if cardSets, err = gdStore.LoadCardSets(); err != nil {
 			log.Warn("card-set load failed", "err", err)
 		}
+		if achievements, err = gdStore.LoadAchievements(); err != nil {
+			log.Warn("achievement load failed", "err", err)
+		}
 		if conditions, err = gdStore.LoadConditions(); err != nil {
 			log.Warn("fighter-condition load failed", "err", err)
 		}
@@ -367,7 +371,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		log.Debug("game data loaded", "cards", cardsLen(cards), "spells", spellsLen(spells),
 			"fighterCards", fighterCardsLen(fighterCards), "summonings", summoningsLen(summonings),
 			"staticEffects", staticEffectsLen(staticEffects), "challenges", challengeDefs.Len(),
-			"eventCards", events.Len(), "cardSets", cardSets.Len(),
+			"eventCards", events.Len(), "cardSets", cardSets.Len(), "achievements", achievements.Len(),
 			"conditions", conditions.Len(), "fusionLabs", fusionLabs.Len(), "tournamentDefs", tournDefs.Len())
 	}
 
@@ -401,6 +405,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		ChallengeDefs:  challengeDefs,
 		FightMaps:      fightMaps,
 		Events:         events,
+		Achievements:   achievements,
 		CardSets:       cardSets,
 		FusionLabs:     fusionLabs,
 		TournamentDefs: tournDefs,

@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -377,6 +378,54 @@ func (r *CoachRepo) UpsertStat(coachID uint, statID int16, value int32) error {
 	})
 }
 
+// UnlockedAchievements returns the ids this coach has already been told about.
+func (r *CoachRepo) UnlockedAchievements(coachID uint) (map[int16]bool, error) {
+	var rows []domain.CoachAchievement
+	if err := r.db.Where("coach_id = ?", coachID).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[int16]bool, len(rows))
+	for _, row := range rows {
+		out[row.AchievementID] = true
+	}
+	return out, nil
+}
+
+// RecordAchievements marks achievements as unlocked-and-announced, returning the
+// subset that was NOT already recorded.
+//
+// The insert and the "was it new" answer are one transaction on purpose: two
+// sessions for the same coach (or a re-entrant evaluation) would otherwise both
+// see the id as new and announce it twice.
+func (r *CoachRepo) RecordAchievements(coachID uint, ids []int16) ([]int16, error) {
+	var fresh []int16
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		fresh = fresh[:0]
+		for _, id := range ids {
+			var existing domain.CoachAchievement
+			err := tx.Where("coach_id = ? AND achievement_id = ?", coachID, id).
+				First(&existing).Error
+			if err == nil {
+				continue // already announced
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if err := tx.Create(&domain.CoachAchievement{
+				CoachID: coachID, AchievementID: id, UnlockedAt: time.Now(),
+			}).Error; err != nil {
+				return err
+			}
+			fresh = append(fresh, id)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return fresh, nil
+}
+
 // DeleteCoach permanently removes a coach and every piece of data associated
 // with it, in a single transaction. Handles opcode 27529 ("Détruire le coach").
 //
@@ -462,6 +511,10 @@ func (r *CoachRepo) DeleteCoach(coachID uint) error {
 		}
 		if err := tx.Where("coach_id = ?", coachID).
 			Delete(&domain.CoachStat{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("coach_id = ?", coachID).
+			Delete(&domain.CoachAchievement{}).Error; err != nil {
 			return err
 		}
 

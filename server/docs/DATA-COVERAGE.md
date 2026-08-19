@@ -55,9 +55,9 @@ objects.
 | 360 | 42 | `rb_0` → `yn_2` | Element sprite **views** (gfx/colour/height) — decoded; no consumer and none expected, the server renders nothing | ✅ | `elementviews.go` |
 | **400** | 39 | `GE` → `afz_0` | **PvE challenges** | ✅ partial | `challenges.go` |
 | 700 | 7 | `fw_2` → `iz_0`* | Calendar events (7 subtypes) | ❌ | hand-built in `tournaments.go` |
-| 800 | 332 | `ru_1` → `aau_1` | Achievements (+ thresholds, required cards) | ❌ | — |
-| 801 | 5 | `fw_0` → `ajk_1` | Achievement categories | ❌ | — |
-| 802 | 13 | `wr_0` → `li_2` | Achievement subcategories | ❌ | — |
+| 800 | 332 | `ru_1` → `aau_1` | Achievements (+ thresholds, required cards) | ✅ | `achievements.go` |
+| 801 | 5 | `fw_0` → `ajk_1` | Achievement categories | ✅ | `achievements.go` |
+| 802 | 13 | `wr_0` → `li_2` | Achievement subcategories | ✅ | `achievements.go` |
 | 900 | 15 | `bg_0` → `Ei` | Sphere Board headers (per breed/season) | ❌ | — |
 | 901 | **17 527** | `aeI` → `ayr_0` | Sphere Board nodes (xp cost, spell, cards) | ❌ | — |
 | 902 | 111 | `ahm_1` → `aiz_2` | **Fighter conditions** — the persistent wound/blessing layer | ❌ | — |
@@ -360,6 +360,7 @@ server-side; the condition is recovered, the arbitration is ours (see B-074).
 
 | Date | Change |
 |---|---|
+| 2026-08-19 | Decoded record types **800/801/802** (achievements + categories/subcategories, 332/5/13) with byte-exact consumption over every record, and wired generic completion evaluation + the 22000 unlock push (B-106). Established that there is **no reward**: points are cosmetic and the type-800 record's spare `i32` (`ru_1.bJg`) has no consumer anywhere in the client, so it is decoded and given no behaviour. Also corrected 22002's blanket "do not emit" to "reply-only", which is what had left the tab unopenable (B-105). |
 | 2026-08-18 | Corrected the card-set effect status: the `AI` META bonuses are all wired (since B-066), not "inert bar resurrection". The death-chance five (AI 7/8) only became observable with B-097, which removed an invented `HP <= 0 → dead` rule that pre-empted the roll they modify. No decode change. |
 | 2026-08-18 | Read `maps/env/*.jar` (`ru_2`/`aEG` + the big-endian `do_1` part table) and generated the overworld element table from it, retiring the hand transcription; reproduced it 139/139 and found a wrong direction byte (B-102). Added tplg tile kinds **0** (uniform) and **1** (4-bit), which a size guard and a missing case had been dropping - most of the overworld - scoped so arena decoding is unchanged. Arrival altitude established as the **lowest** walkable layer, not the element's authored z nor the highest layer. |
 | 2026-08-18 | Decoded record type **360** (42 element sprite views, 5/5 fields) — and established it is **not** the interactive-element table: no instanceId, world, cell or behaviour, three of five live fields constant across all 42 records, one field with no reader in the client. ROADMAP item 24 restated: placements live in `maps/env/*.jar` (+ `tplg` for altitude), and the item is blocked on a `data-dist` maintainer decision rather than on code. Element count corrected 132 → 139. |

@@ -56,7 +56,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Tournaments | 🟡 | Registration + calendar + list; no brackets, no matches |
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
 | Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
-| Achievements | 🟡 | 350 records. The tab opens and renders live progress (B-105); the records themselves are still undecoded |
+| Achievements | ✅ | 332/5/13 records decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced (B-106). Statistic *coverage* is a long tail owned by other systems |
 | Guilds / clans, 2v2 | ⬜ | Structurally blocked (see §8.16) |
 | Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
@@ -117,7 +117,7 @@ value checked so far turned out wrong in 2.70.
 | Type | Records | What | Why it matters |
 |---:|---:|---|---|
 | **901 / 900** | **17 527 / 15** | Sphere Board nodes + headers | The largest unimplemented system in the game |
-| 800/801/802 | 332/5/13 | Achievements + categories | A whole client tab |
+| 800/801/802 | 332/5/13 | Achievements + categories | **Decoded** (B-106) |
 | 1500 | 148 | NPC dialog replies | Needed for dialog trees |
 | 360 | 42 | Interactive-element rendering | We hand-author elements instead |
 | 1100 | 30 | Fusion-laboratory definitions | ✅ decoded (B-089) — altars, not recipes |
@@ -936,10 +936,12 @@ client only ever reads the result:
   filtered by `RequiredLevel`, paid out through the (already implemented)
   8300 won-cards blob.
 - **Sphere Board** ⬜ — 17 542 records. Emitted as empty lists on the wire.
-- **Achievements** 🟡 — 350 records. The client tab opens and renders real
-  per-achievement percentages off the server's criteria (B-105), but the 800/801/802
-  records are still undecoded, so the server cannot evaluate completion or push
-  unlocks (22000) yet.
+- **Achievements** ✅ — implemented. Types 800/801/802 decoded (332/5/13,
+  byte-exact), the tab opens (B-105), and completion is evaluated generically and
+  announced via 22000 (B-106). What remains is *statistic coverage*: the records
+  reference 98 distinct counters and the server moves only a handful today, but
+  each one lights its achievements up for free as the owning system starts
+  counting it.
 - **Coach standing persistence** ⚠️ — see §4.
 
 ---
@@ -1458,17 +1460,33 @@ is a signing certificate or SignPath); no published Docker image.
 
     Also identified in passing: 3159/3161/3168/3170/3198/3199 were all listed as
     "unidentified" in `OPCODE-INVENTORY.md` and now carry their layouts.
-26. **Achievements** — types 800/801/802, 350 records, one client tab.
-    **The tab now opens** (B-105): the client's 22001 was unanswered, and since it
-    is the *reply* that pops `achievementDialog`, the button was completely inert.
-    The criteria already tracked server-side now render, with real percentages.
-    Remaining: decode types 800/801/802 so the server knows each achievement's
-    conditions, evaluate them, and push unlocks via 22000. Notes for that work —
-    completion is `all statId >= threshold` AND `all required cards owned`, so it
-    is *generic*, needing no per-achievement code; `or_0` (308 lines) documents
-    every statistic id in French; and there is **no material reward**, points
-    being cosmetic and the one unused i32 in the type-800 record having no
-    consumer anywhere in the client.
+26. [x] **Achievements** — DONE. Types 800/801/802 decoded (332/5/13, byte-exact
+    over every record), the tab opens (B-105), and unlocks are evaluated and
+    announced via 22000 (B-106). Live-verified: entering the world announced two
+    achievements with the client's own "Exploit débloqué" toast, and a restart +
+    relog announced nothing again.
+
+    Completion is **generic** — every statistic condition met and every listed
+    card owned — so there is no per-achievement code, and there is **no reward**
+    to grant (points are cosmetic; the record's one spare i32 has no consumer
+    anywhere in the client). Unlocks matter as *keys*: zone triggers, challenge
+    gating and the island Zaap dialog test them.
+
+    Two follow-ons, deliberately not folded in:
+
+    - **Statistic coverage is the long tail, and it is not an achievement task.**
+      The 332 records reference 98 distinct statistic ids (`or_0` documents each
+      one in French), and the server currently moves only a handful — challenge
+      completions, the narrative flags the client reports via 22003, and the Zaap
+      seed. The rest are things like "fights won in 20-25 minutes", "kamas spent
+      at Kardmasters" or "max Zaap cards owned", which belong to whichever system
+      owns that number. Every one of them lights its achievements up for free the
+      moment it starts being counted — no work is needed here.
+    - **The tome is approximated by currently-owned cards.** The client's set
+      (`aez_0.dBd`) is grow-only — nothing anywhere removes from it — so a coach
+      who sells a card keeps credit client-side but loses it server-side. Making
+      it grow-only server-side is a small table; it affects the 24 card-gated
+      achievements only.
 27. **NPC dialog trees** — type 1500, 148 records.
 28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke
     client-state RE plus live verification for each.

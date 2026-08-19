@@ -106,6 +106,7 @@ func OpenConfig(c Config) (*Store, error) {
 		&domain.CoachIgnored{},
 		&domain.CoachCurrency{},
 		&domain.CoachStat{},
+		&domain.CoachAchievement{},
 		&domain.Fighter{},
 		&domain.FighterSpell{},
 		&domain.FighterObject{},

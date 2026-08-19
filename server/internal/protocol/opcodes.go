@@ -53,6 +53,12 @@ const (
 	// the coach permanently unable to walk. It also fires the client's
 	// walked-onto-element triggers. See game.Session.sendEnterOverworld.
 	OpInstanceReady = 4516 // S2C yu_1: empty — instance ready / movement unlock
+	// OpAchievementUnlocked announces one unlock. Unlike OpStatisticData below,
+	// this IS safe to push unsolicited: its handler zN is registered permanently
+	// at login and only raises a toast. A hidden achievement is a no-op — zN gates
+	// its whole body on !isHidden().
+	OpAchievementUnlocked = 22000 // S2C ade_0: [i16 achievementId]
+
 	// OpStatisticData is the criteria snapshot. NEVER send it unsolicited: the
 	// permanently-registered tutorial handler (asA, added at login by by_2) pops
 	// the tutorial-guide dialog on receipt. It is safe, and required, ONLY as the

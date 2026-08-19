@@ -35,12 +35,16 @@ type Deps struct {
 	FightMaps *gamedata.FightMaps
 	// Events is the per-round event-card table (type 230). nil/empty leaves the
 	// round-card mechanic inert (eventId 0, no effects) — see events.go.
-	Events     *gamedata.Events
-	Exchanges  *ExchangeManager
-	Matchmaker *Matchmaker
-	Challenges *ChallengeManager
-	Fights     *FightManager
-	Sessions   *SessionRegistry
+	Events *gamedata.Events
+	// Achievements is the type-800/801/802 "exploits" catalogue. nil leaves the
+	// evaluator inert (no unlocks announced); the tab still opens and renders
+	// progress, because the client computes percentages itself from the criteria.
+	Achievements *gamedata.Achievements
+	Exchanges    *ExchangeManager
+	Matchmaker   *Matchmaker
+	Challenges   *ChallengeManager
+	Fights       *FightManager
+	Sessions     *SessionRegistry
 	// Tournaments tracks which coaches registered for which standing tournament
 	// (the tournament totem's list/calendar). In-memory, process-lived.
 	Tournaments *TournamentManager

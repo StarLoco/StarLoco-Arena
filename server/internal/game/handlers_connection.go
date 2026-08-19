@@ -315,6 +315,12 @@ func (s *Session) enterWorld(coach *domain.Coach) error {
 		})
 	}
 
+	// Evaluate on entry as well as on each criteria change. This is what
+	// self-heals a coach whose criteria were earned before the evaluator existed,
+	// or through a path that does not (yet) call it — and it costs one read when
+	// there is nothing new.
+	s.evaluateAchievements()
+
 	s.log.Info("entered world", "coach", coach.Name, "id", coach.ID)
 	return nil
 }

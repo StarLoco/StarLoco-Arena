@@ -81,6 +81,25 @@ type CoachStat struct {
 	Value   int32 `gorm:"not null;default:0"`
 }
 
+// CoachAchievement records that an achievement has been UNLOCKED and announced.
+//
+// Completion itself is not stored: it is a pure function of the coach's criteria
+// and tome, recomputed on demand exactly as the client does it. The only thing
+// this table buys is that the unlock announcement (S2C 22000) fires once per
+// coach instead of every time the criteria are re-evaluated.
+type CoachAchievement struct {
+	ID uint `gorm:"primaryKey"`
+	// AchievementID is the type-800 record id (int16 on the wire).
+	CoachID       uint  `gorm:"uniqueIndex:idx_coach_achievement;not null"`
+	AchievementID int16 `gorm:"uniqueIndex:idx_coach_achievement;not null"`
+	UnlockedAt    time.Time
+}
+
+// TableName pins the table name (gorm would otherwise pluralize to
+// "coach_achievements" anyway, but the mapping is stated for the same reason as
+// the others here).
+func (CoachAchievement) TableName() string { return "coach_achievements" }
+
 // CoachCard is one owned card stack. Pos==0 => in inventory; Pos>=1 => equipped
 // in wire-slot Pos-1. TemplateID references a gamedata card template (not a FK).
 //

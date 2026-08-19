@@ -52,6 +52,8 @@ func handleStatisticUpdate(s *Session, f *protocol.C2SFrame) error {
 	}
 	s.log.Debug("statistic update", "coach", s.Coach.Name,
 		"stat", su.StatID, "value", su.Value, "flag", su.Flag)
+	// A criterion moved, so an achievement may have completed.
+	s.evaluateAchievements()
 	return nil
 }
 

@@ -114,6 +114,56 @@ belongs to the coach.
 
 ## Fixed
 
+### B-106 - achievements were never evaluated, so nothing ever unlocked
+
+With the tab open (B-105) the client rendered progress correctly — it computes
+percentages itself — but no achievement could ever *complete*, because the server
+had no idea what an achievement was. Types 800/801/802 were undecoded and opcode
+22000 was never sent.
+
+Decoding them turned out to be the whole job, because **completion is entirely
+generic**: an achievement is done when every statistic condition is met and every
+listed card is in the coach's tome (`aau_1.a`). There is no per-achievement logic
+anywhere in the client, so there is none here either.
+
+All 332 shipped records decode with **byte-exact consumption** (no short read, no
+overrun), which is the test that matters: the server unlocks *from* these records,
+so a silent mis-parse would unlock the wrong things.
+
+Three findings worth keeping:
+
+- **There is no reward.** Points ("PE") are cosmetic — summed for a header total
+  and to pick a row icon tier, nothing else. The record's one remaining `i32`
+  (`ru_1.bJg`) is parsed, copied into the runtime object, and then read by **no
+  client code at all**. It is decoded here and deliberately given no behaviour.
+  Unlocks matter only as *keys*: zone triggers, challenge gating and the island
+  Zaap dialog test "does this coach have achievement N".
+- **Completion is not stored, only the announcement is.** Whether an achievement
+  is done is recomputed from the criteria every time, exactly as the client does
+  it. The table exists purely so the 22000 toast fires once per coach — without
+  it a player would be re-toasted on every evaluation, including every login.
+- **22000 is safe to push unsolicited**, unlike its sibling 22002: its handler
+  `zN` is registered permanently at login and only raises a toast. A *hidden*
+  achievement is a client-side no-op (`zN` gates its whole body on
+  `!isHidden()`), so those are recorded silently and never sent.
+
+**Verified** `unit` for the decoder (byte-exact over all 332 records, catalogue
+shape, and the `>=` / clamped-percentage rules) and `e2e` for the engine over real
+sockets: announced on crossing the threshold, not before, exactly once, still not
+repeated after a relog, hidden ones silent, card-gated ones still locked.
+Mutation-checked three ways — announcing repeatedly, announcing hidden ones, and
+ignoring card conditions each fail with the specific diagnostic.
+
+**Live-verified** end to end: entering the world announced achievements 362 and
+456, the client showed *"Exploit débloqué : Le démon de la 52ème minute vous donne
+une rune"* with its description — the same achievement its own tab had computed as
+100%, so two independent implementations agree — and a full restart + relog
+announced nothing again.
+
+**Known deviation:** the tome is approximated by currently-owned card templates.
+The client's set is grow-only (nothing anywhere removes from it), so a coach who
+sells a card keeps credit there but loses it here. See ROADMAP item 26.
+
 ### B-105 - the achievements tab could not be opened at all
 
 Clicking the "Exploits" button did nothing. Not "opened empty" — nothing.

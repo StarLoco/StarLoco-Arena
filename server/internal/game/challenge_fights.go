@@ -228,12 +228,12 @@ func challengeOpponentName(challengeID int32) string {
 // reward cards — but only the FIRST time. A repeat win is idempotent: criteria
 // stay set, no further cards.
 //
-// Criteria changes reach the client only in the 2052 descriptor (opcode 22002 is
-// unsendable — its handler both opens the tutorial dialog and wholesale-replaces
-// the coach's criteria), so a newly-set criterion becomes visible to the client
-// on its next coach load. That is fine for these: the only consumer is the
-// 12th-minute boss's gate, which the client re-evaluates from its local set on
-// each click.
+// Unsolicited criteria changes reach the client only in the 2052 descriptor, so
+// a newly-set criterion becomes visible on its next coach load. That is fine for
+// these: the only consumer is the 12th-minute boss's gate, which the client
+// re-evaluates from its local set on each click. (Opcode 22002 carries the same
+// data but must only ever be sent as the REPLY to 22001 — see
+// protocol.OpStatisticData and BUGS.md B-105.)
 // Returns the card ids actually granted, so the caller can show them on the
 // end-of-fight panel ("Cartes gagnées"). Empty on a repeat clear.
 func (d *Deps) recordChallengeVictory(coachID uint, sess *Session, challengeID int32) []int32 {
@@ -255,6 +255,12 @@ func (d *Deps) recordChallengeVictory(coachID uint, sess *Session, challengeID i
 	// The aggregate flag needs the completion set above to be visible, so it is
 	// evaluated last.
 	d.maybeSetAllMinuteDemons(coachID)
+
+	// Criteria just moved, so achievements may have completed. Runs after the
+	// aggregate flag so a challenge that finishes a set unlocks in the same pass.
+	if sess != nil {
+		sess.evaluateAchievements()
+	}
 
 	if !first {
 		d.Log.Info("challenge re-cleared; no repeat reward",
