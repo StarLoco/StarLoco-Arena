@@ -13,6 +13,42 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
+### B-111 — three live-client errors found while verifying B-110 (open)
+
+Tailing `output.log` during a real practice fight surfaced three distinct errors
+that **no Go test can see**, because in every case the server's own state is
+correct and it is the client that rejects or mishandles the frame. Logged here
+with evidence; none is fixed yet.
+
+**1. `generic effet inconnu : 0` — effects sent with genericEffectId 0.**
+`yi_1.f` resolves the effect RECORD from part 0's generic id (`gR().iK(n2)`) and
+logs this when it fails, leaving `bWj` null. It does not abort, so the effect
+still runs — but everything that reads the record (duration, the trigger bitsets
+behind `akF()` / `isInfinite()` / `akD()`) is then reading off a null. Several of
+our broadcasts hardcode 0 for the generic id: collision damage, rebound and
+transferred damage (`spell_effects.go` `applyHPDelta`/`dealReboundDamage` call
+sites), the AP/MP-cost frames, and card use. Fires many times per fight.
+
+**2. `IllegalStateException: currentFighter() sans hasCurrentFighter()`**
+in `ZT.jt` ← `mv_0.ax:213`. `jt(Nx)` sets a timed effect's remaining turns and
+resolves "now" from the CURRENT FIGHTER, so any effect with `Nx > 0` sent while
+no fighter is current throws. Observed ~200 times in one fight, all at fight
+start — i.e. the equipment/object buffs applied during setup, before the first
+turn begins. The effect is lost.
+
+**3. Fighter equipment overflows the client's inventory.** Every fighter in the
+dump carries `objects=10[...]`, but the client logs
+`Impossible d'ajouter un item : position en dehors des limites : 5` … `9` and then
+`Erreur lors de la désérialisation d'un ArrayInventory : impossible d'ajouter
+l'item <id>` for each. The client's fighter inventory has **5** slots (0-4); we
+send 10, so half of every fighter's equipment is silently discarded client-side.
+
+All three predate this session's work and are unrelated to the blob-part fixes.
+Suggested order: (3) is a data/capacity mismatch worth confirming against
+`abw_2`/the inventory class first; (2) needs the setup buffs deferred until a
+fighter is current (or sent as infinite); (1) needs a real generic effect id
+threaded to the synthetic broadcasts.
+
 ### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
 The wrong-namespace half is fixed (B-088). The remaining question was what should
@@ -113,6 +149,54 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-110 - every push/pull NPE'd the client, and no buff icon could ever appear: the 8120 blob was missing two parts
+
+Two independent live bugs with one root cause: `buildRunningEffect` only ever
+wrote blob parts 0/1/2. The client's running effects expose **six** (`xb_2.Kl`),
+and two of the others are not optional.
+
+**Part 3 (`aaa_0`/`hk_0`, 18B) - the displacement destination.** Push (37), pull
+(38) and "est repoussé de sa cible" (153) move the fighter to the cell in this
+part, verbatim (`na_2.java:57` `m(bzW)`). The client would normally compute that
+cell itself in `aaH()`, but `aaH()` is only reachable from `a(xb_2)`, and the wire
+path never calls it: `mv_0.ax():205` calls `Nu.akd()`, which clears `bWv`, which
+makes `akf()` false, which is the gate on `a(xb_2)` at `xb_2.java:774`. The guard
+that might have saved it (`rM`, `na_2.java:47`) is only cleared inside that same
+uncalled method, so it stays `true` and execution falls straight through to
+`this.bzW.equals(ry2)` on a null. **Proven live** by injecting the same push frame
+twice through the dev endpoint:
+
+    without part 3 -> Exception levée lors du traitement d'un message : amB
+                      java.lang.NullPointerException
+                      [DEFAUT DE CONCEPTION] Message (amB) non traité, de type 8120
+    with part 3    -> (nothing)
+
+So the client did not merely mis-animate the shove, it **threw and dropped the
+whole effect**. 10 shipped rows are affected (7 push, 3 pull) - "Coup Sournois",
+"Peur", "Flèche de Recul", "Attirance", "Vent Attirant", "Attirance Légère".
+
+**Part 4 (`jf_2`, 12B) - the source spell**, `[i32 sourceType][i64 sourceId]`,
+type 13 = Spell. This is the only way the client learns which spell produced an
+effect, and its buff bar *requires* it: both providers walk the fighter's running
+effects and `continue` on `mi() == null || mi().iP() != 13` (`ee_2.java:562` and
+`:594`). Without it **no buff icon can ever appear on any fighter**, no matter how
+correctly the buff is applied, ticked and reverted server-side. It is also
+mandatory for action 140, which dereferences the source spell unconditionally.
+
+Fix: `buildRunningEffect` takes optional parts and sorts them by index (the
+decoder sizes each part from the *next* directory offset, so ascending order is
+load-bearing). `applyPushPull` attaches the destination plus the blocking
+fighter's id; the timed-effect call sites (buff, state, visual, damage transfer)
+attach the source spell, which `resolveSpellEffects` records in `f.sourceSpellID`
+around each cast - saved and restored, so a nested effect cannot inherit a stale
+id, and non-spell effects (poison, special cells, traps) correctly send no part 4
+at all.
+
+Verified: unit (part layouts, ordering, omission-when-zero), call-site tests that
+capture the actual broadcast frames (destination matches the server's own
+`victim.Pos`, blocker id present/absent), and the live A/B above. Every assertion
+mutation-checked, including by re-introducing the original bug.
 
 ### B-109 - interactive objects could not be used: one was drawn off its cell, and the rest was operator error
 

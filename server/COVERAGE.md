@@ -308,7 +308,7 @@ result dialog.
 | 4524 | FighterMoveInFight | S2C | ✓ | A | — | ✓ |
 | 8109 | SpellCastRequest | C2S | ✓ | A | — | ✓ |
 | 8110 | SpellCast | S2C | ✓ | A | — | ✓ |
-| 8120 | RunningEffect (AP/MP/HP) | S2C | ✓ | A | ✓ | ✓ |
+| 8120 | RunningEffect (AP/MP/HP) | S2C | ✓ | A | ✓ | ✓ (blob parts 0-4; 3=displacement, 4=source spell) |
 | 4520 | FighterDies | S2C | ✓ | A | — | ✓ (forfeit) |
 | 8200 | ActionSequenceExecute | S2C | ✓ | A | — | ✓ |
 | 8300 | EndFight | S2C | ✓ | A (2.70 strength-map counts) | ✓ | ✓ |

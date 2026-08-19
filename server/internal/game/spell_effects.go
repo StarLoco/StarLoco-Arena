@@ -46,6 +46,14 @@ func (f *Fight) rngSource() *rand.Rand {
 // here (damage variants, heal, AP/MP loss/gain/steal, positioning, buffs); the
 // exotic state/summon/glyph effects are recognised and skipped (see EffectKind).
 func (f *Fight) resolveSpellEffects(caster *FightFighter, sp *gamedata.Spell, target Pos, crit bool) {
+	// Remember which spell is resolving so every effect broadcast can name its
+	// source in blob part 4. The client's buff bar drops any running effect whose
+	// source is not a spell (ee_2.java:562), so this is what makes buff icons
+	// appear at all. Saved/restored rather than just cleared: an effect can
+	// resolve nested effects (collision damage, trap springs, poison ticks).
+	prev := f.sourceSpellID
+	f.sourceSpellID = sp.ID
+	defer func() { f.sourceSpellID = prev }()
 	for _, ef := range selectEffectsForCrit(sp.Effects, crit) {
 		f.resolveEffect(caster, ef, target)
 	}
@@ -307,7 +315,8 @@ func (f *Fight) applyVisualEffect(caster *FightFighter, ef gamedata.Effect, cell
 	val := ef.Roll(f.rngSource())
 	turns, _ := ef.DurationTurns()
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, val, turns, false)
+		caster.WireID, victim.WireID, victim.Pos, val, turns, false,
+		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
 
@@ -736,7 +745,8 @@ func (f *Fight) applyDamageTransfer(caster *FightFighter, ef gamedata.Effect, ta
 	}
 	victim.transfer = &damageTransfer{to: caster, pct: pct, turns: turns}
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, pct, turns, false)
+		caster.WireID, victim.WireID, victim.Pos, pct, turns, false,
+		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
 
@@ -969,8 +979,17 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 	}
 	// Broadcast the native push/pull effect (client animates + shows its own
 	// collision damage); the value carries the cells actually moved.
+	//
+	// The DESTINATION must ride along in part 3: the client moves the fighter to
+	// the cell in that part verbatim (`na_2.java:57` m(bzW)) and never derives it
+	// itself on the wire path, so without it the shove lands on null/stale.
+	var blocked int64
+	if hitFighter != nil {
+		blocked = hitFighter.WireID
+	}
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, moved, 0, true)
+		caster.WireID, victim.WireID, victim.Pos, moved, 0, true,
+		displacementPart(victim.Pos, blocked), sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 	if collision > 0 {
 		f.applyCollisionDamage(caster, victim, collision)
@@ -1078,9 +1097,12 @@ func (f *Fight) applyBuff(caster *FightFighter, ef gamedata.Effect, target Pos) 
 		f.trackBuff(victim, &activeBuff{actionID: ef.ActionID, effectID: ef.EffectID}, turns, infinite)
 	}
 
-	// Nx carries the duration the client ticks down (RunningEffect.jt(Nx)).
+	// Nx carries the duration the client ticks down (RunningEffect.jt(Nx)), and
+	// part 4 names the source spell — without it the client files the buff under
+	// no spell and its buff bar skips it entirely (ee_2.java:562).
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, val, turns, false)
+		caster.WireID, victim.WireID, victim.Pos, val, turns, false,
+		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
 

@@ -1,6 +1,8 @@
 package game
 
 import (
+	"sort"
+
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
@@ -88,7 +90,7 @@ func buildSpellCast(uid int32, casterWireID int64, spellID int32, target Pos, cr
 // durationTurns is the packet's Nx field: for a timed CharacBuff the client sets
 // the effect's remaining turns from it (mv_0.ax → RunningEffect.jt(Nx)); it is
 // ignored for an instant effect (damage/heal/AP-MP), so pass 0 there.
-func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireID, targetWireID int64, cell Pos, value, durationTurns int32, mustExecNow bool) ([]byte, error) {
+func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireID, targetWireID int64, cell Pos, value, durationTurns int32, mustExecNow bool, opts ...effectPart) ([]byte, error) {
 	part0 := protocol.NewWriter().
 		I64(casterWireID).
 		I64(targetWireID).
@@ -98,7 +100,14 @@ func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireI
 		Bytes()
 	part1 := protocol.NewWriter().I64(casterWireID).Bytes()
 	part2 := protocol.NewWriter().I64(targetWireID).Bytes()
-	blob := writeBinarSerial([]binarPart{{0, part0}, {1, part1}, {2, part2}})
+	parts := []binarPart{{0, part0}, {1, part1}, {2, part2}}
+	for _, o := range opts {
+		if o.data != nil {
+			parts = append(parts, binarPart{o.idx, o.data})
+		}
+	}
+	sort.Slice(parts, func(i, j int) bool { return parts[i].idx < parts[j].idx })
+	blob := writeBinarSerial(parts)
 
 	w := protocol.NewWriter()
 	writeActionHeader(w, uid)
@@ -116,6 +125,54 @@ func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireI
 type binarPart struct {
 	idx  uint8
 	data []byte
+}
+
+// effectPart is an OPTIONAL running-effect blob part (index 3+). Parts 0-2 are
+// always written; these are only meaningful to particular effect classes.
+type effectPart struct {
+	idx  uint8
+	data []byte
+}
+
+// Source kinds for part 4 (`jf_2`): the client switches on this to resolve the
+// object that cast the effect. Only Spell is ever produced here.
+const effectSourceSpell int32 = 13
+
+// sourceSpellPart builds part 4 (`jf_2`, 12B): [i32 sourceType][i64 sourceId].
+//
+// This is how the client learns WHICH SPELL produced a running effect, and it is
+// what gates the buff bar: `ee_2`'s "hasBuff"/"buffs" providers skip every effect
+// whose `mi() == null || mi().iP() != 13` (ee_2.java:562,594). Without this part
+// no buff icon can ever appear on a fighter, however correct the buff itself is.
+//
+// It is also the only way an effect can act on its own source spell — action 140
+// ("diminution du cooldown d'un sort") dereferences it unconditionally
+// (`aus_0` -> `gn_0.a(fv,int,short)`), so omitting it there is an NPE.
+func sourceSpellPart(spellID int32) effectPart {
+	if spellID <= 0 {
+		return effectPart{}
+	}
+	return effectPart{4, protocol.NewWriter().
+		I32(effectSourceSpell).
+		I64(int64(spellID)).
+		Bytes()}
+}
+
+// displacementPart builds part 3 (`aaa_0`/`hk_0`, 18B):
+// [i32 x][i32 y][i16 z][i64 collidedFighterId].
+//
+// Push (37), pull (38) and "est repoussé de sa cible" (153) move the fighter to
+// THIS cell. The client does not recompute it: `na_2.aaH()` (which would) is
+// reached only from `a(xb_2)`, and `mv_0.ax()` calls `akd()` before executing, so
+// `akf()` is false and the computation is skipped on the wire path. The
+// destination field `bzW` is then whatever the object pool left there — null on a
+// fresh instance (`na_2.java:54` NPEs / `:57` moves to null), stale on a reused
+// one. So this part is mandatory for every displacement effect.
+func displacementPart(dest Pos, collidedWireID int64) effectPart {
+	return effectPart{3, protocol.NewWriter().
+		I32(dest.X).I32(dest.Y).U16(uint16(dest.Z)).
+		I64(collidedWireID).
+		Bytes()}
 }
 
 // writeBinarSerial encodes parts in the wire form the 2.70 client's aJj.ad()

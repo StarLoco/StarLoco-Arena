@@ -168,7 +168,8 @@ func (f *Fight) applyState(caster *FightFighter, ef gamedata.Effect, cell Pos) {
 	}
 	victim.stateSrc[st] = ef.EffectID
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, 0, turns, false)
+		caster.WireID, victim.WireID, victim.Pos, 0, turns, false,
+		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
 

@@ -201,6 +201,12 @@ type Fight struct {
 	summonSeq    int32        // per-fight counter for allocating unique summon wire ids
 	actionUID    atomic.Int32 // atomic: packet builders may read across goroutines
 
+	// sourceSpellID names the spell currently resolving, so each RUNNING_EFFECT
+	// (8120) can carry it in blob part 4. It is 0 outside spell resolution (trap
+	// ticks, poison, special cells), which correctly omits the part. Only ever
+	// touched from the fight's own goroutine.
+	sourceSpellID int32
+
 	// effectAreas are live traps/glyphs placed by action-66 spells (see
 	// effectarea.go). effectAreaSeq allocates their unique ids; inAreaTrigger
 	// guards trap re-entrancy while an area's inner effects are being replayed.
