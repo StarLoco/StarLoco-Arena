@@ -77,6 +77,10 @@ type Coach struct {
 	// 0x200 stat-pairs blob. criterionZaapUnlock is always added on top, so this
 	// may be nil. See buildCriteriaBlob for the ordering/dedup rules.
 	Criteria []Criterion
+	// Tome is every card template the coach has ever owned (client aez_0.dBd),
+	// emitted in the 0x80 blob. It gates the card-based achievements and the
+	// client's "new card" highlighting. May be nil.
+	Tome []int32
 }
 
 // Criterion is one achievement-criterion key/value pair (the client's or_0 enum
@@ -162,6 +166,40 @@ func normalizeCriteria(criteria []Criterion) []Criterion {
 	return pairs
 }
 
+// buildTomeBlob serializes the 0x80 tome blob: [i16 byteLen] then byteLen/4 ×
+// [i32 cardTemplateId].
+//
+// Same hazard as the criteria blob: the client's aez_0.P() reads byteLen, then
+// allocates and consumes exactly that many bytes, so an overstated length eats
+// into the following descriptor sections and the coach silently fails to load.
+// This function therefore owns both the length and the payload, and no caller can
+// write them separately.
+//
+// Read SIGNED, so the cap keeps byteLen positive. With 907 card templates in the
+// shipped data a real tome is ~3.6 kB, far below it.
+func buildTomeBlob(cards []int32) []byte {
+	seen := make(map[int32]bool, len(cards))
+	ids := make([]int32, 0, len(cards))
+	for _, id := range cards {
+		if id == 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if max := int(math.MaxInt16) / 4; len(ids) > max {
+		ids = ids[:max]
+	}
+
+	w := protocol.NewWriter()
+	w.U16(uint16(len(ids) * 4)) // byteLen — EXACTLY 4 per id
+	for _, id := range ids {
+		w.I32(id)
+	}
+	return w.Bytes()
+}
+
 // EncodeStatisticData builds the opcode-22002 payload: [i32 byteLen] then
 // byteLen/4 × {[i16 criterionId][i16 value]}.
 //
@@ -218,8 +256,10 @@ func EncodeCoachInformations(c Coach) ([]byte, error) {
 	// 0x20: guild blob (empty -> no guild)
 	w.U16(0)
 
-	// 0x80: int-set / betCards blob (empty)
-	w.U16(0)
+	// 0x80: the TOME ("grimoire") — every card template the coach has ever owned.
+	// buildTomeBlob owns the length prefix for the same reason the criteria blob
+	// does; see its comment.
+	w.Raw(buildTomeBlob(c.Tome))
 
 	// 0x2: card inventory blob (empty)
 	w.U16(0)

@@ -12,7 +12,7 @@ import (
 func nowNanos() int64 { return time.Now().UnixNano() }
 
 // buildCoachInformation builds CoachInformations (2052) from a persisted coach.
-func buildCoachInformation(c *domain.Coach) ([]byte, error) {
+func buildCoachInformation(c *domain.Coach, tome []int32) ([]byte, error) {
 	return handshake.EncodeCoachInformations(handshake.Coach{
 		ID:        int64(c.ID),
 		Name:      c.Name,
@@ -21,6 +21,7 @@ func buildCoachInformation(c *domain.Coach) ([]byte, error) {
 		Sex:       c.Sex,
 		Standing:  c.Standing,
 		Criteria:  coachCriteria(c),
+		Tome:      tome,
 	})
 }
 

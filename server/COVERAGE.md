@@ -355,7 +355,8 @@ missing feature manifests to the client as a *hang*. Prioritized:
 - Events (17000), tournaments (28600), XvX invites
   (26300) — large `new-in-2.70` subsystems, each a client tab.
 - 2052 CoachInformations / 4096 coach-actor sub-blobs are still empty (guild,
-  inventory, appearance) BUT this is now known to be low-impact for stats: the
+  inventory, appearance — the `0x80` tome blob is now populated, see B-106)
+  BUT this is now known to be low-impact for stats: the
   coach panel's ladder stats come from the **2400 PlayerStatisticsReport** (which
   is sent + now field-correct), not the 2052 blob. The 2052/4096 `0x200` stat
   map only carries **Evolution-mode** stats (a game mode we don't track) and

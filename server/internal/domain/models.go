@@ -81,6 +81,23 @@ type CoachStat struct {
 	Value   int32 `gorm:"not null;default:0"`
 }
 
+// CoachTomeCard is one card template the coach has EVER owned — the "grimoire"
+// the client keeps in aez_0.dBd.
+//
+// This is deliberately not derived from the live inventory. The client's set is
+// GROW-ONLY: every use of aQm() is either a read or a `.d(id, 1)` add, and
+// nothing anywhere removes from it. So selling, mailing or fusing a card away
+// must not cost the coach credit for having owned it, which is exactly what a
+// "distinct templates currently held" query would do.
+type CoachTomeCard struct {
+	ID         uint  `gorm:"primaryKey"`
+	CoachID    uint  `gorm:"uniqueIndex:idx_coach_tome;not null"`
+	TemplateID int32 `gorm:"uniqueIndex:idx_coach_tome;not null"`
+}
+
+// TableName pins the table name.
+func (CoachTomeCard) TableName() string { return "coach_tome_cards" }
+
 // CoachAchievement records that an achievement has been UNLOCKED and announced.
 //
 // Completion itself is not stored: it is a pure function of the coach's criteria

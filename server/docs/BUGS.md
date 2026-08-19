@@ -160,9 +160,23 @@ une rune"* with its description — the same achievement its own tab had compute
 100%, so two independent implementations agree — and a full restart + relog
 announced nothing again.
 
-**Known deviation:** the tome is approximated by currently-owned card templates.
-The client's set is grow-only (nothing anywhere removes from it), so a coach who
-sells a card keeps credit there but loses it here. See ROADMAP item 26.
+**Follow-up, now also fixed:** the tome was initially approximated by
+currently-owned card templates, which would have let a sale silently revoke the
+achievements a card had completed. It is now a grow-only table of its own, folded
+in from the inventory at login and on every inventory push — `pushInventory` is
+the single path every visible grant takes (shop, fusion, fight winnings,
+challenge rewards, exchange, mail), so hooking it there cannot be out-of-date the
+next time a grant site is added. The tome is also emitted in the 2052 descriptor's
+`0x80` blob, which had been hard-coded empty and mislabelled "betCards": without
+it the client computes card-gated progress from an empty set and shows 0% on rows
+the server considers complete.
+
+That fix needed a better test than the one it started with. The first version
+asserted on the database, which a mutation that made *evaluation* read the live
+inventory sailed straight through — the row was still there, nothing looked at
+it. The test now asserts behaviour: a second achievement gated on the same card
+plus a criterion must still unlock after the card is sold, which is only possible
+if evaluation consults the tome. That mutation now fails.
 
 ### B-105 - the achievements tab could not be opened at all
 

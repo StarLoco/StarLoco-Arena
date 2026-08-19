@@ -61,7 +61,15 @@ func (s *Session) pushInventory(coach *domain.Coach) error {
 	if err != nil {
 		return err
 	}
-	return s.Send(frame)
+	if err := s.Send(frame); err != nil {
+		return err
+	}
+	// Every card grant the player can see goes through here (shop, fusion, fight
+	// winnings, challenge rewards, exchange, mail), so this is the one place that
+	// catches them all for the card-gated achievements. Hooking each grant site
+	// individually would leave whichever one is added next silently uncovered.
+	s.evaluateAchievements()
+	return nil
 }
 
 // handleInventoryRequest processes CoachInventoryUpdateRequest(5203):

@@ -229,8 +229,20 @@ func (s *Session) completeLogin(coach *domain.Coach) error {
 	}
 	coach.PosX, coach.PosY, coach.PosZ = int32(spawnX), int32(spawnY), spawnZ
 
+	// Fold whatever the coach holds into the tome BEFORE the descriptor is built,
+	// so the client's grimoire matches the server's on this very login rather
+	// than one login behind. Grow-only, so this never takes a card away.
+	tome, err := s.deps.Store.Coaches.SyncTome(coach.ID, ownedTemplates(coach))
+	if err != nil {
+		s.log.Warn("sync tome", "coach", coach.Name, "err", err)
+	}
+	tomeIDs := make([]int32, 0, len(tome))
+	for id := range tome {
+		tomeIDs = append(tomeIDs, id)
+	}
+
 	sends := [](func() ([]byte, error)){
-		func() ([]byte, error) { return buildCoachInformation(coach) },
+		func() ([]byte, error) { return buildCoachInformation(coach, tomeIDs) },
 		func() ([]byte, error) { return buildFriendList(coach, s.deps.World) },
 		func() ([]byte, error) { return buildIgnoreList(coach) },
 		func() ([]byte, error) { return buildPlayerStatisticsReport(coach) },

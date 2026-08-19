@@ -378,6 +378,57 @@ func (r *CoachRepo) UpsertStat(coachID uint, statID int16, value int32) error {
 	})
 }
 
+// SyncTome folds the given card templates into the coach's tome and returns the
+// resulting full set.
+//
+// Grow-only by construction: it only ever inserts. Calling it with the coach's
+// current inventory is therefore enough to keep the tome correct without hooking
+// every single grant site (shop, fight winnings, challenge rewards, mail, fusion)
+// — a card that passes through the inventory at any point it is observed gets
+// recorded, and one that leaves is never withdrawn.
+func (r *CoachRepo) SyncTome(coachID uint, templateIDs []int32) (map[int32]bool, error) {
+	have := make(map[int32]bool)
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var rows []domain.CoachTomeCard
+		if err := tx.Where("coach_id = ?", coachID).Find(&rows).Error; err != nil {
+			return err
+		}
+		for _, row := range rows {
+			have[row.TemplateID] = true
+		}
+		for _, id := range templateIDs {
+			if id == 0 || have[id] {
+				continue
+			}
+			if err := tx.Create(&domain.CoachTomeCard{
+				CoachID: coachID, TemplateID: id,
+			}).Error; err != nil {
+				return err
+			}
+			have[id] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return have, nil
+}
+
+// TomeCards returns the card templates this coach has ever owned, ascending.
+func (r *CoachRepo) TomeCards(coachID uint) ([]int32, error) {
+	var rows []domain.CoachTomeCard
+	if err := r.db.Where("coach_id = ?", coachID).
+		Order("template_id asc").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]int32, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.TemplateID)
+	}
+	return out, nil
+}
+
 // UnlockedAchievements returns the ids this coach has already been told about.
 func (r *CoachRepo) UnlockedAchievements(coachID uint) (map[int16]bool, error) {
 	var rows []domain.CoachAchievement
@@ -515,6 +566,10 @@ func (r *CoachRepo) DeleteCoach(coachID uint) error {
 		}
 		if err := tx.Where("coach_id = ?", coachID).
 			Delete(&domain.CoachAchievement{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("coach_id = ?", coachID).
+			Delete(&domain.CoachTomeCard{}).Error; err != nil {
 			return err
 		}
 

@@ -35,7 +35,15 @@ func (s *Session) evaluateAchievements() {
 	if err != nil || coach == nil {
 		return
 	}
-	stat, hasCard := coachAchievementLookups(coach)
+	// Fold whatever the coach currently holds into the tome, then evaluate against
+	// the tome rather than the inventory. The client's set never shrinks, so a
+	// card that has been owned keeps counting after it is sold or fused away.
+	tome, err := s.deps.Store.Coaches.SyncTome(s.Coach.ID, ownedTemplates(coach))
+	if err != nil {
+		s.log.Warn("sync tome", "coach", s.Coach.Name, "err", err)
+		tome = nil
+	}
+	stat, hasCard := coachAchievementLookups(coach, tome)
 
 	// Deterministic order: IDs() is sorted, so a coach completing several at once
 	// is always announced in the same sequence.
@@ -68,25 +76,30 @@ func (s *Session) evaluateAchievements() {
 	}
 }
 
-// coachAchievementLookups builds the two accessors the evaluator needs.
-//
-// The tome is approximated by the coach's currently-owned card TEMPLATES
-// (inventory and equipped alike). The client's own set (aez_0.dBd) is grow-only —
-// nothing anywhere removes from it — so a coach who sells a card would keep
-// credit for it there while losing it here. Deriving from ownership is the only
-// thing the server can do honestly today; see ROADMAP item 26 for making it
-// grow-only server-side.
-func coachAchievementLookups(c *domain.Coach) (func(int16) int32, func(int32) bool) {
+// ownedTemplates lists the distinct card templates the coach currently holds,
+// equipped or not. This is the INPUT to the tome, never the tome itself.
+func ownedTemplates(c *domain.Coach) []int32 {
+	seen := make(map[int32]bool, len(c.Inventory))
+	out := make([]int32, 0, len(c.Inventory))
+	for _, card := range c.Inventory {
+		if card.TemplateID == 0 || seen[card.TemplateID] {
+			continue
+		}
+		seen[card.TemplateID] = true
+		out = append(out, card.TemplateID)
+	}
+	return out
+}
+
+// coachAchievementLookups builds the two accessors the evaluator needs: the
+// criteria counters, and tome membership.
+func coachAchievementLookups(c *domain.Coach, tome map[int32]bool) (func(int16) int32, func(int32) bool) {
 	stats := make(map[int16]int32, len(c.Stats))
 	for _, st := range c.Stats {
 		stats[st.StatID] = st.Value
 	}
-	cards := make(map[int32]bool, len(c.Inventory))
-	for _, card := range c.Inventory {
-		cards[card.TemplateID] = true
-	}
 	// Absent keys read as 0, matching the client's aGz.cp.
-	return func(id int16) int32 { return stats[id] }, func(id int32) bool { return cards[id] }
+	return func(id int16) int32 { return stats[id] }, func(id int32) bool { return tome[id] }
 }
 
 // sendAchievementUnlocked sends S2C 22000 (client ade_0): [i16 achievementId].

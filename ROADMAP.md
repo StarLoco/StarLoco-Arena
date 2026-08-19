@@ -56,7 +56,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Tournaments | 🟡 | Registration + calendar + list; no brackets, no matches |
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
 | Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
-| Achievements | ✅ | 332/5/13 records decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced (B-106). Statistic *coverage* is a long tail owned by other systems |
+| Achievements | ✅ | 332/5/13 decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced, tome grow-only (B-106). 47 are structurally blocked on 2v2/tournaments; the rest need their statistic to start moving |
 | Guilds / clans, 2v2 | ⬜ | Structurally blocked (see §8.16) |
 | Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
@@ -1472,21 +1472,31 @@ is a signing certificate or SignPath); no published Docker image.
     anywhere in the client). Unlocks matter as *keys*: zone triggers, challenge
     gating and the island Zaap dialog test them.
 
-    Two follow-ons, deliberately not folded in:
+    The **tome** ("grimoire") is implemented properly rather than approximated: a
+    grow-only table, folded in from the inventory at login and on every inventory
+    push, and emitted in the 2052 descriptor's `0x80` blob (which had been
+    hard-coded empty and mislabelled "betCards"). Selling a card therefore cannot
+    revoke the achievements it completed, matching the client's own set, which
+    never shrinks.
 
-    - **Statistic coverage is the long tail, and it is not an achievement task.**
-      The 332 records reference 98 distinct statistic ids (`or_0` documents each
-      one in French), and the server currently moves only a handful — challenge
-      completions, the narrative flags the client reports via 22003, and the Zaap
-      seed. The rest are things like "fights won in 20-25 minutes", "kamas spent
-      at Kardmasters" or "max Zaap cards owned", which belong to whichever system
-      owns that number. Every one of them lights its achievements up for free the
-      moment it starts being counted — no work is needed here.
-    - **The tome is approximated by currently-owned cards.** The client's set
-      (`aez_0.dBd`) is grow-only — nothing anywhere removes from it — so a coach
-      who sells a card keeps credit client-side but loses it server-side. Making
-      it grow-only server-side is a small table; it affects the 24 card-gated
-      achievements only.
+    **What is left is not an achievement task.** The 332 records reference 98
+    distinct statistic ids (`or_0` documents each in French) and the server moves
+    only a handful today — challenge completions, the narrative flags the client
+    reports via 22003, and the Zaap seed. The rest are numbers owned by other
+    systems ("damage dealt in one turn", "consecutive wins in evolution", "biggest
+    Iop used for a won fight"), and each lights its achievements up for free the
+    moment its owner starts counting it. Nothing further is needed *here*.
+
+    Of those, **47 achievements (14%) are structurally unreachable** until two
+    deferred systems exist, and no achievement-side work can change that:
+
+    | Blocked by | Achievements | Statistic ids |
+    |---|---|---|
+    | **2v2** (item 30) | 22 | 146, 147, 148, 171 |
+    | **Tournament match layer** (item 32) | 25 | 183, 187, 188, 189 |
+
+    None of them are hidden, so they are visible-but-stuck in the client's list.
+    The remaining 285 need only their statistic to start moving.
 27. **NPC dialog trees** — type 1500, 148 records.
 28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke
     client-state RE plus live verification for each.
