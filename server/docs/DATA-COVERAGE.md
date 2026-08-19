@@ -65,7 +65,7 @@ objects.
 | 1001 | 4 | `ek_2` → — | Tournament level list | ✅ 1/1 | `Tournaments.Levels()` |
 | 1100 | 30 | `ajd_0` → `abe_1` | Fusion-laboratory definitions | ✅ 4/4 | `LoadFusionLabs` |
 | 1400 | 2 | `cb_2` → `atk_0` | Pro League definitions | ❌ | served empty |
-| 1500 | 148 | `atF` → `ana_2` | NPC dialog replies | ❌ | — |
+| 1500 | 148 | `atF` → `ana_2` | NPC dialog replies | **n/a** | client-only (`xs_0`) |
 | 1600 | 29 | `mw_0` → — | Per-map metadata (music/background refs) | ❌ | — |
 
 Declared in `atr_0` but **absent from this store** (9): 110, 231, 232, 500, 600, 1101,
@@ -360,6 +360,7 @@ server-side; the condition is recovered, the arbitration is ours (see B-074).
 
 | Date | Change |
 |---|---|
+| 2026-08-19 | Established that record type **1500** (NPC dialog replies) is **client-only** and needs no server decode: the client loads it with its own content loader (`xs_0`, "contentLoader.dialogReply") and runs the whole tree locally — `ao_2` opens `npcTalkDialog` on frame registration, and its 17001/17002 are non-encodable internal events (`wm_0` → `sb_0` → `aed_2.encode()` returns null). A reply's only wire effects are 26330 and 22003, both already implemented. Marked n/a rather than missing. |
 | 2026-08-19 | Decoded record types **800/801/802** (achievements + categories/subcategories, 332/5/13) with byte-exact consumption over every record, and wired generic completion evaluation + the 22000 unlock push (B-106). Established that there is **no reward**: points are cosmetic and the type-800 record's spare `i32` (`ru_1.bJg`) has no consumer anywhere in the client, so it is decoded and given no behaviour. Also corrected 22002's blanket "do not emit" to "reply-only", which is what had left the tab unopenable (B-105). |
 | 2026-08-18 | Corrected the card-set effect status: the `AI` META bonuses are all wired (since B-066), not "inert bar resurrection". The death-chance five (AI 7/8) only became observable with B-097, which removed an invented `HP <= 0 → dead` rule that pre-empted the roll they modify. No decode change. |
 | 2026-08-18 | Read `maps/env/*.jar` (`ru_2`/`aEG` + the big-endian `do_1` part table) and generated the overworld element table from it, retiring the hand transcription; reproduced it 139/139 and found a wrong direction byte (B-102). Added tplg tile kinds **0** (uniform) and **1** (4-bit), which a size guard and a missing case had been dropping - most of the overworld - scoped so arena decoding is unchanged. Arrival altitude established as the **lowest** walkable layer, not the element's authored z nor the highest layer. |

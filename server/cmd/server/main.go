@@ -406,6 +406,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		FightMaps:      fightMaps,
 		Events:         events,
 		Achievements:   achievements,
+		MapsRoot:       loc.MapsRoot,
 		CardSets:       cardSets,
 		FusionLabs:     fusionLabs,
 		TournamentDefs: tournDefs,

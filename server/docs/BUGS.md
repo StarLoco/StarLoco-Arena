@@ -114,6 +114,40 @@ belongs to the coach.
 
 ## Fixed
 
+### B-107 - GM teleport froze the coach: "Invalid start cell for pathfind search"
+
+`/WORLD <id> x y` and `/TP x y` placed the coach on a cell it could not stand on,
+and the client then refused to move it at all:
+
+```
+INFO (SourceFile:418) - Invalid start cell for pathfind search : doesn't exist.
+```
+
+The client seeds its overworld pathfinder with the coach's cell **and altitude**
+and needs a walkable layer at exactly that altitude. Neither command supplied one:
+
+- `/WORLD` defaults `(x, y, alt)` to the destination's primary Zaap, which is
+  correct — but when the caller passes an explicit `x y` it overrode only the
+  coordinates and kept the **Zaap's** altitude. Worse, for a world with no
+  registered Zaap the altitude fell through to `s.Coach.PosZ`, i.e. the altitude
+  of the world the coach was **leaving**. Hopping to world 7 from the start island
+  gave `alt=8`, from world 19 gave `alt=0`, for the same destination cell.
+- `/TP` had the same flaw for the same reason.
+
+Both now resolve the destination cell's real ground altitude — the lowest walkable
+tplg layer, which is what the client's own arrival logic uses (B-102) — via a
+lazily-loaded, cached `WorldTopology`. Lazy because only an admin issuing these
+two commands ever needs it; loading all ~113 world topologies at startup would be
+pure waste. An explicit `/TP x y z` still overrides.
+
+The same cell that used to give `alt=8` now resolves to `alt=-11`, and the coach
+walks. **Live-verified**: the pathfind error is gone entirely and click-to-move
+works after a hop.
+
+This is dev tooling, not a player-facing path (players arrive by Zaap, which
+already carried a known-good altitude) — but it silently blocked live verification
+in any world without a Zaap, which is the project's main validation tool.
+
 ### B-106 - achievements were never evaluated, so nothing ever unlocked
 
 With the tab open (B-105) the client rendered progress correctly — it computes

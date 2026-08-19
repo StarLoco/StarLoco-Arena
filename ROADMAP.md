@@ -118,7 +118,7 @@ value checked so far turned out wrong in 2.70.
 |---:|---:|---|---|
 | **901 / 900** | **17 527 / 15** | Sphere Board nodes + headers | The largest unimplemented system in the game |
 | 800/801/802 | 332/5/13 | Achievements + categories | **Decoded** (B-106) |
-| 1500 | 148 | NPC dialog replies | Needed for dialog trees |
+| 1500 | 148 | NPC dialog replies | **Client-side only** - the client loads these itself (`xs_0`); the server never needs them |
 | 360 | 42 | Interactive-element rendering | We hand-author elements instead |
 | 1100 | 30 | Fusion-laboratory definitions | ✅ decoded (B-089) — altars, not recipes |
 | 1600 | 29 | Per-map metadata (music/background) | Cosmetic |
@@ -216,7 +216,7 @@ lists.
 | Fireworks (22095 → 22094) | ✅ | Echoed to launcher + nearby sessions |
 | Direction change (4521 → 4522) | ✅ | Cosmetic only — 2.70 dropped directional damage |
 | Intro cutscene / Lua scenario system | ⬜ | The client expects a scenario message the server does not implement |
-| NPC dialog trees | ⬜ | Record type 1500 (148 records) not decoded |
+| NPC dialog trees | ✅ | Client-side only — the client loads type 1500 itself; the server just spawns the NPC (item 27) |
 | Zone triggers | ⬜ | env type 8 |
 
 Element kinds spawned: DemonTotem 24, Zaap 21, CardMaster 13, Mailbox 12,
@@ -1497,7 +1497,36 @@ is a signing certificate or SignPath); no published Docker image.
 
     None of them are hidden, so they are visible-but-stuck in the client's list.
     The remaining 285 need only their statistic to start moving.
-27. **NPC dialog trees** — type 1500, 148 records.
+27. [x] **NPC dialog trees** — DONE, and the answer is that **the server owes
+    nothing**. The premise ("type 1500 not decoded, needed for dialog trees") was
+    wrong: type 1500 is loaded by the CLIENT from its own data, by its own
+    content loader (`xs_0`, "contentLoader.dialogReply"), and the whole tree runs
+    locally. Evidence:
+
+    - `ao_2.a(fh_2,false)` — merely registering the dialog frame OPENS
+      `npcTalkDialog`. There is no request and no reply.
+    - The 17001/17002 it handles are **not wire opcodes**. They arrive as `wm_0`,
+      which extends `sb_0` → `aed_2`, whose `encode()` returns `null`, so they can
+      never be serialized — the same internal-event pattern as 22050/22051.
+    - A reply can do exactly two things, per the `alj` enum:
+      `cEY(1,"Lancer un défi")` → `th_0` sends **26330** (challenge start), and
+      `cEZ(2,"Donne un exploit")` → `po_2` sends **22003** (a criterion). Both are
+      implemented, and 22003 now also drives achievement evaluation (item 26).
+
+    Also established: of the six NPCTalkers, **only one has a dialog tree at all** —
+    `bob` (instance 143, world 85, dialog 228). The other five are decorative
+    ghosts whose descriptor names dialog `-1`, so nothing could give them lines.
+
+    Locked by tests that assert the NPCs are spawned in the right worlds and that
+    exactly one carries a dialog id — the one thing that could silently kill the
+    feature is the server no longer spawning the element. Live: the NPCs render
+    and highlight as interactive. Opening the dialog window itself needs a real
+    double-click, which the synthetic harness does not produce; it exercises no
+    server code either way.
+
+    Fixing the live check turned up a genuine defect, now fixed (B-107): the GM
+    teleports left the coach on a cell with the wrong altitude, so the client
+    refused to move it ("Invalid start cell for pathfind search").
 28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke
     client-state RE plus live verification for each.
 

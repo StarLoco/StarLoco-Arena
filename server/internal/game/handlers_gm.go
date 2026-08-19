@@ -5,7 +5,10 @@ import (
 	"strconv"
 	"strings"
 
+	"sync"
+
 	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
@@ -60,17 +63,62 @@ func handleGMCommand(s *Session, line string) error {
 	}
 }
 
+// worldTopoCache memoizes per-world topologies for the GM teleport. Loading one
+// costs a jar read, and only admins hitting /TP or /WORLD ever pay it — the
+// server does not need topology otherwise, so loading all ~113 at startup would
+// be waste. A nil entry is cached too, so a world without a topology is not
+// re-read on every hop.
+var (
+	worldTopoMu    sync.Mutex
+	worldTopoCache = map[int16]*gamedata.WorldTopology{}
+)
+
+// groundAlt resolves a cell's walkable ground altitude — the lowest walkable
+// layer, which is what the client's own arrival logic uses (see B-102). Returns
+// false when no topology is available, leaving the caller's fallback in place.
+func (s *Session) groundAlt(world int16, x, y int32) (int16, bool) {
+	if s.deps.MapsRoot == "" {
+		return 0, false
+	}
+	worldTopoMu.Lock()
+	topo, cached := worldTopoCache[world]
+	if !cached {
+		t, err := gamedata.LoadWorldTopology(s.deps.MapsRoot, world)
+		if err != nil {
+			s.log.Debug("gm: world topology unavailable", "world", world, "err", err)
+			t = nil
+		}
+		worldTopoCache[world] = t
+		topo = t
+	}
+	worldTopoMu.Unlock()
+	if topo == nil {
+		return 0, false
+	}
+	return topo.LowestWalkableAlt(x, y)
+}
+
 func (s *Session) gmTeleport(args []string) error {
 	if len(args) < 2 {
 		return s.gmFeedback("usage: /TP x y [z]")
 	}
 	x, _ := strconv.Atoi(args[0])
 	y, _ := strconv.Atoi(args[1])
-	// Default to the coach's current altitude, not 0: the client's overworld
-	// pathfinder needs the 4600 `alt` to match the destination cell's walkable
-	// ground altitude, so resetting to 0 (when the ground isn't at 0) freezes the
-	// coach. Override with "/TP x y z" to hop to a different altitude layer.
+	// The client's overworld pathfinder needs the 4600 `alt` to be the destination
+	// cell's OWN walkable ground altitude. Carrying the coach's current altitude
+	// over is only right when the destination happens to sit on the same layer;
+	// otherwise the client reports "Invalid start cell for pathfind search:
+	// doesn't exist" and the coach cannot move at all. So resolve it from the
+	// world's topology, and fall back to the old behaviour only when that is
+	// unavailable. Override explicitly with "/TP x y z".
+	world := s.currentWorld
+	if world == 0 {
+		world = startWorldID
+	}
 	z := int(s.Coach.PosZ)
+	if alt, ok := s.groundAlt(world, int32(x), int32(y)); ok {
+		z = int(alt)
+	}
 	if len(args) >= 3 {
 		z, _ = strconv.Atoi(args[2])
 	}
@@ -78,12 +126,8 @@ func (s *Session) gmTeleport(args []string) error {
 	s.deps.World.UpdatePosition(s.Coach.ID, int32(x), int32(y), int16(z))
 	_ = s.deps.Store.Coaches.Save(s.Coach)
 
-	// Stay on the world the coach is currently in (use /WORLD to change island);
+	// Stays on the world the coach is currently in (use /WORLD to change island);
 	// sending startWorldID here used to yank the coach back to the start island.
-	world := s.currentWorld
-	if world == 0 {
-		world = startWorldID
-	}
 	return s.sendEnterOverworld(float32(x), float32(y), int16(z), world)
 }
 
@@ -113,6 +157,13 @@ func (s *Session) gmWorld(args []string) error {
 		}
 		if yi, err := strconv.Atoi(args[2]); err == nil {
 			y = float32(yi)
+		}
+		// An explicit cell needs ITS ground altitude, not the Zaap's (and not the
+		// previous world's, which is what happened when the destination has no
+		// registered Zaap). Getting this wrong lands the coach on a cell the
+		// client's topology does not have, and it cannot move at all.
+		if a, ok := s.groundAlt(int16(world), int32(x), int32(y)); ok {
+			alt = a
 		}
 	}
 	// Keep the server-side coach position in sync with the rendered cell so
