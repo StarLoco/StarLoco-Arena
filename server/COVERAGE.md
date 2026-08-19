@@ -63,6 +63,15 @@ Audit legend cross-refs the commit that did/verified it.
 | 4098 | ActorDespawn | S2C | ✓ | A | — | ✓ (AoI) |
 | 4501 | CoachMovementRequest | C2S | ✓ | A | — | ✓ (AoI) |
 | 4500 | ActorMovement | S2C | ✓ | A | — | ✓ (AoI) |
+| 200 | InteractiveElementSpawn (`rz_2`) | S2C | ✓ (streamed per chunk) | A | ✓ | ✓ (element AoI) |
+| 206 | InteractiveElementDespawn (`acc_2`) | S2C | ✓ | A (i16 count, i64 ids) | ✓ | ✓ (element AoI) |
+| 201 | InteractiveElementAction (`bd_2`) | C2S | ✓ | A | — | — (elements do not activate live; see BUGS.md) |
+
+Elements are **streamed on the client's env-chunk grid** (Chebyshev chunk distance
+≤ 2, chunks 18 cells), not bulk-sent per world: opcode 200 cannot carry the
+element's type, so the client resolves it from a per-chunk registry it drops when
+the chunk unloads. Bulk-sending silently discarded most of every island. See
+BUGS.md B-108.
 
 ## Chat & social
 

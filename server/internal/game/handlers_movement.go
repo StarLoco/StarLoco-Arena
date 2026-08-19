@@ -74,5 +74,10 @@ func handleMovement(s *Session, f *protocol.C2SFrame) error {
 			}
 		}
 	}
+	// Interactive elements have their own area of interest, on the client's env
+	// CHUNK grid rather than the actor sight radius: the client can only resolve an
+	// element whose chunk is streamed in. Walking is what brings them into range,
+	// so this has to run on every move, not just on world entry.
+	s.refreshWorldElements(s.currentWorld, last.X, last.Y)
 	return nil
 }

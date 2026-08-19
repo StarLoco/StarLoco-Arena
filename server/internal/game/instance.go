@@ -38,6 +38,11 @@ func (s *Session) sendEnterOverworld(x, y float32, alt, worldID int16) error {
 	if err := s.Send(enter); err != nil {
 		return err
 	}
+	// A world change resets the client's element registry, so ours must reset too
+	// or we would think elements are still spawned and never re-send them.
+	if s.currentWorld != worldID {
+		s.resetSpawnedElements()
+	}
 	s.currentWorld = worldID
 
 	if ready, err := protocol.EncodeS2C(protocol.OpInstanceReady, nil); err == nil {
@@ -45,6 +50,6 @@ func (s *Session) sendEnterOverworld(x, y float32, alt, worldID int16) error {
 			return err
 		}
 	}
-	s.sendWorldElements(worldID)
+	s.refreshWorldElements(worldID, int32(x), int32(y))
 	return nil
 }

@@ -2,34 +2,31 @@ package e2e
 
 import (
 	"testing"
+	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/testclient"
 )
 
-// TestWorldElementsSpawnedOnEntry: entering the overworld must push
-// INTERACTIVE_ELEMENT_SPAWN (200) listing that island's interactive elements.
+// Interactive elements are STREAMED per env chunk, not bulk-sent per world.
 //
-// This is not optional decoration: the client CLEARS its element manager on every
-// ENTER_INSTANCE (4600), so without this frame the island has no Zaap, no Card
-// Master and no Fusion altar — nothing is clickable. It also must not be driven
-// from the client's 4517 ack, which stops arriving once criterion 229 is set.
-func TestWorldElementsSpawnedOnEntry(t *testing.T) {
-	_, addr := testServerWithStore(t)
+// The client cannot materialise an element just because we name it: opcode 200
+// carries only [instanceId][payload], and the element's TYPE is resolved through a
+// registry the CLIENT fills from its own env data, per chunk, registering a
+// chunk's definitions as it streams in and dropping them when it unloads. An
+// element whose chunk is not loaded is rejected with
+// "Aucune définition trouvée pour l'instance d'élement interactif <id>".
+//
+// The previous version of this test asserted the OPPOSITE — that world 25's spawn
+// frame carries the Zaap, both Card Masters and the Fusion altar. It passed for
+// months while four of those five were being thrown away by the client, because it
+// only ever checked what the server put on the wire. Measured radius: Chebyshev
+// chunk distance <= 2, chunks are 18 cells. See BUGS.md B-108.
 
-	// WaitFor immediately after dialLogin: this is a server PUSH, and reachWorld's
-	// drain would swallow it.
-	a, _ := dialLogin(t, addr, "elem_a", "ElemA")
-	f, _, err := a.WaitFor(testclient.OpInteractiveElementSpawn, testclient.DefaultTimeout)
-	if err != nil {
-		t.Fatalf("no InteractiveElementSpawn(200) on world entry: %v", err)
-	}
-
-	// Layout: [i16 count]{[i64 instanceId][i16 payloadLen][payload]}.
-	r := testclient.NewR(f.Payload)
+// readElementSpawn decodes a 200 frame: [i16 count]{[i64 id][i16 len][payload]}.
+func readElementSpawn(t *testing.T, payload []byte) map[int64]bool {
+	t.Helper()
+	r := testclient.NewR(payload)
 	count := int(r.U16())
-	if count == 0 {
-		t.Fatal("element spawn carried 0 elements")
-	}
 	got := make(map[int64]bool, count)
 	for i := 0; i < count; i++ {
 		id := r.I64()
@@ -46,20 +43,79 @@ func TestWorldElementsSpawnedOnEntry(t *testing.T) {
 	if r.Remaining() != 0 {
 		t.Errorf("%d trailing bytes after %d elements", r.Remaining(), count)
 	}
+	return got
+}
 
-	// The login island is world 25 (Venivici): its Zaap, both Card Masters and its
-	// Fusion altar must all be present.
-	for _, want := range []struct {
+// TestWorldElementsSpawnedOnEntry: entering the overworld must push
+// INTERACTIVE_ELEMENT_SPAWN (200) for the elements the client can actually
+// resolve from the spawn cell — and must NOT include the ones it cannot, since
+// those are dropped for good (nothing re-sends them).
+//
+// World 25 (Venivici) is the login island. The coach spawns on its Zaap (37) at
+// (40,-20); its other five elements are 54-98 cells away, i.e. 3-6 chunks, all
+// out of range.
+func TestWorldElementsSpawnedOnEntry(t *testing.T) {
+	_, addr := testServerWithStore(t)
+
+	// WaitFor immediately after dialLogin: this is a server PUSH, and reachWorld's
+	// drain would swallow it.
+	a, _ := dialLogin(t, addr, "elem_a", "ElemA")
+	f, _, err := a.WaitFor(testclient.OpInteractiveElementSpawn, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no InteractiveElementSpawn(200) on world entry: %v", err)
+	}
+	got := readElementSpawn(t, f.Payload)
+
+	// The Zaap is on the spawn cell, so it must be there.
+	if !got[37] {
+		t.Errorf("world 25 spawn is missing the Zaap (37); got %v", got)
+	}
+	// The far ones must NOT be: sending them is what the client rejects.
+	for _, bad := range []struct {
 		id   int64
 		name string
 	}{
-		{37, "Zaap"},
-		{9, "Card Master (north)"},
-		{10, "Card Master (south)"},
-		{176, "Fusion altar"},
+		{9, "Card Master (north, 54 cells)"},
+		{10, "Card Master (south, 98 cells)"},
+		{21, "Mailbox (56 cells)"},
+		{103, "Graveyard (65 cells)"},
+		{176, "Fusion altar (85 cells)"},
 	} {
-		if !got[want.id] {
-			t.Errorf("world 25 spawn is missing %s (instanceId %d); got %v", want.name, want.id, got)
+		if got[bad.id] {
+			t.Errorf("world 25 spawn includes %s: the client cannot resolve it from "+
+				"the spawn cell and drops it permanently", bad.name)
 		}
+	}
+}
+
+// TestWorldElementsStreamInOnApproach is the other half, and the one that proves
+// the streaming actually works rather than just withholding elements: walking
+// toward a far element must spawn it.
+//
+// Uses the GM teleport, which re-enters the world at a chosen cell — the same
+// path a Zaap arrival takes. Standing on the graveyard's own cell (4,45) must
+// bring the graveyard in and drop the now-distant Zaap.
+func TestWorldElementsStreamInOnApproach(t *testing.T) {
+	_, addr := testServerWithStore(t)
+	a, _ := dialLogin(t, addr, "elem_b", "ElemB")
+	reachWorld(t, a)
+	a.DrainReceived(300 * time.Millisecond)
+
+	// /WORLD 25 4 45 — onto the graveyard's cell.
+	// GM commands ride on vicinity chat (3153, [u16 len]message).
+	_ = a.Send(3, 3153, testclient.NewW().StrU16("/WORLD 25 4 45").Bytes())
+
+	f, _, err := a.WaitFor(testclient.OpInteractiveElementSpawn, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no element spawn after moving to the graveyard: %v", err)
+	}
+	got := readElementSpawn(t, f.Payload)
+	if !got[103] {
+		t.Errorf("the graveyard (103) did not stream in when the coach stood on its "+
+			"own cell; got %v", got)
+	}
+	// The mailbox is 1 chunk away from there, so it comes along too.
+	if !got[21] {
+		t.Errorf("the mailbox (21) should be in range from (4,45); got %v", got)
 	}
 }

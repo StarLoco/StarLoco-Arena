@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/hex"
+	"sort"
 
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
@@ -228,12 +229,121 @@ func buildInteractiveElementSpawn(elems ...worldElement) ([]byte, error) {
 // worldID. Call it right after the ENTER_INSTANCE (4600) for that world — the
 // client clears its element manager on each 4600, so they must be re-sent per
 // entry (see sendEnterOverworld).
-func (s *Session) sendWorldElements(worldID int16) {
-	elems := worldElements[worldID]
-	if len(elems) == 0 {
-		return
+// Interactive elements are streamed, not sent in one go.
+//
+// The client cannot materialise an element just because we name it: opcode 200
+// carries only [instanceId][payload], and do_1.a() resolves the element's TYPE
+// through me_2.qR().eP(instanceId), a registry the CLIENT fills from its own env
+// data. That registry is per-CHUNK and transient — OH.d(ru_2) registers a chunk's
+// definitions as it streams in and OH.e(ru_2) unregisters them when it unloads —
+// so an element whose chunk is not currently loaded is rejected outright:
+//
+//	Aucune définition trouvée pour l'instance d'élement interactif 103
+//	Impossible de spawner l'élément interactif instanceId=103
+//
+// Sending every element of a world at entry therefore DROPPED most of them, for
+// good, because nothing re-sent them. On the start island that silently cost the
+// mailbox, the graveyard, the fusion lab and both card masters — 5 of its 6
+// elements — leaving only the Zaap the coach spawns on. See BUGS.md B-108.
+const (
+	// envChunkSide is the env chunk size in cells (gamedata.envChunkSide).
+	envChunkSide = 18
+	// elementChunkRadius is how far, in chunks, the client keeps env chunks
+	// loaded around the coach. MEASURED on the live client, not guessed: with the
+	// coach parked at three different cells, every element at Chebyshev chunk
+	// distance <= 2 resolved and every element at distance >= 3 failed, 14
+	// observations with no exceptions. The boundary itself is observed (the
+	// graveyard resolves at exactly 2, a card master fails at exactly 3).
+	elementChunkRadius = 2
+)
+
+// chunkOf returns a cell's env chunk index. Floor division, so it is correct for
+// negative coordinates too — several islands have elements at negative cells, and
+// Go's truncating `/` would put them in the wrong chunk.
+func chunkOf(v int32) int32 {
+	if v < 0 {
+		return -((-v + envChunkSide - 1) / envChunkSide)
 	}
-	if frame, err := buildInteractiveElementSpawn(elems...); err == nil {
-		_ = s.Send(frame)
+	return v / envChunkSide
+}
+
+// elementInRange reports whether the client will have this element's chunk loaded
+// with the coach standing at (x, y).
+func elementInRange(e worldElement, x, y int32) bool {
+	dx := chunkOf(e.cellX) - chunkOf(x)
+	dy := chunkOf(e.cellY) - chunkOf(y)
+	if dx < 0 {
+		dx = -dx
 	}
+	if dy < 0 {
+		dy = -dy
+	}
+	return dx <= elementChunkRadius && dy <= elementChunkRadius
+}
+
+// refreshWorldElements brings the client's spawned elements in line with what it
+// can actually resolve from where the coach now stands: it spawns the ones that
+// have come into range and despawns the ones that have left.
+//
+// Called on world entry and after every move, so an element missed at the edge of
+// the range is picked up simply by walking closer — the property that makes this
+// robust even if the measured radius is slightly conservative.
+func (s *Session) refreshWorldElements(worldID int16, x, y int32) {
+	if s.spawnedElements == nil {
+		s.spawnedElements = make(map[int64]bool)
+	}
+	var add []worldElement
+	want := make(map[int64]bool)
+	for _, e := range worldElements[worldID] {
+		if !elementInRange(e, x, y) {
+			continue
+		}
+		want[e.instanceID] = true
+		if !s.spawnedElements[e.instanceID] {
+			add = append(add, e)
+		}
+	}
+	var drop []int64
+	for id := range s.spawnedElements {
+		if !want[id] {
+			drop = append(drop, id)
+		}
+	}
+	// Despawn first: an element leaving and another arriving in the same step are
+	// independent, and freeing the old one first keeps the client's registry small.
+	if len(drop) > 0 {
+		sort.Slice(drop, func(i, j int) bool { return drop[i] < drop[j] })
+		if frame, err := buildInteractiveElementDespawn(drop); err == nil {
+			_ = s.Send(frame)
+		}
+		for _, id := range drop {
+			delete(s.spawnedElements, id)
+		}
+	}
+	if len(add) > 0 {
+		if frame, err := buildInteractiveElementSpawn(add...); err == nil {
+			_ = s.Send(frame)
+		}
+		for _, e := range add {
+			s.spawnedElements[e.instanceID] = true
+		}
+	}
+}
+
+// resetSpawnedElements forgets what the client has, which it must do on a world
+// change: the client drops its element registry with the old world, so every
+// element of the new one has to be sent again even if the ids repeat.
+func (s *Session) resetSpawnedElements() {
+	s.spawnedElements = nil
+}
+
+// buildInteractiveElementDespawn builds INTERACTIVE_ELEMENT_DESPAWN (opcode 206,
+// client acc_2): [i16 count]{[i64 instanceId]}.
+func buildInteractiveElementDespawn(ids []int64) ([]byte, error) {
+	w := protocol.NewWriter()
+	w.U16(uint16(len(ids)))
+	for _, id := range ids {
+		w.I64(id)
+	}
+	return protocol.EncodeS2C(protocol.OpInteractiveElementDespawn, w.Bytes())
 }

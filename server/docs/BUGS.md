@@ -13,10 +13,14 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### Interactive element animations fail to load, so elements cannot be activated
+### Interactive elements highlight but do not activate
 
-Found while trying to open an NPC's dialog live (item 27). The elements spawn, and
-they highlight on hover, but nothing activates them — and the client says why:
+*(The spawn half of this is fixed — see B-108. What remains is activation.)*
+
+An element that IS spawned highlights under the cursor but neither a single nor a
+real double-click (`P1 R1 C1 P2 R2 C2`, verified) opens its dialog, and no C2S
+frame is sent. Suspected relevant: the client also logs missing animations for the
+very elements involved —
 
 ```
 ERROR Animation 1_AnimStatique_1 not found (jar:file:contents/animations.jar!/animations/interactives/2011)!
@@ -25,28 +29,13 @@ ERROR Animation 5_AnimStatique_1 not found (jar:file:contents/animations.jar!/an
       ... 5009, 5010, 5011 likewise
 ```
 
-A second, probably related symptom on the START island (world 25): five of its six
-elements are rejected outright at login —
-
-```
-ERROR Aucune définition trouvée pour l'instance d'élement interactif 103
-ERROR Impossible de spawner l'élément interactif instanceId=103
-```
-
-— and the ids are exactly the graveyard (103), the mailbox (21), the fusion lab
-(176) and both card masters (9, 10). Only the Zaap (37) survives. So on the
-island every player starts on, the mailbox, graveyard, fusion lab and card
-masters are **not clickable at all**.
-
-Not yet diagnosed. Two candidate causes, and they are distinguishable:
-
-1. **Our element payload is wrong** — it is an opaque blob emitted verbatim from
-   the client's own env jars by `cmd/genelements` (B-102), so a wrong sprite or
-   animation reference inside it would produce exactly this. Check the payload's
-   sprite id against `animations.jar`'s `interactives/` entries.
-2. **The client's asset set genuinely lacks those animations**, in which case
-   retail had the same gap and there is nothing to fix — but that needs proving,
-   not assuming.
+Now that the spawn bug is fixed (B-108) the elements exist client-side and
+highlight, so this is a narrower question than it looked: the remaining candidates
+are the missing animations above (a degenerate sprite may have no clickable action
+part), or the interaction needing an event the harness does not produce. Note the
+harness double-click IS faithful — `/selftest-doubleclick` reports
+`single=[P1 R1 C1] double=[P1 R1 C1 P2 R2 C2]` — so "the click isn't real" is
+already ruled out.
 
 Worth resolving because it blocks live verification of every element-driven flow
 (mailbox, graveyard, fusion lab, card master, NPC dialogs), even though the
@@ -152,6 +141,65 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-108 - most of every island's interactive elements were silently thrown away
+
+On the island every player starts on, the mailbox, the graveyard, the fusion lab
+and both card masters were **not there at all** — five of world 25's six elements.
+The client rejected each one at login:
+
+```
+ERROR Aucune définition trouvée pour l'instance d'élement interactif 103
+ERROR Impossible de spawner l'élément interactif instanceId=103
+```
+
+**Cause.** Opcode 200 carries only `[instanceId][payload]` — it cannot tell the
+client what an element *is*. `do_1.a()` resolves the TYPE through
+`me_2.qR().eP(instanceId)`, a registry the CLIENT fills from its own env data, and
+that registry is **per-chunk and transient**: `OH.d(ru_2)` registers a chunk's
+element definitions as it streams in, `OH.e(ru_2)` unregisters them when it
+unloads. An element whose chunk is not currently loaded therefore cannot be
+resolved at all. We sent every element of a world in one frame at world entry, so
+everything outside the spawn chunk was dropped — permanently, because nothing ever
+re-sent it.
+
+**The radius was measured, not guessed.** With the coach parked at three different
+cells, every element at Chebyshev chunk distance ≤ 2 resolved and every element at
+≥ 3 failed: 14 observations, no exceptions, and the boundary itself observed (the
+graveyard resolves at exactly 2, a card master fails at exactly 3). Chunks are 18
+cells, so the client keeps a 5×5 chunk neighbourhood. The controlled version of the
+experiment is the convincing one: standing on the graveyard's cell, the graveyard
+resolves and the *Zaap* starts failing instead — the two swap.
+
+**Fix.** Elements are now streamed like actors: `refreshWorldElements` sends 200
+for those coming into range and 206 for those leaving, as a delta against what the
+session has already spawned, on world entry **and after every move**. Running it on
+movement is what makes it robust — an element missed at the edge of the range is
+picked up by walking closer.
+
+Two details worth keeping:
+
+- **`chunkOf` must floor-divide.** Go's `/` truncates toward zero, so cell −1 would
+  share a chunk with +1, and several islands place elements at negative cells
+  (world 25's fusion lab is at (−45,−25), a card master at (−58,33)).
+- **The spawned set resets on world change**, because the client drops its element
+  registry with the old world; without that we would believe elements were still
+  spawned and never re-send them.
+
+**This is not a corrupted client.** Nothing was wrong with the client or its data.
+
+**Verified live:** login now produces **zero** rejections (it produced five), and
+approaching the graveyard streams it and the mailbox in, with the crypt rendering
+and highlighting where before it did not exist client-side.
+
+**The old test asserted the bug.** `TestWorldElementsSpawnedOnEntry` required
+world 25's entry frame to contain the Zaap, both card masters *and* the fusion
+altar — and passed for months while the client was discarding four of them,
+because it only ever checked what the server put on the wire. It now asserts the
+opposite (far elements must be withheld) plus a companion that they stream in on
+approach. Unit tests cover the chunk maths including the negative-coordinate trap,
+and carry the 14 live measurements as a table so widening the radius "to be safe"
+fails loudly — widening it is not safe, it silently drops elements again.
 
 ### B-107 - GM teleport froze the coach: "Invalid start cell for pathfind search"
 

@@ -38,6 +38,10 @@ type Session struct {
 	// mirroring the client's own gates so a modified client cannot skip them.
 	// Touched only by this session's goroutine, so it needs no lock.
 	chat chatGate
+	// spawnedElements tracks which interactive elements this client currently
+	// holds, so refreshWorldElements can send only the delta. Reset on world
+	// change - see resetSpawnedElements.
+	spawnedElements map[int64]bool
 
 	// spectating is the fight this session is watching as a spectator (nil = none).
 	// Touched ONLY by this session's own goroutine (set on spectate-join, cleared

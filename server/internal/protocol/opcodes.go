@@ -44,9 +44,13 @@ const (
 	// Elements are defined in each world's env layer, but the client CLEARS them
 	// on ENTER_INSTANCE (4600); the server must (re)spawn the ones to show via 200
 	// (by env instanceId). See internal/game/zaap.go + docs/OVERWORLD-MAP.md.
-	OpInteractiveElementSpawn  = 200  // S2C rz_2: [i16 count]{[i64 instanceId][i16 len][partTableBlob]}
-	OpInteractiveElementAction = 201  // C2S bd_2: [i64 instanceId][i16 actionOrdinal] — element click
-	OpZaapTeleport             = 4512 // C2S Gs: [i32 cardTemplateId] — use a Zaap card; server replies EnterInstance(4600)
+	OpInteractiveElementSpawn  = 200 // S2C rz_2: [i16 count]{[i64 instanceId][i16 len][partTableBlob]}
+	OpInteractiveElementAction = 201 // C2S bd_2: [i64 instanceId][i16 actionOrdinal] — element click
+	// OpInteractiveElementDespawn removes elements the client can no longer
+	// resolve, i.e. whose env chunk has scrolled out of range. Pairs with 200; see
+	// game.refreshWorldElements for why elements must be streamed, not bulk-sent.
+	OpInteractiveElementDespawn = 206  // S2C acc_2: [i16 count]{[i64 instanceId]}
+	OpZaapTeleport              = 4512 // C2S Gs: [i32 cardTemplateId] — use a Zaap card; server replies EnterInstance(4600)
 	// OpInstanceReady MUST be sent after every overworld EnterInstance(4600).
 	// A Zaap request (4512) sets a movement lock client-side (auv_0) and this is
 	// the ONLY thing that clears it — there is no timeout, so omitting it leaves
