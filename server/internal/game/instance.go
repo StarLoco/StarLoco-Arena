@@ -38,11 +38,13 @@ func (s *Session) sendEnterOverworld(x, y float32, alt, worldID int16) error {
 	if err := s.Send(enter); err != nil {
 		return err
 	}
-	// A world change resets the client's element registry, so ours must reset too
-	// or we would think elements are still spawned and never re-send them.
-	if s.currentWorld != worldID {
-		s.resetSpawnedElements()
-	}
+	// The client clears its element manager on EVERY ENTER_INSTANCE, not just when
+	// the world changes — so our record of what it holds has to reset every time
+	// too. Gating this on a world change looks right and is not: a same-world
+	// teleport (GM /TP, and any Zaap that lands on the island you are already on)
+	// then leaves us believing the elements are still spawned, and we never re-send
+	// them, so the island loses every element until you cross to another world.
+	s.resetSpawnedElements()
 	s.currentWorld = worldID
 
 	if ready, err := protocol.EncodeS2C(protocol.OpInstanceReady, nil); err == nil {

@@ -143,6 +143,8 @@ public final class ControlAgent {
                 } else if (path.equals("/doubleclick")) {
                     doubleClick(intOf(q, "x"), intOf(q, "y"), intOrDefault(q, "button", 1));
                     reply(ex, 200, "text/plain", "double-clicked".getBytes("UTF-8"));
+                } else if (path.equals("/elements")) {
+                    reply(ex, 200, "text/plain", dumpElements().getBytes("UTF-8"));
                 } else if (path.equals("/selftest-doubleclick")) {
                     reply(ex, 200, "text/plain",
                             selfTestDoubleClick(intOrDefault(q, "x", 500), intOrDefault(q, "y", 400))
@@ -497,6 +499,88 @@ public final class ControlAgent {
         fireMouse(MouseEvent.MOUSE_PRESSED, x, y, 2, button);
         fireMouse(MouseEvent.MOUSE_RELEASED, x, y, 2, button);
         fireMouse(MouseEvent.MOUSE_CLICKED, x, y, 2, button);
+    }
+
+    /**
+     * Dump every spawned interactive element with the state that decides whether it
+     * can be USED, not just drawn.
+     *
+     * An element is usable only if do_1.a(coach) holds, i.e. `!gf() && gk()
+     * contains the coach's cell`. gk() is the list of approach cells, built ONCE at
+     * spawn by do_1.gh() from the direction mask (asH()) rotated by the element's
+     * orientation, keeping only cells the topology accepts. So an empty gk() means
+     * the element is permanently inert however well it renders — which is exactly
+     * the symptom this exists to diagnose.
+     *
+     * Reflection all the way down: ajX.azB() -> xY() gives the element map, whose
+     * values live in the inherited `Object[] iN`.
+     */
+    static String dumpElements() throws Exception {
+        Class<?> reg = Class.forName("ajX");
+        Object registry = reg.getMethod("azB").invoke(null);
+        Object map = reg.getMethod("xY").invoke(registry);
+
+        Object[] slots = null;
+        for (Class<?> c = map.getClass(); c != null && slots == null; c = c.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = c.getDeclaredField("iN");
+                f.setAccessible(true);
+                slots = (Object[]) f.get(map);
+            } catch (NoSuchFieldException ignore) {
+            }
+        }
+        if (slots == null) return "FAIL cannot read the element map";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("id\tx\ty\tz\tmask\tinert\tapproach\tparts\thittable\tviewClassChain\n");
+        int total = 0, dead = 0;
+        for (Object o : slots) {
+            if (o == null || !(o instanceof Comparable) && o.getClass().getName().length() > 8) {
+                // fall through; the real filter is "does it expose gk()"
+            }
+            if (o == null) continue;
+            java.lang.reflect.Method gk;
+            try {
+                gk = o.getClass().getMethod("gk");
+            } catch (NoSuchMethodException e) {
+                continue; // not an interactive element (keys / free slots)
+            }
+            total++;
+            long id = ((Number) o.getClass().getMethod("getId").invoke(o)).longValue();
+            int x = ((Number) o.getClass().getMethod("gn").invoke(o)).intValue();
+            int y = ((Number) o.getClass().getMethod("go").invoke(o)).intValue();
+            int z = ((Number) o.getClass().getMethod("gp").invoke(o)).intValue();
+            int mask = ((Number) o.getClass().getMethod("asH").invoke(o)).intValue() & 0xFFFF;
+            boolean inert = (Boolean) o.getClass().getMethod("gf").invoke(o);
+            Object cells = gk.invoke(o);
+            int n = (cells instanceof java.util.Collection) ? ((java.util.Collection<?>) cells).size() : -1;
+            // Parts = the element's views. Only a tp_1 part is registered with the
+            // hit-test/script registry (GY.Ss()), so an element with none of those
+            // has nothing the mouse or a script can address, however well it draws.
+            int parts = 0, hittable = 0; StringBuilder viewClasses = new StringBuilder();
+            Object views = o.getClass().getMethod("aYW").invoke(o);
+            if (views instanceof java.util.Collection) {
+                for (Object v : (java.util.Collection<?>) views) {
+                    parts++; if (v != null) { if (viewClasses.length() > 0) viewClasses.append(',');  Class<?> vc = v.getClass(); StringBuilder chain = new StringBuilder(vc.getName()); for (Class<?> sc = vc.getSuperclass(); sc != null && !sc.getName().equals("java.lang.Object"); sc = sc.getSuperclass()) { chain.append('<').append(sc.getName()); } viewClasses.append(chain); }
+                    // The hit-test/script registry (GY.Ss()) only accepts tp views. Match the
+                    // RUNTIME name "tp": the decompiled sources call it tp_1 because CFR
+                    // renames classes that collide with Java keywords, and comparing against
+                    // the decompiled name reports every element as unhittable.
+                    if (v != null) {
+                        for (Class<?> c = v.getClass(); c != null; c = c.getSuperclass()) {
+                            String cn = c.getName();
+                            if (cn.equals("tp") || cn.equals("tp_1")) { hittable++; break; }
+                        }
+                    }
+                }
+            }
+            if (n == 0 || inert || hittable == 0) dead++;
+            sb.append(id).append('\t').append(x).append('\t').append(y).append('\t').append(z)
+              .append('\t').append(mask).append('\t').append(inert).append('\t').append(n)
+              .append('\t').append(parts).append('\t').append(hittable).append('\t').append(viewClasses).append('\n');
+        }
+        sb.append("total=").append(total).append(" unusable=").append(dead).append('\n');
+        return sb.toString();
     }
 
     /**

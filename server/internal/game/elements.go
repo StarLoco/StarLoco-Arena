@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"sort"
 
@@ -218,11 +219,60 @@ func buildInteractiveElementSpawn(elems ...worldElement) ([]byte, error) {
 	w := protocol.NewWriter()
 	w.U16(uint16(len(elems)))
 	for _, e := range elems {
+		p := usableElementPayload(e.payload, e.alt)
 		w.I64(e.instanceID)
-		w.U16(uint16(len(e.payload)))
-		w.Raw(e.payload)
+		w.U16(uint16(len(p)))
+		w.Raw(p)
 	}
 	return protocol.EncodeS2C(protocol.OpInteractiveElementSpawn, w.Bytes())
+}
+
+// elementMaskOffset is where the approach-direction mask sits in the payload: a
+// 14-byte generic part header, then the RU block's
+// i16 world, i32 x, i32 y, i16 z, i16 state, u8, u8, u8 orientation, i16 mask.
+// Verified by decoding all 139 shipped payloads (every one ends exactly on its
+// descriptor + zero properties byte) and cross-checked against the values the
+// live client reports for the same element.
+const elementMaskOffset = 14 + 2 + 4 + 4 + 2 + 2 + 1 + 1 + 1
+
+// elementMaskDisabled is bit 256 of the mask (client agm_2.ctZ). do_1.gh() reads
+// it as "this element is inert" and sets the flag that makes do_1.a(coach) — the
+// "can this coach use it" test — return false no matter where the coach stands.
+const elementMaskDisabled = 0x100
+
+// elementZOffset is the RU block's z field: header + world + x + y.
+const elementZOffset = 14 + 2 + 4 + 4
+
+// usableElementPayload strips the inert bit from an element's approach mask.
+//
+// The shipped env blobs all carry mask 0xFFFF, which has every direction bit set
+// AND bit 256, so every element decodes as inert. That value looks like an
+// authoring default rather than a wire value — the same blobs also carry a z of 30
+// for a Zaap standing on ground altitude 8 — which is evidence that the retail
+// server did NOT put its env authoring blob on the wire unaltered, as we do. We
+// cannot recover what it did send (there is no capture), so this is the minimal
+// correction that makes the field self-consistent: keep the eight direction bits
+// the data gives, drop the flag that contradicts them.
+//
+// Returns the input unchanged when the payload is too short to hold the field.
+func usableElementPayload(payload []byte, groundAlt int16) []byte {
+	if len(payload) < elementMaskOffset+2 {
+		return payload
+	}
+	out := make([]byte, len(payload))
+	copy(out, payload)
+
+	mask := binary.BigEndian.Uint16(out[elementMaskOffset:])
+	binary.BigEndian.PutUint16(out[elementMaskOffset:], mask&^elementMaskDisabled)
+
+	// The blob's z is the sprite's authored DECORATION height, not the cell's
+	// walkable ground: world 25's Zaap carries 30 while its cell's ground is 8.
+	// do_1.gh() builds the approach cells at this z, and the view is drawn at it,
+	// so leaving it authored puts the element's clickable geometry away from the
+	// cell the player can actually stand on. Rewrite it to the ground altitude we
+	// already resolve for every element.
+	binary.BigEndian.PutUint16(out[elementZOffset:], uint16(groundAlt))
+	return out
 }
 
 // sendWorldElements pushes the INTERACTIVE_ELEMENT_SPAWN for every element of

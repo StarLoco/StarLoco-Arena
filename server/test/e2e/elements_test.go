@@ -119,3 +119,27 @@ func TestWorldElementsStreamInOnApproach(t *testing.T) {
 		t.Errorf("the mailbox (21) should be in range from (4,45); got %v", got)
 	}
 }
+
+// TestWorldElementsResentOnSameWorldReentry: the client clears its element manager
+// on EVERY ENTER_INSTANCE, so a re-entry into the world it is ALREADY on must
+// re-send the elements. Gating the reset on a world change passes every other test
+// here and silently empties the island after any same-world teleport — which is
+// what a GM /TP does, and what a Zaap landing on the current island does.
+func TestWorldElementsResentOnSameWorldReentry(t *testing.T) {
+	_, addr := testServerWithStore(t)
+	a, _ := dialLogin(t, addr, "elem_c", "ElemC")
+	reachWorld(t, a)
+	a.DrainReceived(300 * time.Millisecond)
+
+	// Re-enter the SAME world at the same spot.
+	_ = a.Send(3, 3153, testclient.NewW().StrU16("/WORLD 25 40 -20").Bytes())
+
+	f, _, err := a.WaitFor(testclient.OpInteractiveElementSpawn, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("re-entering the same world sent no element spawn: the client has "+
+			"already dropped them, so the island is now empty: %v", err)
+	}
+	if got := readElementSpawn(t, f.Payload); !got[37] {
+		t.Errorf("re-entry spawn is missing the Zaap (37); got %v", got)
+	}
+}

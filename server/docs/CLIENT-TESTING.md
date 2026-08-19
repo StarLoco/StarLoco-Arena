@@ -126,6 +126,9 @@ arena_up { rebuild: true }     # rebuild server + start server/client, wait unti
 arena_login {}                 # -> "entered world coach=Loov"
 arena_click { x, y }           # navigate (canvas coords; GLCanvas is 1016x741)
 arena_doubleclick { x, y }     # ACTIVATE list items / cards / elements (see below)
+# agent-only HTTP routes (curl/Invoke-WebRequest on 127.0.0.1:8099):
+#   /elements               dump every spawned interactive element's USABILITY state
+#   /selftest-doubleclick   prove the double-click is a real AWT double-click
 arena_screenshot {}            # returns a PNG inline — SEE the panel
 arena_roster {}                # ASSERT client model: adY.atu() size
 arena_server_log { filter }    # what the server saw
@@ -161,6 +164,26 @@ Invoke-WebRequest "http://127.0.0.1:8099/selftest-doubleclick" -UseBasicParsing 
 It installs a probe listener on the real GLCanvas, fires a single click and a
 double-click at it, and reports both sequences — so it also proves the two differ,
 which a test of the double-click alone would not.
+
+### Diagnosing interactive elements
+
+`/elements` reports what decides whether an element can be USED, not what is drawn:
+
+```
+id  x   y    z  mask   inert  approach  parts  hittable  viewClassChain
+37  40  -20  8  65279  false  7         1      1         hh<tp<aiu<GQ<aHh
+```
+
+- `inert` - bit 256 of the mask; when true `do_1.a(coach)` fails wherever you stand.
+- `approach` - cells the element can be used from. **0 means permanently unusable.**
+- `hittable` - views registered with the hit-test/script registry. 0 means the mouse
+  cannot reach it.
+
+Beware the decompiler's renames when reading this code: the runtime classes are
+`tp`, `do`, `in`, ... and the sources call them `tp_1`, `do_1`, `in_1` because CFR
+renames anything colliding with a Java keyword. Comparing a runtime class name
+against the decompiled one reports every element as unhittable - that mistake cost
+real time here.
 
 **Known limits when driving world elements.** On the overworld a double-click is
 consumed as a MOVE, and interactive elements (NPCs, Zaaps) highlight on hover but

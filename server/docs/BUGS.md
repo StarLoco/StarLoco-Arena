@@ -13,14 +13,46 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### Interactive elements highlight but do not activate
+### Interactive elements: the last step, choosing an ACTION, still does not fire
 
-*(The spawn half of this is fixed — see B-108. What remains is activation.)*
+*(Spawning is fixed in B-108; inertness and sprite placement in B-109. This is
+what is left, and it is now a narrow, well-instrumented gap.)*
 
-An element that IS spawned highlights under the cursor but neither a single nor a
-real double-click (`P1 R1 C1 P2 R2 C2`, verified) opens its dialog, and no C2S
-frame is sent. Suspected relevant: the client also logs missing animations for the
-very elements involved —
+Every precondition an element needs is now satisfied — measured on the live client
+with the agent's `/elements` route, which reports the state that decides usability
+rather than what is drawn:
+
+```
+id  x   y    z  mask   inert  approach  parts  hittable
+37  40  -20  8  65279  false  7         1      1        <- world 25 Zaap
+```
+
+The element is spawned, sits at its cell's ground altitude, is not inert, has 7
+cells it can be used from, and carries a hit-testable `tp` view. In-game the sprite
+renders and **highlights under the cursor**, and a double-click makes the coach
+walk to it. But no `avr_0` action is ever chosen, so `do_1.a(action)` never runs and
+no C2S 201 leaves the client.
+
+Ruled out, with evidence:
+
+- **The click.** `/selftest-doubleclick` reports `single=[P1 R1 C1]
+  double=[P1 R1 C1 P2 R2 C2]` — a faithful AWT double-click.
+- **Missing assets.** All the animation ids the client asks for
+  (2011, 5007-5011) ARE present in `animations.jar`.
+- **The animation warning being the cause.** The client always appends `_<state>`
+  to the animation name, and the `.anm` files only contain the bare
+  `<dir>_AnimStatique`. Forcing the payload's state to 0 and to -1 just changed the
+  warning to `_0` and `_-1`; no value produces the unsuffixed name. Since the
+  element renders and hit-tests anyway, this is cosmetic.
+
+Next lead: `aaq_1` shows the invocation path is `GY.Ss().bF(elementId)` →
+`view.zp().b(action, coach)`, driven by name from the GUI/script layer — so the
+open question is what supplies the action for a plain overworld click, not whether
+the element is reachable.
+
+### Interactive elements — leftover note on the animation warning
+
+The warning below is retained for reference; per the above it is not the blocker.
 
 ```
 ERROR Animation 1_AnimStatique_1 not found (jar:file:contents/animations.jar!/animations/interactives/2011)!
@@ -141,6 +173,56 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-109 - every interactive element was inert, and two were drawn off their cell
+
+Following B-108 the elements existed client-side but still could not be used. Two
+fields in the payload were the reason, and both come from treating the client's env
+**authoring** blob as if it were the wire format.
+
+**1. Every element decoded as inert (118 of 139).** The blobs carry approach mask
+`0xFFFF`. `do_1.gh()` decodes that with `agm_2.bI()`, which includes `ctZ` (bit
+256), and bit 256 sets the flag `do_1.gf()` returns — making `do_1.a(coach)`, the
+"can this coach use it" test, return false wherever the coach stands. `0xFFFF` is
+every direction bit set *plus* a flag contradicting them, which is what an
+authoring default looks like, not a wire value. We now strip bit 256 and keep the
+direction bits. Confirmed live: `inert` went from `true` to `false` on every
+element, on every island tested.
+
+**2. Two elements were drawn far above their cell.** The blob's z is the sprite's
+authored decoration height, not the cell's walkable ground: world 25's Zaap carries
+**30** where its cell's ground is **8**. `do_1.gh()` builds the approach cells at
+that z and the view is drawn at it, so the element sat 22 units above the ground —
+invisible in-game, which is why it could never be clicked. We now write the ground
+altitude we already resolve per element. Confirmed live: the Zaap's slab **appeared**
+next to the coach the moment this landed. Only 2 of 139 payloads need it, but for
+those two the element was simply not there.
+
+Both rewrites are documented as inferences: there is no retail capture, so we
+cannot know exactly what the real server sent. They are the minimal corrections
+that make each field self-consistent with the world it describes, and each is
+justified by a measured before/after on the live client.
+
+**A regression caught by the same instrumentation.** The element reset was gated on
+a world *change*, but the client clears its element manager on **every**
+`ENTER_INSTANCE`. So any same-world re-entry — a GM `/TP`, or a Zaap landing on the
+island you are already on — left us believing the elements were still spawned, and
+the island lost every element until you crossed to another world. Now reset on every
+entry, with an e2e that fails if the gate comes back.
+
+**Still open:** the action-selection step; see "Open / suspected". And **22 elements
+have no approach direction at all** in the authoring data (mask `& 0x00FF == 0`), so
+no cell exists from which to use them:
+
+| Kind | No approach direction | Of |
+|---|---|---|
+| CardMaster | 12 | 21 |
+| ZoneTrigger | 9 | 9 |
+| Challenge | 1 | 2 |
+
+The ZoneTriggers are correct that way — they fire on walk-on and are never clicked.
+The **12 Card Masters and 1 Challenge are a genuine second defect**, distinct from
+everything above and not fixed by it.
 
 ### B-108 - most of every island's interactive elements were silently thrown away
 

@@ -43,6 +43,7 @@ model state. The agent gives us both, programmatically.
 | `/click?x=508&y=353` | Click at **canvas-relative** coordinates |
 | `/doubleclick?x=&y=` | **Double**-click — activates list items, cards and elements that a single click only highlights. Two `/click`s are NOT equivalent: the client tests `getClickCount()==2` |
 | `/selftest-doubleclick?x=&y=` | Prove the above: probes the real GLCanvas and reports `single=[P1 R1 C1] double=[P1 R1 C1 P2 R2 C2]` |
+| `/elements` | Dump every spawned interactive element's USABILITY state (mask / inert / approach cells / hittable views), not just what is drawn |
 | `/move?x=&y=` | Move the mouse (synthetic) |
 | `/login?user=&pass=` | click account → type user → click password → type pass → ENTER |
 | `/roster` | Read the client's fighter model: `adY.atu()` size + isEmpty |
