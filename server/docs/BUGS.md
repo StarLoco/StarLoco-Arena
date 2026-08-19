@@ -13,6 +13,45 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
+### Interactive element animations fail to load, so elements cannot be activated
+
+Found while trying to open an NPC's dialog live (item 27). The elements spawn, and
+they highlight on hover, but nothing activates them — and the client says why:
+
+```
+ERROR Animation 1_AnimStatique_1 not found (jar:file:contents/animations.jar!/animations/interactives/2011)!
+ERROR Animation 1_AnimStatique_1 not found (jar:file:contents/animations.jar!/animations/interactives/5007)!
+ERROR Animation 5_AnimStatique_1 not found (jar:file:contents/animations.jar!/animations/interactives/5008)!
+      ... 5009, 5010, 5011 likewise
+```
+
+A second, probably related symptom on the START island (world 25): five of its six
+elements are rejected outright at login —
+
+```
+ERROR Aucune définition trouvée pour l'instance d'élement interactif 103
+ERROR Impossible de spawner l'élément interactif instanceId=103
+```
+
+— and the ids are exactly the graveyard (103), the mailbox (21), the fusion lab
+(176) and both card masters (9, 10). Only the Zaap (37) survives. So on the
+island every player starts on, the mailbox, graveyard, fusion lab and card
+masters are **not clickable at all**.
+
+Not yet diagnosed. Two candidate causes, and they are distinguishable:
+
+1. **Our element payload is wrong** — it is an opaque blob emitted verbatim from
+   the client's own env jars by `cmd/genelements` (B-102), so a wrong sprite or
+   animation reference inside it would produce exactly this. Check the payload's
+   sprite id against `animations.jar`'s `interactives/` entries.
+2. **The client's asset set genuinely lacks those animations**, in which case
+   retail had the same gap and there is nothing to fix — but that needs proving,
+   not assuming.
+
+Worth resolving because it blocks live verification of every element-driven flow
+(mailbox, graveyard, fusion lab, card master, NPC dialogs), even though the
+underlying server handlers for those flows are implemented and e2e-covered.
+
 ### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
 The wrong-namespace half is fixed (B-088). The remaining question was what should

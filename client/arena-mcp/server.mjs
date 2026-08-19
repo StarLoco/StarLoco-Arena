@@ -221,6 +221,13 @@ server.tool(
 );
 
 server.tool(
+  "arena_doubleclick",
+  "Double-click at canvas-relative coordinates (the GLCanvas is 1016x741). Needed to ACTIVATE things a single click only highlights - interactive world elements (NPCs, Zaaps), list rows, inventory cards - because the client tests MouseEvent.getClickCount()==2. Two arena_click calls do NOT substitute. Synthetic - no physical mouse.",
+  { x: z.number(), y: z.number() },
+  async ({ x, y }) => ({ content: [{ type: "text", text: await agentText(`/doubleclick?x=${x}&y=${y}`) }] })
+);
+
+server.tool(
   "arena_type",
   "Type a literal string into the focused client field (synthetic key events).",
   { text: z.string() },

@@ -125,6 +125,7 @@ calls.
 arena_up { rebuild: true }     # rebuild server + start server/client, wait until interactive, go off-screen
 arena_login {}                 # -> "entered world coach=Loov"
 arena_click { x, y }           # navigate (canvas coords; GLCanvas is 1016x741)
+arena_doubleclick { x, y }     # ACTIVATE list items / cards / elements (see below)
 arena_screenshot {}            # returns a PNG inline — SEE the panel
 arena_roster {}                # ASSERT client model: adY.atu() size
 arena_server_log { filter }    # what the server saw
@@ -134,6 +135,39 @@ arena_down {}                  # teardown + free port 5555
 
 Rebuild the agent (`control-agent/`) after changing it; the MCP server picks up
 the new jar on the next `arena_up`.
+
+### Single vs double click — they are not interchangeable
+
+A lot of the UI *activates* on double-click and only *highlights* on single click:
+every `onItemDoubleClick` / `onDoubleClick` in the layouts — inventory cards
+(`equip`), Zaap cards (`changeInstance` → sends 4512), friends
+(`privateMessage`), team presets (`loadTeam`), fighter spells/equipment
+(`addSpell`/`removeEquipment`), card-master and exchange baskets (`removeCard`).
+
+**Two `arena_click` calls do NOT make a double-click.** The client tests
+`MouseEvent.getClickCount() == 2` (decompiled `sj_2`, and `lt_0` which copies the
+count into the GUI framework's own event), so two events carrying count 1 are just
+two single clicks. `arena_doubleclick` emits the real AWT sequence — PRESS/RELEASE/
+CLICK with count 1, then again with count 2.
+
+To confirm the harness end (no game content required):
+
+```powershell
+Invoke-WebRequest "http://127.0.0.1:8099/selftest-doubleclick" -UseBasicParsing |
+  Select-Object -Expand Content
+# PASS single=[P1 R1 C1] want=[P1 R1 C1] double=[P1 R1 C1 P2 R2 C2] want=[P1 R1 C1 P2 R2 C2]
+```
+
+It installs a probe listener on the real GLCanvas, fires a single click and a
+double-click at it, and reports both sequences — so it also proves the two differ,
+which a test of the double-click alone would not.
+
+**Known limits when driving world elements.** On the overworld a double-click is
+consumed as a MOVE, and interactive elements (NPCs, Zaaps) highlight on hover but
+did not open their dialogs in testing. That is not the click: those worlds log
+`Animation 1_AnimStatique_1 not found (.../animations/interactives/<id>)` for the
+very elements involved — see BUGS.md "interactive element animations". Prefer a
+dialog/list target when you need to verify a double-click flow.
 
 ## Fallback — the PowerShell driver
 

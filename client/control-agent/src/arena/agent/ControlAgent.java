@@ -140,6 +140,13 @@ public final class ControlAgent {
                 } else if (path.equals("/click")) {
                     click(intOf(q, "x"), intOf(q, "y"), intOrDefault(q, "button", 1));
                     reply(ex, 200, "text/plain", "clicked".getBytes("UTF-8"));
+                } else if (path.equals("/doubleclick")) {
+                    doubleClick(intOf(q, "x"), intOf(q, "y"), intOrDefault(q, "button", 1));
+                    reply(ex, 200, "text/plain", "double-clicked".getBytes("UTF-8"));
+                } else if (path.equals("/selftest-doubleclick")) {
+                    reply(ex, 200, "text/plain",
+                            selfTestDoubleClick(intOrDefault(q, "x", 500), intOrDefault(q, "y", 400))
+                                    .getBytes("UTF-8"));
                 } else if (path.equals("/drag")) {
                     drag(intOf(q, "x1"), intOf(q, "y1"), intOf(q, "x2"), intOf(q, "y2"),
                             intOrDefault(q, "steps", 12));
@@ -464,6 +471,79 @@ public final class ControlAgent {
         fireMouse(MouseEvent.MOUSE_PRESSED, x, y, 1, button);
         fireMouse(MouseEvent.MOUSE_RELEASED, x, y, 1, button);
         fireMouse(MouseEvent.MOUSE_CLICKED, x, y, 1, button);
+    }
+
+    /**
+     * Double-click. This is NOT two calls to click(): the 2.70 client tests
+     * {@code MouseEvent.getClickCount() == 2} (see the decompiled sj_2, and lt_0
+     * which copies the count into the GUI framework's own event), so a second
+     * event carrying clickCount 1 is just another single click and interactive
+     * world elements only highlight instead of activating.
+     *
+     * AWT's real sequence is PRESS/RELEASE/CLICK with count 1 followed by
+     * PRESS/RELEASE/CLICK with count 2, all inside the platform double-click
+     * interval, so that is what we emit. The listeners are invoked directly, so
+     * nothing here depends on the OS click timer — but the gap is kept small
+     * anyway in case client code times the pair itself.
+     */
+    static void doubleClick(final int x, final int y, final int button) throws Exception {
+        ensureNormalized();
+        fireMouse(MouseEvent.MOUSE_MOVED, x, y, 0);
+        sleep(120); // let the hover register, as click() does
+        fireMouse(MouseEvent.MOUSE_PRESSED, x, y, 1, button);
+        fireMouse(MouseEvent.MOUSE_RELEASED, x, y, 1, button);
+        fireMouse(MouseEvent.MOUSE_CLICKED, x, y, 1, button);
+        sleep(40);
+        fireMouse(MouseEvent.MOUSE_PRESSED, x, y, 2, button);
+        fireMouse(MouseEvent.MOUSE_RELEASED, x, y, 2, button);
+        fireMouse(MouseEvent.MOUSE_CLICKED, x, y, 2, button);
+    }
+
+    /**
+     * Self-test for {@link #doubleClick}: installs a temporary listener on the
+     * real GLCanvas, fires the sequence at it, and reports what arrived.
+     *
+     * This exists because whether a double-click "works" is easy to get wrong and
+     * hard to observe in-game: most double-click targets are list items, so an
+     * account with an empty inventory gives no visible feedback, and the world
+     * scene consumes a double-click as a move. The harness's contract is narrower
+     * and fully checkable — deliver the same event sequence a real mouse would —
+     * so this asserts exactly that, with no dependency on game content.
+     *
+     * A genuine AWT double-click is PRESSED/RELEASED/CLICKED with clickCount 1
+     * then the same three with clickCount 2.
+     */
+    static String selfTestDoubleClick(final int x, final int y) throws Exception {
+        final Component c = realGLCanvas();
+        if (c == null) return "FAIL no-canvas";
+        final StringBuilder seen = new StringBuilder();
+        java.awt.event.MouseListener probe = new java.awt.event.MouseAdapter() {
+            public void mousePressed(MouseEvent e)  { rec("P", e); }
+            public void mouseReleased(MouseEvent e) { rec("R", e); }
+            public void mouseClicked(MouseEvent e)  { rec("C", e); }
+            private void rec(String k, MouseEvent e) {
+                synchronized (seen) { seen.append(k).append(e.getClickCount()).append(' '); }
+            }
+        };
+        // Record a plain click first, then a double-click, so the test also proves
+        // they DIFFER. Without that contrast a bug making every click report
+        // count 2 would pass, and so would the old two-single-clicks approach.
+        String single, dbl;
+        c.addMouseListener(probe);
+        try {
+            click(x, y, 1);
+            sleep(150); // events are dispatched on the EDT
+            synchronized (seen) { single = seen.toString().trim(); seen.setLength(0); }
+            doubleClick(x, y, 1);
+            sleep(150);
+            synchronized (seen) { dbl = seen.toString().trim(); }
+        } finally {
+            c.removeMouseListener(probe);
+        }
+        boolean ok = single.equals("P1 R1 C1") && dbl.equals("P1 R1 C1 P2 R2 C2");
+        return (ok ? "PASS" : "FAIL")
+                + " single=[" + single + "] want=[P1 R1 C1]"
+                + " double=[" + dbl + "] want=[P1 R1 C1 P2 R2 C2]";
     }
 
     static void fireMouse(final int id, final int x, final int y, final int clicks) throws Exception {
