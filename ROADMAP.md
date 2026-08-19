@@ -231,8 +231,11 @@ Firework 5, TournamentTotem 2, Challenge 2, DemonI 1, DemonIII 1.
 |---|:---:|---|
 | Vicinity chat (3153 → 3152) | ✅ | AoI-scoped, no self-echo |
 | Private message (3155 → 3154 / 3204) | ✅ | |
-| Channel chat (3151 → 3140) | 🟡 | **One global audience.** The channel key is preserved so the client routes to the right tab, but there is no membership model |
-| Channel membership family | ⬜ | 3128 flags, 3130/32 join/leave, 3134/36/38 member ops, 3202 not-found |
+| Channel chat (3151 → 3140) | ⛔ | **Vestigial 2007 feature, unreachable in 2.70.** The client cannot SEND 3151 — `ChannelContentCommand` is referenced by nothing in any shipped jar — and a 3140 we send is dropped: it routes to pipe 3, which `du_1` never registers, so `ql_1.a` dereferences null and the frame loop swallows it. Kept as protocol preservation only |
+| Channel membership family | ⛔ | **Dead code in 2.70** — all six handlers in `om_0` cast the message and `return false`. No C2S counterpart exists (not even in the 2007 reference), no UI, nothing gated. Sending them is unobservable |
+| Trade chat (`/t`, 3159 → 3168) | ✅ | Global. Was dropped as an unhandled opcode while the client rendered the sender's own line locally, so it looked sent (B-103) |
+| Clan chat (`/c`, 3199 → 3198) | ⛔ | Guild-scoped. The client **self-gates**: with no guild it emits no packet at all (confirmed live). Blocked on item 31 |
+| Group chat (`/p`, 3161 → 3170) | ⛔ | Targets the ally coach on your side of a live fight, so it needs 2v2. Blocked on item 30 |
 | Friends add/remove + list | ✅ | All four ack layouts differ per opcode and are individually verified |
 | Ignore add/remove + list | ✅ | |
 | Presence notifications | ✅ | 3148/3150/3164/3166 |
@@ -1406,8 +1409,36 @@ is a signing certificate or SignPath); no published Docker image.
     sprites). CI needs them, because the gate tests read them.
 
     </details>
-25. **Channel scoping** — the membership family (3128/3130/3132/3134/3136/3138)
-    and guild/team-scoped routing.
+25. [x] **Channel scoping** — DONE, and the item as written was wrong twice over.
+    Investigated before implementing:
+
+    - **The membership family (3128/3130/3132/3134/3136/3138) is dead code.** All
+      six handlers in the client's `om_0` cast the message and `return false`.
+      There is no C2S counterpart — not even in the 2007 reference, where channel
+      membership was always driven from outside the game client — no UI, and
+      nothing gated on them. Implementing them is *provably* unobservable.
+      **Closed as won't-do.**
+    - **The premise that channel chat works and merely lacks scoping is false.**
+      The client cannot send 3151 at all (`ChannelContentCommand` is referenced by
+      nothing in any shipped jar), and the 3140 we send routes to pipe 3, which
+      `du_1` never registers — so `ql_1.a` dereferences null and the line is
+      swallowed by the frame loop's catch. Our `handleChannelMessage` has been
+      talking to nobody. It stays as protocol preservation, correctly labelled.
+
+    **What was actually broken, and is now fixed:** the client offers four chat
+    pipes and we served two. `/t` **Trade** sent opcode 3159 and the server logged
+    `unhandled opcode` and dropped it — while the client printed the player's own
+    line locally, so it looked sent and silently never arrived (B-103). Trade is
+    global, needs no subsystem that does not exist, and is now delivered.
+
+    The other two are genuinely blocked, not skipped: `/c` **Clan** (3199) is
+    guild-scoped and the client self-gates — with no guild it emits *no packet at
+    all*, confirmed live — so it cannot even be exercised before item 31. `/p`
+    **Group** (3161) targets the ally coach on your side of a live fight, read out
+    of CREATE_FIGHT's coach list, so it needs 2v2 (item 30, deferred).
+
+    Also identified in passing: 3159/3161/3168/3170/3198/3199 were all listed as
+    "unidentified" in `OPCODE-INVENTORY.md` and now carry their layouts.
 26. **Achievements** — types 800/801/802, 350 records, one client tab.
 27. **NPC dialog trees** — type 1500, 148 records.
 28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke

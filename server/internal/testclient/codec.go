@@ -27,6 +27,15 @@ func (w *W) Str8(s string) *W {
 	return w
 }
 
+// StrU16 writes a u16-length-prefixed string, the shape the chat bodies use.
+// The length counts ENCODED (wire charset) bytes, not runes.
+func (w *W) StrU16(s string) *W {
+	b := protocol.EncodeText(s)
+	w.b = binary.BigEndian.AppendUint16(w.b, uint16(len(b)))
+	w.b = append(w.b, b...)
+	return w
+}
+
 // R reads a big-endian payload.
 type R struct {
 	b   []byte
@@ -75,6 +84,17 @@ func (r *R) I64() int64 {
 
 func (r *R) Str8() string {
 	n := int(r.U8())
+	if r.pos+n > len(r.b) {
+		return ""
+	}
+	s := protocol.DecodeText(r.b[r.pos : r.pos+n])
+	r.pos += n
+	return s
+}
+
+// StrU16 reads a u16-length-prefixed string.
+func (r *R) StrU16() string {
+	n := int(r.U16())
 	if r.pos+n > len(r.b) {
 		return ""
 	}

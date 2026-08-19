@@ -114,6 +114,54 @@ belongs to the coach.
 
 ## Fixed
 
+### B-103 - Trade chat was dropped, and it looked like it had been sent
+
+The client offers four chat pipes — General (`/s`), Private, Trade (`/t`) and
+Clan (`/c`) — plus Group (`/p`). We served two. Typing in Trade produced:
+
+```
+level=INFO msg="unhandled opcode" opcode=3159 arch=3 len=17
+```
+
+and nothing else. The failure was invisible to the player because **the client
+renders its own outgoing line locally**: the chat panel showed
+`(Commerce) Chrono : selling a dofus` in the Trade colour, so the message looked
+delivered and simply never arrived for anyone.
+
+**Fix.** `3159` (C2S, arch 3, `[u16 len][msg]`) is handled and fanned out as
+`3168` to every other online overworld coach — Trade is global by design. The S2C
+form is byte-identical to VicinityContent (3152), the client's `ayy` being a
+field-for-field copy of `ck_0`, so it is the same builder with a different opcode.
+A leading `/` is still treated as a GM command: the pipe is only which tab the
+text was typed into.
+
+**The other two pipes are blocked, not skipped**, and the distinction is worth
+recording because both look implementable from the server side alone:
+
+- `/c` **Clan** (3199 → 3198) is guild-scoped, and `GuildContentCommand`
+  self-gates on the coach having a `ca_0` — **with no guild the client emits no
+  packet at all**, confirmed live. Implementing it before guilds exist would mean
+  handling a message that cannot arrive.
+- `/p` **Group** (3161 → 3170) targets the ally coach on your side of a live
+  fight, read out of CREATE_FIGHT's coach list (`aat_2`). In a 1v1-only server
+  there is no ally, so the target id is 0 or stale. It needs 2v2.
+
+**Verified** `live` — the retail client typed `/t vends épée à 10 kamas`, the
+server logged `trade chat from=Chrono`, and a second connected player received
+`3168 TRADE from Chrono` with the text. Also `e2e` — delivery, no self-echo,
+whitespace-only lines dropped, and an accented body round-tripping (the u16 length
+counts *encoded* cp1252 bytes, so raw UTF-8 would both mangle the text and
+desynchronise the length). Mutation-checked: emitting the vicinity opcode instead
+of 3168 fails the delivery test.
+
+**Found alongside, and NOT fixed because there is nothing to fix:** the channel
+family this work was originally aimed at is vestigial. The client cannot send
+3151, and a 3140 we send routes to pipe 3 — which `du_1` never registers — so
+`ql_1.a` dereferences null and the frame loop swallows it. `handleChannelMessage`
+has been broadcasting to an audience that discards every line. Recorded in
+ROADMAP item 25 rather than "fixed", since the correct action is to stop claiming
+it works.
+
 ### B-102 - a hand-typed direction byte was wrong on the wire for one Card Master
 
 Found by generating the overworld element table from the client's own env layers

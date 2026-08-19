@@ -351,8 +351,22 @@ const (
 	OpUserPrivateContentMessage  = 3155 // C2S: [u8 len]target [u8 len]message
 	OpChannelContentMessage      = 3140 // S2C: [u8 len]channel [u8 len]sender [u8 len]message
 	OpUserChannelContentMessage  = 3151 // C2S: [u8 len]channel [u8 len]message
-	OpChannelNotFound            = 3202 // S2C: [u8 len]channel
-	OpUserNotFound               = 3204 // S2C: [u8 len]name
+
+	// The other three chat pipes the client actually offers, alongside General
+	// (/s) and Private. Their S2C shape is byte-identical to VicinityContent
+	// (3152), so they share its builder — only the opcode differs.
+	//
+	//	/t Trade  — GLOBAL, and the only one of the three that works today.
+	//	/p Group  — the ally coach on your side of a live fight, so it needs 2v2.
+	//	/c Clan   — guild-scoped; the client will not even SEND it without a guild.
+	OpUserTradeContentMessage = 3159 // C2S (arch 3): [u16 len][message] — afq_0
+	OpTradeContentMessage     = 3168 // S2C: [u8 len]sender [i64 id] [u16 len]message — ayy
+	OpUserGroupContentMessage = 3161 // C2S (arch 3): [i64 targetCoachId][u16 len][message] — aux_
+	OpGroupContentMessage     = 3170 // S2C: same shape as 3168 — aik_1
+	OpUserClanContentMessage  = 3199 // C2S (arch 2): [u16 len][message][i64 guildId] — ak
+	OpClanContentMessage      = 3198 // S2C: same shape as 3168 — ano_1
+	OpChannelNotFound         = 3202 // S2C: [u8 len]channel
+	OpUserNotFound            = 3204 // S2C: [u8 len]name
 
 	// Social lists
 	OpFriendList    = 3144 // S2C: [u8 count] + per friend {i16 len, blob}

@@ -168,17 +168,17 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 3155 | C2S | H | UserPrivateContentMessage (Xk) | `handlePrivateMessageRecv` |
 | 3156 | S2C | E | FriendAddedMessage (kz_1) | `sendSocialAck` |
 | 3158 | S2C | E | IgnoreAddedMessage (ft_0) | `sendSocialAck` |
-| 3159 | C2S | - | (afq_0) | unidentified |
+| 3159 | C2S | ✅ | `afq_0` | **Trade chat send** (`/t`), arch 3: `[u16 len][msg]`. Global |
 | 3160 | S2C | E | FriendRemovedMessage (adw_1) | `sendSocialAck` |
-| 3161 | C2S | - | (aux_) | unidentified |
+| 3161 | C2S | ⛔ | `aux_` | **Group chat send** (`/p`), arch 3: `[i64 allyCoachId][u16 len][msg]`. The ally comes from CREATE_FIGHT's coach list, so it needs 2v2 (item 30) |
 | 3162 | S2C | E | IgnoreRemovedMessage (ahm_0) | `sendSocialAck` |
 | 3164 | S2C | E | NotificationIgnoreOnlineMessage (jH) | presence push |
 | 3166 | S2C | E | NotificationIgnoreOfflineMessage (jf_0) | presence push |
-| 3168 | S2C | - | (ayy) | unidentified |
-| 3170 | S2C | - | (aik_1) | unidentified |
-| 3198 | S2C | - | (ano_1) | unidentified |
-| 3199 | C2S | - | (ak) | unidentified |
-| 3202 | S2C | I | ChannelNotFound (qv_0) | **intentionally inactive** � the server accepts every channel and broadcasts globally, so no channel is ever "not found" (no guild/team scoping to reject against yet) |
+| 3168 | S2C | ✅ | `ayy` | **Trade chat recv**. Byte-identical to 3152 |
+| 3170 | S2C | ⛔ | `aik_1` | **Group chat recv**. Byte-identical to 3152; blocked with 3161 |
+| 3198 | S2C | ⛔ | `ano_1` | **Clan chat recv**. Byte-identical to 3152; blocked on guilds (item 31) |
+| 3199 | C2S | ⛔ | `ak` | **Clan chat send** (`/c`), arch 2: `[u16 len][msg][i64 guildId]`. The client SELF-GATES on having a guild - confirmed live, `/c` emits no packet at all - so this cannot be exercised until guilds exist |
+| 3202 | S2C | I | ChannelNotFound (qv_0) | **unreachable** - it answers 3151, which the retail client cannot send (`ChannelContentCommand` is referenced by nothing). Vestigial with the rest of the channel family |
 | 3204 | S2C | E | UserNotFoundMessage (ve_1) | emitted on PM to unknown name |
 | 3206 | S2C | - | MalformedCommandMessage (amd_1) | error class, unused |
 | 3208 | S2C | - | MemberNotFoundMessage (ez_2) | error class, unused |
@@ -498,7 +498,7 @@ silence).
 | 22002 | StatisticData | **never emit** — its handler opens the tutorial dialog *and* wholesale-replaces the coach's criteria. Criteria go out in 2052's 0x200 blob instead |
 | 1026 | WorldServerUnavailable | **no honest trigger** — a login-time "game server unreachable" popup; in a monolithic server the world is reachable once the client connected |
 | 2302 | OpponentSearchError | **dead client-side** — the client has no handler for the 2300-series replies (we use 23110); an empty payload would crash its decoder |
-| 3202 | ChannelNotFound | **no trigger** — the server accepts every channel and broadcasts globally, so no channel is ever "not found" (needs guild/team scoping first) |
+| 3202 | ChannelNotFound | **no trigger** - it answers 3151, which the retail client cannot send at all; the whole channel family is vestigial 2007 code (see ROADMAP item 25) |
 | 5202 | CoachEquipmentUpdate | **no visible effect** — the overworld avatar (hair/skin/sex) is already correct at spawn; equipment is cards/deck, delivered per-fight via 8000 |
 | 2300 | OpponentFound | superseded by 23110 — leave as-is |
 | 26332 | SpectateTeardown | handled via 8300 — leave as-is |
