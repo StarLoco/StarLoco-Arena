@@ -113,6 +113,26 @@ const MaxCriterionID uint16 = 1007
 // It is also read SIGNED (getShort), so a blob over 32767 bytes would go
 // negative and the client would silently read zero criteria; hence the cap.
 func buildCriteriaBlob(criteria []Criterion) []byte {
+	pairs := normalizeCriteria(criteria)
+
+	w := protocol.NewWriter()
+	w.U16(uint16(len(pairs) * 4)) // byteLen — EXACTLY 4 per pair, see above
+	for _, c := range pairs {
+		w.U16(c.ID)
+		w.U16(c.Value)
+	}
+	return w.Bytes()
+}
+
+// normalizeCriteria filters, de-duplicates and orders a criteria set into the
+// exact pairs that go on the wire. Both encodings below are built from it, so
+// the login descriptor and the achievement-tab snapshot can never disagree about
+// what a coach has achieved.
+//
+// The cap keeps byteLen a positive i16 for the descriptor blob. It is applied
+// here rather than in that encoder so the two encodings stay identical even in
+// the absurd case.
+func normalizeCriteria(criteria []Criterion) []Criterion {
 	// criterionZaapUnlock is always present; an explicit entry for it wins so a
 	// coach can never end up with two pairs for the same key.
 	pairs := make([]Criterion, 0, len(criteria)+1)
@@ -139,9 +159,26 @@ func buildCriteriaBlob(criteria []Criterion) []byte {
 	if max := int(math.MaxInt16) / 4; len(pairs) > max {
 		pairs = pairs[:max]
 	}
+	return pairs
+}
+
+// EncodeStatisticData builds the opcode-22002 payload: [i32 byteLen] then
+// byteLen/4 × {[i16 criterionId][i16 value]}.
+//
+// Note the framing differs from the 2052 descriptor's 0x200 blob, which prefixes
+// the SAME pairs with an i16 (client ls_0.a uses getInt, aez_0.O uses getShort).
+// The pairs themselves come from normalizeCriteria, so the two always agree.
+//
+// This must carry the coach's COMPLETE criteria set, not a delta. The client's
+// handler A does `Ln().b(ls_0.qI())`, and aez_0.b REPLACES the map wholesale
+// rather than merging it — so any criterion missing here is ERASED from the
+// running client. Dropping criterionZaapUnlock, for instance, silently re-locks
+// the island Zaap until the next login.
+func EncodeStatisticData(criteria []Criterion) []byte {
+	pairs := normalizeCriteria(criteria)
 
 	w := protocol.NewWriter()
-	w.U16(uint16(len(pairs) * 4)) // byteLen — EXACTLY 4 per pair, see above
+	w.I32(int32(len(pairs) * 4)) // byteLen — EXACTLY 4 per pair
 	for _, c := range pairs {
 		w.U16(c.ID)
 		w.U16(c.Value)

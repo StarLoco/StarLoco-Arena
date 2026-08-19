@@ -9,6 +9,7 @@ func registerLifecycleHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpDisconnect, handleDisconnect)
 	r.Register(protocol.OpTutorialChangeInstance, handleTutorialChangeInstance)
 	r.Register(protocol.OpStatisticUpdate, handleStatisticUpdate)
+	r.Register(protocol.OpStatisticRequest, handleStatisticRequest)
 	r.Register(protocol.OpDestroyCoach, handleDestroyCoach)
 }
 
@@ -52,6 +53,40 @@ func handleStatisticUpdate(s *Session, f *protocol.C2SFrame) error {
 	s.log.Debug("statistic update", "coach", s.Coach.Name,
 		"stat", su.StatID, "value", su.Value, "flag", su.Flag)
 	return nil
+}
+
+// handleStatisticRequest handles opcode 22001 (client `anp_0`, empty): the client
+// asking for its criteria, sent when the achievement tab is opened.
+//
+// The reply is what OPENS the tab. Client-side, clicking the achievements button
+// only registers handler A and sends this; A's 22002 case is what actually pops
+// "achievementDialog". Leaving 22001 unanswered therefore makes the button inert
+// - which is exactly how the tab behaved before this handler existed.
+//
+// Replying is safe here specifically because the request implies A is registered.
+// The client dispatches newest-handler-first and stops at the first handler that
+// consumes (fh_2: qe.add(0,...), break when a.a() returns false), so A takes the
+// frame and the permanently-registered tutorial handler asA - which would pop the
+// tutorial-guide dialog - never sees it. That is why 22002 must never be sent
+// spontaneously; see protocol.OpStatisticData.
+func handleStatisticRequest(s *Session, _ *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	// Reload so the tab reflects criteria earned since login (the in-memory coach
+	// is not the authority for these - postfight/challenge code writes them
+	// straight through the store).
+	coach, err := s.deps.Store.Coaches.Get(s.Coach.ID)
+	if err != nil || coach == nil {
+		// Fall back to the session's copy rather than leaving the tab shut.
+		coach = s.Coach
+	}
+	frame, err := protocol.EncodeS2C(protocol.OpStatisticData,
+		handshake.EncodeStatisticData(coachCriteria(coach)))
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
 }
 
 // handleDestroyCoach handles opcode 27529 (client `bl`): the "Détruire le coach"

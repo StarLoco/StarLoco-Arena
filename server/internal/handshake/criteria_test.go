@@ -125,3 +125,63 @@ func TestCoachInformationsCarriesCriteria(t *testing.T) {
 		t.Errorf("frame grew by %d bytes, want %d", got, want)
 	}
 }
+
+// decodeStatisticData mimics the client's ls_0.a(): read [i32 byteLen], then one
+// pair per 4 bytes. Note the i32 — the same pairs are prefixed with an i16 in the
+// 2052 descriptor blob, and mixing the two up is silent corruption.
+func decodeStatisticData(t *testing.T, payload []byte) (pairs map[uint16]uint16, consumed int) {
+	t.Helper()
+	if len(payload) < 4 {
+		t.Fatalf("payload too short: %d bytes", len(payload))
+	}
+	byteLen := int(int32(binary.BigEndian.Uint32(payload[0:4])))
+	pairs = map[uint16]uint16{}
+	consumed = 4
+	for n := 0; n*4 < byteLen; n++ {
+		if consumed+4 > len(payload) {
+			t.Fatalf("byteLen %d overruns the payload (%d bytes)", byteLen, len(payload))
+		}
+		pairs[binary.BigEndian.Uint16(payload[consumed:consumed+2])] =
+			binary.BigEndian.Uint16(payload[consumed+2 : consumed+4])
+		consumed += 4
+	}
+	return pairs, consumed
+}
+
+// TestStatisticDataMatchesDescriptorBlob is the invariant that keeps the
+// achievement tab honest: 22002 and the 2052 descriptor's 0x200 blob are two
+// framings of the SAME criteria set. If they can disagree, opening the tab
+// silently rewrites the client's criteria map (aez_0.b replaces it wholesale),
+// so a coach could lose progress just by looking at it.
+func TestStatisticDataMatchesDescriptorBlob(t *testing.T) {
+	cases := [][]Criterion{
+		nil,
+		{{ID: 221, Value: 1}},
+		{{ID: 221, Value: 3}, {ID: 213, Value: 7}, {ID: criterionZaapUnlock, Value: 1}},
+		// Entries the normaliser must drop identically in both encodings.
+		{{ID: 0, Value: 1}, {ID: MaxCriterionID + 1, Value: 1}, {ID: 300, Value: 0},
+			{ID: 214, Value: 2}, {ID: 214, Value: 9}},
+	}
+	for i, in := range cases {
+		blobPairs, blobUsed := decodeCriteriaBlob(t, buildCriteriaBlob(in))
+		dataPairs, dataUsed := decodeStatisticData(t, EncodeStatisticData(in))
+
+		if len(blobPairs) != len(dataPairs) {
+			t.Errorf("case %d: descriptor has %d pairs, 22002 has %d",
+				i, len(blobPairs), len(dataPairs))
+			continue
+		}
+		for id, v := range blobPairs {
+			if dataPairs[id] != v {
+				t.Errorf("case %d: criterion %d = %d in the descriptor but %d in 22002",
+					i, id, v, dataPairs[id])
+			}
+		}
+		// Each framing must consume its whole payload: the length prefixes differ
+		// in width (i16 vs i32) but must describe the same number of pairs.
+		if blobUsed-2 != dataUsed-4 {
+			t.Errorf("case %d: descriptor carries %d bytes of pairs, 22002 carries %d",
+				i, blobUsed-2, dataUsed-4)
+		}
+	}
+}

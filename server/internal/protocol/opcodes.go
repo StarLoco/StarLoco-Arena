@@ -8,6 +8,11 @@ const (
 	OpTutorialChangeInstance = 4517  // C2S: empty (arch 3) — tutorial/instance-ready ack
 	OpDestroyCoach           = 27529 // C2S: empty (arch 2) — "Détruire le coach" (delete coach)
 	OpStatisticUpdate        = 22003 // C2S (arch 2): [i16 statId][i8 flag][i16 value] achievement/stat counter
+	// OpStatisticRequest is sent (empty) when the achievement tab is opened. The
+	// reply (OpStatisticData) is what actually OPENS the tab client-side - handler
+	// A pops "achievementDialog" from its 22002 case - so leaving this unanswered
+	// makes the achievements button do nothing at all.
+	OpStatisticRequest = 22001 // C2S anp_0 (arch 2): empty - "send me my criteria"
 
 	// Connection / auth (client -> server unless noted)
 	OpClientVersion        = 7    // C2S: [u8 0x02][u16 ver=70][u8 len][ascii build]
@@ -47,8 +52,16 @@ const (
 	// the ONLY thing that clears it — there is no timeout, so omitting it leaves
 	// the coach permanently unable to walk. It also fires the client's
 	// walked-onto-element triggers. See game.Session.sendEnterOverworld.
-	OpInstanceReady = 4516  // S2C yu_1: empty — instance ready / movement unlock
-	OpStatisticData = 22002 // S2C ls_0: [i32 byteLen]{[i16 crit][i16 val]}. DO NOT EMIT: the client (asA) unconditionally opens the tutorial-guide dialog on receipt. Deliver criteria via the 2052 coach descriptor instead.
+	OpInstanceReady = 4516 // S2C yu_1: empty — instance ready / movement unlock
+	// OpStatisticData is the criteria snapshot. NEVER send it unsolicited: the
+	// permanently-registered tutorial handler (asA, added at login by by_2) pops
+	// the tutorial-guide dialog on receipt. It is safe, and required, ONLY as the
+	// reply to OpStatisticRequest below - opening the achievement tab registers
+	// handler A, and the client dispatches frames newest-handler-first
+	// (fh_2: qe.add(0,...), loop breaks on the first handler returning false), so
+	// A consumes the frame and asA never sees it. Unsolicited criteria changes go
+	// through the 2052 coach descriptor instead.
+	OpStatisticData = 22002 // S2C ls_0: [i32 byteLen]{[i16 crit][i16 val]}
 
 	// Statistics
 	OpPlayerStatisticsReport = 2400 // S2C: [u16 blobLen][stats field-map blob]

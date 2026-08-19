@@ -114,6 +114,68 @@ belongs to the coach.
 
 ## Fixed
 
+### B-105 - the achievements tab could not be opened at all
+
+Clicking the "Exploits" button did nothing. Not "opened empty" — nothing.
+
+The reason is that the client does not open the dialog itself. `yh.a()` only
+registers handler `A` and sends opcode 22001:
+
+```java
+apN.aDK().a(A.U());                 // register the achievement handler
+add_1.aOG().l("dofusarena.achievement", qJ.class);
+anp_0 anp_02 = new anp_0();          // 22001, empty
+apN.aDK().vJ().b(anp_02);
+```
+
+and it is `A`'s **22002 handler** that pops the window:
+
+```java
+case 22002: {
+    apN.aDK().Ln().b(ls_02.qI());
+    ...
+    add_1.aOG().a("achievementDialog", oh_2.bq("achievementDialog"), (short)10000);
+```
+
+22001 was not registered server-side, so the reply never came and the button was
+inert.
+
+**Why this was not obvious:** `OpStatisticData` (22002) carried a blanket
+`DO NOT EMIT` warning, because the tutorial handler `asA` pops the tutorial-guide
+dialog on receipt, and `asA` is registered permanently at login (`by_2`). That
+warning was over-broad, and following it literally is what left 22001 unanswered.
+
+The client dispatches **newest-handler-first** and stops at the first handler that
+consumes:
+
+```java
+// fh_2 registration:  this.qe.add(0, atG2);
+for (int j = 0; j < n2; ++j) { bl2 = atG2.a(pr_02); if (bl2) continue; break; }
+```
+
+`A` is registered when the tab opens, so it sits at index 0 and returns `false`,
+and `asA` never sees the frame. The correct rule is therefore not "never emit" but
+**"never emit unsolicited; always emit in reply to 22001"** — the request itself is
+the proof that `A` is registered. Confirmed live: the tab opens and no tutorial
+dialog appears.
+
+**A second hazard found while fixing it.** 22002 must carry the coach's COMPLETE
+criteria set, never a delta: `A` does `Ln().b(ls_0.qI())` and `aez_0.b` *replaces*
+the map rather than merging, so anything omitted is erased from the running
+client. Omitting the always-seeded Zaap criterion (219) would silently re-lock the
+island Zaap until the next login — i.e. a player could lose access simply by
+opening the achievements tab. Both encodings now derive from one
+`normalizeCriteria`, so the login descriptor and the tab snapshot cannot disagree;
+only the length-prefix width differs (i32 here, i16 in the 2052 descriptor blob).
+
+**Verified** `unit` that the two encodings carry identical pairs, and `e2e` that
+the reply arrives, reflects criteria earned since login, and is a full snapshot.
+Mutation-checked three ways — dropping the registration, omitting the Zaap
+criterion, and using an i16 length prefix each fail with the specific diagnostic.
+**Live-verified**: the tab renders 10 PE with real per-achievement percentages
+(100 / 50 / 25 / 0 %), so the server's criteria genuinely drive the client's
+completion maths.
+
 ### B-104 - chat had no server-side safety at all, and one client-side gap was exploitable
 
 Finishing the chat pipes meant deciding what a *modified* client may do, since

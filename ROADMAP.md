@@ -56,7 +56,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Tournaments | 🟡 | Registration + calendar + list; no brackets, no matches |
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
 | Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
-| Achievements | ⬜ | 350 records, zero code |
+| Achievements | 🟡 | 350 records. The tab opens and renders live progress (B-105); the records themselves are still undecoded |
 | Guilds / clans, 2v2 | ⬜ | Structurally blocked (see §8.16) |
 | Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
@@ -936,7 +936,10 @@ client only ever reads the result:
   filtered by `RequiredLevel`, paid out through the (already implemented)
   8300 won-cards blob.
 - **Sphere Board** ⬜ — 17 542 records. Emitted as empty lists on the wire.
-- **Achievements** ⬜ — 350 records. Only a raw keyed counter table exists.
+- **Achievements** 🟡 — 350 records. The client tab opens and renders real
+  per-achievement percentages off the server's criteria (B-105), but the 800/801/802
+  records are still undecoded, so the server cannot evaluate completion or push
+  unlocks (22000) yet.
 - **Coach standing persistence** ⚠️ — see §4.
 
 ---
@@ -1456,6 +1459,16 @@ is a signing certificate or SignPath); no published Docker image.
     Also identified in passing: 3159/3161/3168/3170/3198/3199 were all listed as
     "unidentified" in `OPCODE-INVENTORY.md` and now carry their layouts.
 26. **Achievements** — types 800/801/802, 350 records, one client tab.
+    **The tab now opens** (B-105): the client's 22001 was unanswered, and since it
+    is the *reply* that pops `achievementDialog`, the button was completely inert.
+    The criteria already tracked server-side now render, with real percentages.
+    Remaining: decode types 800/801/802 so the server knows each achievement's
+    conditions, evaluate them, and push unlocks via 22000. Notes for that work —
+    completion is `all statId >= threshold` AND `all required cards owned`, so it
+    is *generic*, needing no per-achievement code; `or_0` (308 lines) documents
+    every statistic id in French; and there is **no material reward**, points
+    being cosmetic and the one unused i32 in the type-800 record having no
+    consumer anywhere in the client.
 27. **NPC dialog trees** — type 1500, 148 records.
 28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke
     client-state RE plus live verification for each.

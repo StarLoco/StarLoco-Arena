@@ -39,6 +39,8 @@ Audit legend cross-refs the commit that did/verified it.
 | 1 | Disconnect (`aqb`) | C2S | ✓ | A (empty) | — | — |
 | 4517 | TutorialChangeInstance (`aae_2`) | C2S | ✓ (no-op) | A (empty, arch 3) | — | — |
 | 22003 | StatisticUpdate (`nq`) | C2S | ✓ (persist) | A (i16 id, i8 flag, i16 val) | ✓ | — |
+| 22001 | StatisticRequest (`anp_0`) | C2S | ✓ | A (empty, arch 2) | ✓ | ✓ **live** |
+| 22002 | StatisticData (`ls_0`) | S2C | ✓ (reply to 22001 ONLY) | A (i32 byteLen, then i16/i16 pairs) | ✓ | ✓ **live** |
 | 27529 | DestroyCoach (`bl`) | C2S | ✓ (delete coach + data) | A (empty, arch 2) | ✓ (DeleteCoach) | — |
 
 ## Coach creation & world entry
@@ -349,7 +351,7 @@ missing feature manifests to the client as a *hang*. Prioritized:
 - **5203 destructive/lock ops** — handler currently ignores its payload.
 - Ladder: the main 1v1 board (27500/27501) + compact page (27502/27503) are
   done; still missing: the other sub-boards (evolution/team, 27504–27552).
-- Achievements (22000), events (17000), tournaments (28600), XvX invites
+- Achievement unlock pushes (22000), events (17000), tournaments (28600), XvX invites
   (26300) — large `new-in-2.70` subsystems, each a client tab.
 - 2052 CoachInformations / 4096 coach-actor sub-blobs are still empty (guild,
   inventory, appearance) BUT this is now known to be low-impact for stats: the
