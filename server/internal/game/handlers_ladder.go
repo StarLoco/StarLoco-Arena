@@ -87,7 +87,7 @@ func handleLadderRequest(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 
-	frame, err := buildLadderResponse(total, int(start), rows, myRank)
+	frame, err := buildLadderResponse(total, int(start), rows, myRank, s.deps.guildTagsFor(rows))
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func handleLadderRequest(s *Session, f *protocol.C2SFrame) error {
 // level/rank icon itself (from windowStart + index and the rating), so we send
 // only name, guild, rating, streak, wins, losses; the three filler i32s are read
 // and discarded. myRank drives the self-highlight (0 = unranked, matches no row).
-func buildLadderResponse(total, windowStart int, rows []store.LadderEntry, myRank int) ([]byte, error) {
+func buildLadderResponse(total, windowStart int, rows []store.LadderEntry, myRank int, guildOf map[string]string) ([]byte, error) {
 	windowEnd := windowStart + len(rows) // load-bearing: see the loop note above
 	w := protocol.NewWriter().
 		I32(int32(total)).
@@ -122,7 +122,7 @@ func buildLadderResponse(total, windowStart int, rows []store.LadderEntry, myRan
 
 	for _, e := range rows {
 		writeLadderString(w, e.Name)
-		writeLadderString(w, "") // guild tag (empty until guilds exist)
+		writeLadderString(w, guildOf[e.Name]) // clan tag (blank when clanless)
 
 		w.U16(uint16(int16(e.Strength))) // rating (glicko; client renders level/rank)
 		w.I32(0)                         // discarded
@@ -165,7 +165,7 @@ func handleGuildLadderRequest(s *Session, f *protocol.C2SFrame) error {
 	if start < 0 {
 		start = 0
 	}
-	frame, err := buildGuildLadder(int(start), nil)
+	frame, err := buildGuildLadder(int(start), s.deps.guildLadderRows())
 	if err != nil {
 		return err
 	}
@@ -540,4 +540,39 @@ func buildProLeagueLadder(leagueID int32) ([]byte, error) {
 // to be both mangled and mis-counted here.
 func writeLadderString(w *protocol.Writer, s string) {
 	w.StringU32(s)
+}
+
+// guildTagsFor resolves the clan tag for a page of ladder rows in one query.
+// Returns an empty (never nil) map so a store without guilds behaves exactly as
+// the reserved empty column did.
+func (d *Deps) guildTagsFor(rows []store.LadderEntry) map[string]string {
+	if d == nil || d.Store == nil || d.Store.Guilds == nil || len(rows) == 0 {
+		return map[string]string{}
+	}
+	names := make([]string, 0, len(rows))
+	for _, e := range rows {
+		names = append(names, e.Name)
+	}
+	tags, err := d.Store.Guilds.NamesByCoachName(names)
+	if err != nil {
+		return map[string]string{}
+	}
+	return tags
+}
+
+// guildLadderRows builds the clan board. Nil (an empty board) when guilds are
+// unavailable, which is what this returned before they existed.
+func (d *Deps) guildLadderRows() []guildLadderRow {
+	if d == nil || d.Store == nil || d.Store.Guilds == nil {
+		return nil
+	}
+	entries, err := d.Store.Guilds.Ladder(ladderPageSize)
+	if err != nil {
+		return nil
+	}
+	out := make([]guildLadderRow, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, guildLadderRow{guild: e.Name, leader: e.Leader, score: e.Score})
+	}
+	return out
 }

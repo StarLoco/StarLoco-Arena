@@ -1556,8 +1556,10 @@ is a signing certificate or SignPath); no published Docker image.
     set-member-rank and 2600/2601 member stats - every privileged operation
     re-deriving the caller's rank instead of trusting the request, since the
     client hides each one from anyone without the right.
-    Remaining: the reserved guild-tag column in the four ladder boards, the clan
-    ladder rows, and the clan-island Zaap. **Do not implement 513 (rename) or 551 (icon)** —
+    Also done: the clan tag now fills the column reserved in the 1v1 board, and
+    the clan ladder returns real rows (score = the sum of member ratings - a
+    server choice, since the client renders the number without interpreting it).
+    Remaining: the clan-island Zaap (card 859) and demon affiliation. **Do not implement 513 (rename) or 551 (icon)** —
     both are reachable only from the client's `Test` Lua debug library, with no
     UI and no assets.
 32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.

@@ -92,7 +92,7 @@ func TestLadder1v1RowContract(t *testing.T) {
 		{Name: "Alice", Strength: 1500, StatWins: 10, StatLosses: 3, ConsecutiveWins: 4},
 		{Name: "Bob", Strength: 1200, StatWins: 5, StatLosses: 8, ConsecutiveWins: 0},
 	}
-	frame, err := buildLadderResponse(42, 20, rows, 21)
+	frame, err := buildLadderResponse(42, 20, rows, 21, map[string]string{"Alice": "Les Bouftous"})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -111,7 +111,17 @@ func TestLadder1v1RowContract(t *testing.T) {
 	}
 	for j := int32(0); j < end-start; j++ { // the client's exact loop
 		name := c.str()
-		_ = c.str() // guild
+		// The clan tag column: reserved and always empty until guilds existed,
+		// now carrying the coach's clan. Asserted per row because a tag attached
+		// to the WRONG row is the failure mode that looks fine in aggregate.
+		guild := c.str()
+		wantGuild := ""
+		if name == "Alice" {
+			wantGuild = "Les Bouftous"
+		}
+		if guild != wantGuild {
+			t.Errorf("row %s: clan tag = %q, want %q", name, guild, wantGuild)
+		}
 		rating := c.i16()
 		c.i32()           // discarded
 		c.i32()           // discarded
@@ -140,7 +150,7 @@ func TestLadder1v1RowContract(t *testing.T) {
 // TestLadder1v1EmptyIsWellFormed: an empty board must still render (17 bytes, zero
 // rows) rather than blank-with-error.
 func TestLadder1v1EmptyIsWellFormed(t *testing.T) {
-	frame, err := buildLadderResponse(0, 0, nil, 0)
+	frame, err := buildLadderResponse(0, 0, nil, 0, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

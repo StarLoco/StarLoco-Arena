@@ -132,3 +132,87 @@ func TestGuildMembersAndRemoval(t *testing.T) {
 		t.Errorf("a removed coach cannot rejoin: %v", err)
 	}
 }
+
+// TestGuildLadderRanksByMemberStrength pins the clan board's ordering and the
+// score definition. The score is the SUM of member ratings - a server choice, not
+// a decoded one, so it is stated in a test rather than left implicit.
+func TestGuildLadderRanksByMemberStrength(t *testing.T) {
+	s := newTestStore(t)
+
+	strong := guildTestCoach(t, s, "Fort")
+	weak := guildTestCoach(t, s, "Faible")
+	helper := guildTestCoach(t, s, "Aide")
+	setStrength(t, s, strong, 1500)
+	setStrength(t, s, weak, 900)
+	setStrength(t, s, helper, 300)
+
+	gw, err := s.Guilds.Create("ClanFaible", weak, "Chef", "Membre")
+	if err != nil {
+		t.Fatalf("create weak: %v", err)
+	}
+	if _, err := s.Guilds.Create("ClanFort", strong, "Chef", "Membre"); err != nil {
+		t.Fatalf("create strong: %v", err)
+	}
+	// 900 + 300 = 1200 < 1500, so the two-member clan still ranks second.
+	if err := s.Guilds.AddMember(gw.ID, helper); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	rows, err := s.Guilds.Ladder(10)
+	if err != nil {
+		t.Fatalf("ladder: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("%d rows, want 2", len(rows))
+	}
+	if rows[0].Name != "ClanFort" || rows[0].Score != 1500 {
+		t.Errorf("row 0 = %s/%d, want ClanFort/1500", rows[0].Name, rows[0].Score)
+	}
+	if rows[1].Name != "ClanFaible" || rows[1].Score != 1200 {
+		t.Errorf("row 1 = %s/%d, want ClanFaible/1200 (900+300)", rows[1].Name, rows[1].Score)
+	}
+	if rows[0].Leader != "Fort" {
+		t.Errorf("leader = %q, want Fort", rows[0].Leader)
+	}
+}
+
+// TestGuildNamesByCoachName is the ladder tag lookup: one query for a page, and
+// a clanless coach must simply be absent rather than mapped to "".
+func TestGuildNamesByCoachName(t *testing.T) {
+	s := newTestStore(t)
+	inClan := guildTestCoach(t, s, "Membre")
+	loner := guildTestCoach(t, s, "Solo")
+	if _, err := s.Guilds.Create("Les Bouftous", inClan, "Chef", "Membre"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// A second clan member who is NOT on the requested page. Without one, a
+	// lookup that ignores its filter and returns every membership in the
+	// database still looks correct.
+	offPage := guildTestCoach(t, s, "HorsPage")
+	if _, err := s.Guilds.Create("Autre Clan", offPage, "Chef", "Membre"); err != nil {
+		t.Fatalf("create other: %v", err)
+	}
+
+	got, err := s.Guilds.NamesByCoachName([]string{"Membre", "Solo", "Inconnu"})
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if _, ok := got["HorsPage"]; ok {
+		t.Error("the lookup returned a coach that was not asked for - the name filter is not applied")
+	}
+	if got["Membre"] != "Les Bouftous" {
+		t.Errorf("Membre -> %q, want Les Bouftous", got["Membre"])
+	}
+	if _, ok := got["Solo"]; ok {
+		t.Error("a clanless coach appeared in the tag map")
+	}
+	_ = loner
+}
+
+func setStrength(t *testing.T, s *Store, coachID uint, v int32) {
+	t.Helper()
+	if err := s.DB().Table("coaches").Where("id = ?", coachID).
+		Update("strength", v).Error; err != nil {
+		t.Fatalf("set strength: %v", err)
+	}
+}

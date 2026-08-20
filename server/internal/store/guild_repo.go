@@ -267,3 +267,59 @@ func (r *GuildRepo) Delete(guildID uint) ([]uint, error) {
 	})
 	return members, err
 }
+
+// GuildLadderEntry is one row of the clan board.
+type GuildLadderEntry struct {
+	Name   string
+	Leader string
+	Score  int32
+}
+
+// Ladder returns clans ordered by score, strongest first.
+//
+// Score is the SUM of the members' 1v1 ratings. The client renders whatever
+// number it is given (the column has no unit and no client-side maths), so this
+// is the server's definition rather than a decoded one: it rewards both a strong
+// roster and a large one, which is what a clan board is usually for. Recorded
+// here because it is a design choice, not a protocol fact.
+func (r *GuildRepo) Ladder(limit int) ([]GuildLadderEntry, error) {
+	var out []GuildLadderEntry
+	q := r.db.Table("guilds AS g").
+		Select("g.name AS name, COALESCE(lc.name, '') AS leader, COALESCE(SUM(mc.strength), 0) AS score").
+		Joins("LEFT JOIN coaches lc ON lc.id = g.leader_coach_id").
+		Joins("LEFT JOIN guild_members m ON m.guild_id = g.id").
+		Joins("LEFT JOIN coaches mc ON mc.id = m.coach_id").
+		Group("g.id").
+		Order("score DESC, g.name ASC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	return out, q.Scan(&out).Error
+}
+
+// NamesByCoachName maps coach names to their clan's name, for the guild-tag
+// column the ladder boards carry. Keyed by NAME because that is all a ladder row
+// holds; one query for the whole page rather than one per row.
+func (r *GuildRepo) NamesByCoachName(names []string) (map[string]string, error) {
+	out := make(map[string]string, len(names))
+	if len(names) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		Coach string
+		Guild string
+	}
+	err := r.db.Table("guild_members AS m").
+		Select("c.name AS coach, g.name AS guild").
+		Joins("JOIN guilds g ON g.id = m.guild_id").
+		Joins("JOIN coaches c ON c.id = m.coach_id").
+		Where("c.name IN ?", names).
+		Scan(&rows).Error
+	if err != nil {
+		return out, err
+	}
+	for _, row := range rows {
+		out[row.Coach] = row.Guild
+	}
+	return out, nil
+}
