@@ -153,3 +153,75 @@ func TestClanIslandTableMatchesTheDocumentedZaaps(t *testing.T) {
 		}
 	}
 }
+
+// TestClanIslandCardTracksIslandOwnership: the destination logic is unreachable
+// unless the coach actually HOLDS card 859, and nothing grants it - which made
+// the whole feature dead on arrival until this was wired.
+//
+// Granted when the clan holds an island and revoked when it does not, so the Zaap
+// dialog never lists a destination that silently does nothing.
+func TestClanIslandCardTracksIslandOwnership(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "card.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	d := &Deps{Store: st, Log: testLogger()}
+	s := &Session{deps: d, log: testLogger()}
+
+	acc, _ := st.Accounts.CreateAccount("card_a", "secret", false)
+	c, _ := st.Coaches.Create(acc.ID, "Chef", 1, 2, 0)
+	g, err := st.Guilds.Create("ClanCarte", c.ID, "Chef", "Membre")
+	if err != nil {
+		t.Fatalf("guild: %v", err)
+	}
+
+	has := func() bool {
+		for _, card := range c.Inventory {
+			if card.TemplateID == clanIslandZaapCard {
+				return true
+			}
+		}
+		return false
+	}
+	owned := func() map[int32]bool {
+		m := map[int32]bool{}
+		for _, card := range c.Inventory {
+			m[card.TemplateID] = true
+		}
+		return m
+	}
+
+	// No demon yet: no island, so no card.
+	s.syncClanIslandCard(c, owned())
+	if has() {
+		t.Fatal("a clan with no island was given the island zaap")
+	}
+
+	// Serve a demon and lead it: the card appears.
+	if err := st.Guilds.SetDemon(g.ID, 4); err != nil {
+		t.Fatalf("affiliate: %v", err)
+	}
+	if _, err := st.Guilds.AddDemonReputation(g.ID, 4, 100); err != nil {
+		t.Fatalf("reputation: %v", err)
+	}
+	s.syncClanIslandCard(c, owned())
+	if !has() {
+		t.Fatal("the demon's leading clan was not given the island zaap")
+	}
+
+	// A rival out-serves the demon: the island - and the card - move away.
+	acc2, _ := st.Accounts.CreateAccount("card_b", "secret", false)
+	c2, _ := st.Coaches.Create(acc2.ID, "Rival", 1, 2, 0)
+	g2, _ := st.Guilds.Create("ClanRival", c2.ID, "Chef", "Membre")
+	if err := st.Guilds.SetDemon(g2.ID, 4); err != nil {
+		t.Fatalf("affiliate rival: %v", err)
+	}
+	if _, err := st.Guilds.AddDemonReputation(g2.ID, 4, 500); err != nil {
+		t.Fatalf("reputation rival: %v", err)
+	}
+	s.syncClanIslandCard(c, owned())
+	if has() {
+		t.Error("an overtaken clan kept the island zaap - the dialog would offer a dead destination")
+	}
+}

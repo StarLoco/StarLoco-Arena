@@ -101,4 +101,45 @@ func (s *Session) grantZaapCards(coach *domain.Coach) {
 	if added > 0 {
 		s.log.Info("granted zaap cards", "count", added, "coach", coach.Name)
 	}
+	s.syncClanIslandCard(coach, owned)
+}
+
+// syncClanIslandCard keeps card 859 in step with whether the coach's clan
+// actually HOLDS an island.
+//
+// Granted and revoked rather than only granted, because an island changes hands:
+// a clan wins one long after its members first logged in, and loses it the moment
+// another clan out-serves its demon. Leaving the card behind would put a
+// destination in the Zaap dialog that silently does nothing when clicked - the
+// destination check is authoritative either way, but the player should not be
+// shown a door that is not there.
+//
+// Reconciled at login, which is idempotent and self-healing: a clan that gained
+// or lost its island while a member was offline is corrected on their next
+// connection.
+func (s *Session) syncClanIslandCard(coach *domain.Coach, owned map[int32]bool) {
+	_, holds := s.deps.clanIslandDest(coach.ID)
+	db := s.deps.Store.DB()
+	switch {
+	case holds && !owned[clanIslandZaapCard]:
+		card := domain.CoachCard{CoachID: coach.ID, TemplateID: clanIslandZaapCard, Quantity: 1}
+		if err := db.Create(&card).Error; err != nil {
+			return
+		}
+		coach.Inventory = append(coach.Inventory, card)
+		s.log.Info("granted the clan-island zaap", "coach", coach.Name)
+	case !holds && owned[clanIslandZaapCard]:
+		if err := db.Where("coach_id = ? AND template_id = ?",
+			coach.ID, clanIslandZaapCard).Delete(&domain.CoachCard{}).Error; err != nil {
+			return
+		}
+		kept := coach.Inventory[:0]
+		for _, c := range coach.Inventory {
+			if c.TemplateID != clanIslandZaapCard {
+				kept = append(kept, c)
+			}
+		}
+		coach.Inventory = kept
+		s.log.Info("revoked the clan-island zaap (clan no longer holds one)", "coach", coach.Name)
+	}
 }
