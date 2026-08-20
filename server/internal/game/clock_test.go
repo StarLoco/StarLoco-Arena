@@ -27,12 +27,22 @@ func TestPhaseClockForceAdvances(t *testing.T) {
 		f.armClock(presentationClock, (*Fight).advanceToPlacement)
 	})
 
-	// Without any ready signal, the fight should march through the phases on
-	// its own (advanceToPlacement arms the placement clock, which arms the
-	// observation clock, etc.).
-	waitPhase(t, f, PhasePlacement, 500*time.Millisecond)
-	waitPhase(t, f, PhaseObservation, 500*time.Millisecond)
-	waitPhase(t, f, PhaseAction, 500*time.Millisecond)
+	// Without any ready signal, the fight should march through the phases on its
+	// own (advanceToPlacement arms the placement clock, which arms the observation
+	// clock, etc.).
+	//
+	// Only the LAST phase is waited on, deliberately. waitPhase polls, and each
+	// intermediate phase lasts one 20ms clock, so a poll that is not scheduled
+	// inside that window misses the state entirely and fails with the phase
+	// already past the one it wanted ("never reached Placement (stuck at
+	// Observation)"). That is a race in the test, not a fault in the fight, and it
+	// fired under the load of the full package run.
+	//
+	// Nothing is lost by dropping the intermediate waits: the phases are chained,
+	// each transition arming the next one's clock, so arriving at Action is only
+	// possible by having passed through Placement and Observation. A transition
+	// that failed to arm its clock stalls the chain and this still fails.
+	waitPhase(t, f, PhaseAction, 2*time.Second)
 }
 
 // TestManualAdvanceCancelsClock: a manual "both ready" advance means the stale
