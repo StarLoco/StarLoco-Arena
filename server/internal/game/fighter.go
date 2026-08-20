@@ -19,10 +19,19 @@ const (
 	minBreedID     = 1
 	maxBreedID     = 14
 
-	// Fighter-inventory (6010/6011) loadout slot counts, from the client:
-	// cards = ajv_2(6), spells = en_1(5).
-	maxLoadoutCards  = 6
-	maxLoadoutSpells = 5
+	// Fighter-inventory (6010/6011) loadout slot counts, from the client — and
+	// note which is which, because the names used to be the wrong way round:
+	// SPELLS live in `ajv_2(6)` (ee_2.java:137) and EQUIPMENT in `en_1(…,5,…)`
+	// (ee_2.java:139).
+	maxLoadoutSpells = 6
+
+	// maxFighterEquipSlots is the fighter's equipment capacity. It is not an
+	// arbitrary cap: `en_1` refuses any position outside [0,size) outright
+	// ("Impossible d'ajouter un item : position en dehors des limites"), and the
+	// five positions are fixed per item type by `vi_1` — weapon 0, pet 1, cloak 2,
+	// hat 3, dofus 4.
+	maxFighterEquipSlots = 5
+	maxLoadoutCards      = maxFighterEquipSlots
 )
 
 // validBreed reports whether a breed id is a legal player breed.
@@ -105,4 +114,31 @@ func (s *Session) computeFighterBudget(f *domain.Fighter) int16 {
 		value = 32767
 	}
 	return int16(value)
+}
+
+// equipForWire returns the subset of a fighter's stored equipment the client can
+// actually accept: at most one item per position, positions in [0,
+// maxFighterEquipSlots), in ascending order.
+//
+// The client's fighter inventory is a fixed 5-slot ArrayInventory whose position
+// is the item type's own fixed slot (vi_1: weapon 0, pet 1, cloak 2, hat 3, dofus
+// 4), enforced by the ne_2 position checker. Anything else is refused on arrival,
+// so filtering here keeps the server's picture of a fighter equal to the client's
+// instead of quietly diverging by however many extra rows the database holds.
+func equipForWire(objs []domain.FighterObject) []domain.FighterObject {
+	if len(objs) == 0 {
+		return objs
+	}
+	var out []domain.FighterObject
+	seen := make(map[int16]bool, maxFighterEquipSlots)
+	for slot := int16(0); slot < maxFighterEquipSlots; slot++ {
+		for _, o := range objs {
+			if o.Slot == slot && !seen[slot] {
+				seen[slot] = true
+				out = append(out, o)
+				break
+			}
+		}
+	}
+	return out
 }

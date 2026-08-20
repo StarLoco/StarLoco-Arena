@@ -182,10 +182,22 @@ func (s *Session) pushFighterList() error {
 	return s.Send(frame)
 }
 
-// handleFighterInventoryUpdate (6011 C2S) equips a fighter's cards + spells.
-// Layout: [i64 fighterId][i16 teamId][i16 lenCards][cards][i16 lenSpells][spells]
-// where cards (Oh/ajv_2) = concatenated [i32 cardId] (no slot, no count) and
-// spells (Oi/en_1) = concatenated [i16 slot][i32 spellId] (no count).
+// handleFighterInventoryUpdate (6011 C2S) equips a fighter's spells + cards.
+// Layout: [i64 fighterId][i16 teamId][i16 lenSpells][spells][i16 lenCards][cards]
+//
+// The SPELL blob comes FIRST. `bp_1.encode()` writes `Oh().cd()` then
+// `Oi().cd()`, and on the fighter those are `Oh() -> ajv_2 aTs` (the 6-slot SPELL
+// inventory, a flat [i32 spellId] list) and `Oi() -> en_1 aTr` (the 5-slot ITEM
+// inventory, [i16 slot][i32 cardId] pairs) - see gn_0.java:513,517 and
+// ee_2.java:137,139.
+//
+// This used to be read the other way round. The two shapes happen to line up
+// (flat list first, slotted pairs second) so nothing ever failed to parse; the
+// CONTENTS were simply transposed, storing spell ids as equipped cards and card
+// ids as spells. That is why every fighter came out of the loadout screen with
+// `spells=0 objects=<n>` and could not cast anything. The fighter CREATE path
+// (fighter_codec.go) always read this correctly, so the two disagreed.
+//
 // Persists the loadout and replies UpdatedFighterInventory(6010).
 func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
@@ -199,14 +211,6 @@ func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 	if _, err := r.U16(); err != nil { // teamId (unused server-side)
 		return err
 	}
-	cardsLen, err := r.U16()
-	if err != nil {
-		return err
-	}
-	cardsBlob, err := r.Bytes(int(cardsLen))
-	if err != nil {
-		return err
-	}
 	spellsLen, err := r.U16()
 	if err != nil {
 		return err
@@ -215,9 +219,17 @@ func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
+	cardsLen, err := r.U16()
+	if err != nil {
+		return err
+	}
+	cardsBlob, err := r.Bytes(int(cardsLen))
+	if err != nil {
+		return err
+	}
 
-	cards := decodeLoadoutCards(cardsBlob)
 	spells := decodeLoadoutSpells(spellsBlob)
+	cards := s.canonicalEquipSlots(decodeLoadoutCards(cardsBlob))
 
 	// Recompute budget from the new loadout (breed base + card values).
 	budget := s.computeLoadoutBudget(cards)
@@ -241,12 +253,13 @@ func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 func (s *Session) sendFighterInventoryResult(fighterID int64, result uint8, cards []domain.FighterObject, spells []domain.FighterSpell) error {
 	w := protocol.NewWriter().I64(fighterID).U8(result)
 	if result == 0 {
-		cb := encodeLoadoutCards(cards)
-		w.U16(uint16(len(cb)))
-		w.Raw(cb)
+		// Same order as the request: spells first, then the slotted cards.
 		sb := encodeLoadoutSpells(spells)
 		w.U16(uint16(len(sb)))
 		w.Raw(sb)
+		cb := encodeLoadoutCards(cards)
+		w.U16(uint16(len(cb)))
+		w.Raw(cb)
 	}
 	frame, err := protocol.EncodeS2C(protocol.OpUpdatedFighterInventory, w.Bytes())
 	if err != nil {
@@ -255,30 +268,37 @@ func (s *Session) sendFighterInventoryResult(fighterID int64, result uint8, card
 	return s.Send(frame)
 }
 
-// decodeLoadoutCards parses the Oh/ajv_2 cards blob: concatenated [i32 cardId]
-// with no slot and no count. Slots are assigned sequentially (the wire carries
-// none). Capped at maxLoadoutCards.
-func decodeLoadoutCards(blob []byte) []domain.FighterObject {
+// decodeLoadoutSpells parses the Oh/ajv_2 SPELL blob: concatenated [i32 spellId]
+// with no slot and no count - `ajv_2` is a flat inventory, so the position is
+// just the order. Capped at maxLoadoutSpells (the client's holds 6).
+func decodeLoadoutSpells(blob []byte) []domain.FighterSpell {
 	r := protocol.NewReader(blob)
-	out := make([]domain.FighterObject, 0, maxLoadoutCards)
-	for r.Remaining() >= 4 && len(out) < maxLoadoutCards {
+	out := make([]domain.FighterSpell, 0, maxLoadoutSpells)
+	for r.Remaining() >= 4 && len(out) < maxLoadoutSpells {
 		id, err := r.I32()
 		if err != nil {
 			break
 		}
-		out = append(out, domain.FighterObject{TemplateID: id, Slot: int16(len(out))})
+		out = append(out, domain.FighterSpell{SpellID: id, Slot: int16(len(out))})
 	}
 	return out
 }
 
-// decodeLoadoutSpells parses the Oi/en_1 spells blob: concatenated
-// [i16 slot][i32 spellId] with no count. Duplicate slots keep the first;
-// capped at maxLoadoutSpells.
-func decodeLoadoutSpells(blob []byte) []domain.FighterSpell {
+// decodeLoadoutCards parses the Oi/en_1 ITEM blob: concatenated
+// [i16 slot][i32 cardId] with no count.
+//
+// The slot is NOT a free index: it is the item's fixed equipment position from
+// the client's `vi_1` enum - weapon 0, pet 1, cloak 2, hat 3, dofus 4 - and the
+// client's own position checker (`ne_2.a`) rejects an item whose position is not
+// its type's. The inventory holds exactly maxFighterEquipSlots of them
+// (`ee_2.java:139`, `new en_1(..., 5, ...)`), so anything outside that range
+// cannot be stored client-side and is dropped here rather than persisted and
+// re-sent forever.
+func decodeLoadoutCards(blob []byte) []domain.FighterObject {
 	r := protocol.NewReader(blob)
-	out := make([]domain.FighterSpell, 0, maxLoadoutSpells)
+	out := make([]domain.FighterObject, 0, maxFighterEquipSlots)
 	slotUsed := make(map[int16]bool)
-	for r.Remaining() >= 6 && len(out) < maxLoadoutSpells {
+	for r.Remaining() >= 6 && len(out) < maxFighterEquipSlots {
 		slot, err := r.U16()
 		if err != nil {
 			break
@@ -287,11 +307,12 @@ func decodeLoadoutSpells(blob []byte) []domain.FighterSpell {
 		if err != nil {
 			break
 		}
-		if slotUsed[int16(slot)] {
+		s := int16(slot)
+		if s < 0 || s >= maxFighterEquipSlots || slotUsed[s] {
 			continue
 		}
-		slotUsed[int16(slot)] = true
-		out = append(out, domain.FighterSpell{Slot: int16(slot), SpellID: id})
+		slotUsed[s] = true
+		out = append(out, domain.FighterObject{TemplateID: id, Slot: s})
 	}
 	return out
 }
@@ -301,7 +322,7 @@ func decodeLoadoutSpells(blob []byte) []domain.FighterSpell {
 func encodeLoadoutCards(cards []domain.FighterObject) []byte {
 	w := protocol.NewWriter()
 	for _, c := range cards {
-		w.I32(c.TemplateID)
+		w.U16(uint16(c.Slot)).I32(c.TemplateID)
 	}
 	return w.Bytes()
 }
@@ -311,7 +332,7 @@ func encodeLoadoutCards(cards []domain.FighterObject) []byte {
 func encodeLoadoutSpells(spells []domain.FighterSpell) []byte {
 	w := protocol.NewWriter()
 	for _, sp := range spells {
-		w.U16(uint16(sp.Slot)).I32(sp.SpellID)
+		w.I32(sp.SpellID)
 	}
 	return w.Bytes()
 }
@@ -338,4 +359,38 @@ func (s *Session) computeLoadoutBudget(cards []domain.FighterObject) int16 {
 		value = 32767
 	}
 	return int16(value)
+}
+
+// canonicalEquipSlots rewrites each equipped card's position to the one its TYPE
+// demands, and drops anything that then collides.
+//
+// The position in the fighter's item inventory is not free: the client builds
+// each equipment piece with `vi_1.ap((byte)uh_0.getType())` (eh_2.java:81), so a
+// card's record type IS its slot type - weapon 1, pet 2, cloak 3, hat 4, dofus 5,
+// at positions 0..4 - and `ne_2.a` refuses any item whose position is not its
+// type's, with "impossible d'ajouter l'item <id>". Trusting the incoming position
+// therefore produced rejections even when it was inside the 5-slot range.
+//
+// With no card table loaded the input is passed through unchanged: a data-less
+// dev server should not silently empty every loadout.
+func (s *Session) canonicalEquipSlots(cards []domain.FighterObject) []domain.FighterObject {
+	if s.deps == nil || s.deps.FighterCards == nil || len(cards) == 0 {
+		return cards
+	}
+	out := make([]domain.FighterObject, 0, len(cards))
+	used := make(map[int16]bool, maxFighterEquipSlots)
+	for _, c := range cards {
+		fc := s.deps.FighterCards.Get(c.TemplateID)
+		if fc == nil {
+			continue // not a fighter card: the client has nowhere to put it
+		}
+		slot := int16(fc.Type) - 1 // vi_1: type 1 (weapon) sits at position 0
+		if slot < 0 || slot >= maxFighterEquipSlots || used[slot] {
+			continue
+		}
+		used[slot] = true
+		c.Slot = slot
+		out = append(out, c)
+	}
+	return out
 }

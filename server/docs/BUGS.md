@@ -13,42 +13,35 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### B-111 — three live-client errors found while verifying B-110 (open)
+### B-111 — the fighter equipment slot is the item's TYPE, not a free index (partly open)
 
-Tailing `output.log` during a real practice fight surfaced three distinct errors
-that **no Go test can see**, because in every case the server's own state is
-correct and it is the client that rejects or mishandles the frame. Logged here
-with evidence; none is fixed yet.
+Three live errors were found by tailing `output.log` during a real fight; two are
+fixed (see B-112), the third is only partly.
 
-**1. `generic effet inconnu : 0` — effects sent with genericEffectId 0.**
-`yi_1.f` resolves the effect RECORD from part 0's generic id (`gR().iK(n2)`) and
-logs this when it fails, leaving `bWj` null. It does not abort, so the effect
-still runs — but everything that reads the record (duration, the trigger bitsets
-behind `akF()` / `isInfinite()` / `akD()`) is then reading off a null. Several of
-our broadcasts hardcode 0 for the generic id: collision damage, rebound and
-transferred damage (`spell_effects.go` `applyHPDelta`/`dealReboundDamage` call
-sites), the AP/MP-cost frames, and card use. Fires many times per fight.
+**Remaining: 30 `impossible d'ajouter l'item <id>` per fight, with no
+accompanying "position en dehors des limites".** That pairing is the tell: the
+position is now inside the 5-slot range, so the rejection is coming from the
+OTHER gate — `ne_2.a`, which refuses any item whose position is not the one its
+type demands. The client builds each equipment piece with
+`vi_1.ap((byte)uh_0.getType())` (`eh_2.java:81`), so a fighter card's record
+`Type` IS its slot type: weapon 1, pet 2, cloak 3, hat 4, dofus 5, occupying
+positions 0-4.
 
-**2. `IllegalStateException: currentFighter() sans hasCurrentFighter()`**
-in `ZT.jt` ← `mv_0.ax:213`. `jt(Nx)` sets a timed effect's remaining turns and
-resolves "now" from the CURRENT FIGHTER, so any effect with `Nx > 0` sent while
-no fighter is current throws. Observed ~200 times in one fight, all at fight
-start — i.e. the equipment/object buffs applied during setup, before the first
-turn begins. The effect is lost.
+Fixed at ingest: `Session.canonicalEquipSlots` now rewrites each equipped card's
+position from its card type and drops collisions, so anything saved from here on
+is storable. NOT fixed for rows already in the database, and not enforced in the
+two serializers (`fight_packets.writeCombatFighterBlob`,
+`fighter_codec.encodeFighterBlob`) because neither has `Deps` in scope to look up
+a card's type — they can only dedupe and clamp the range, which is what
+`equipForWire` does. The clean fix is to thread the card table (or a resolver)
+into both writers, or to store the canonical slot once at load. Until then a
+fighter whose stored rows predate the fix still ships positions the client will
+refuse.
 
-**3. Fighter equipment overflows the client's inventory.** Every fighter in the
-dump carries `objects=10[...]`, but the client logs
-`Impossible d'ajouter un item : position en dehors des limites : 5` … `9` and then
-`Erreur lors de la désérialisation d'un ArrayInventory : impossible d'ajouter
-l'item <id>` for each. The client's fighter inventory has **5** slots (0-4); we
-send 10, so half of every fighter's equipment is silently discarded client-side.
-
-All three predate this session's work and are unrelated to the blob-part fixes.
-Suggested order: (3) is a data/capacity mismatch worth confirming against
-`abw_2`/the inventory class first; (2) needs the setup buffs deferred until a
-fighter is current (or sent as infinite); (1) needs a real generic effect id
-threaded to the synthetic broadcasts.
-
+The "we send 10" provenance is still unexplained: `decodeLoadoutCards` now caps at
+5 and the retail UI can only ever emit 5 positions, so the 10-row loadouts in the
+local database are either legacy or arrived through the unvalidated `buildFighter`
+path. Worth confirming before assuming the ingest fix covers everything.
 ### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
 The wrong-namespace half is fixed (B-088). The remaining question was what should
@@ -150,6 +143,75 @@ belongs to the coach.
 
 ## Fixed
 
+### B-113 - Nx was inverted, and round-card effects landed where the client cannot take them
+
+Both halves of the original B-111 report, both fixed and measured live.
+
+**Nx is turns ELAPSED.** `ZT.jt(int n2)` computes
+`remaining = <the effect RECORD's effect_duration> - n2` (`ZT.java:135`), so the
+duration comes from the DATA (resolved through part 0's generic effect id) and Nx
+only offsets it - `ZT.akB()` is literally `jt(0)`. The server passed the full
+duration, giving `remaining = duration - duration = 0`: every buff, state, aura,
+damage-transfer and timed visual arrived already expired. The parameter is now
+`elapsedTurns` and every fresh application sends 0.
+
+**Round-card effects ran with no current fighter.** `jt()` anchors the expiry on
+whose turn it is (`cn_0.JG()` -> `aGT.dh()`), and the client clears that anchor on
+`NEW_TABLE_TURN`, restoring it only on the next `FIGHTER_TURN_BEGIN`. Anything
+timed sent in between throws `IllegalStateException: currentFighter() sans
+hasCurrentFighter()`. The action is caught (`akb_2.java:127-136`) and dropped,
+which is worse than losing the buff: it stays registered on the fighter but is
+never executed and can never expire.
+
+The first diagnosis ("the equipment buffs applied at setup") was wrong - no
+equipment buff is ever broadcast; equipment is folded into the fighter's maxima at
+build time. It was `applyRoundEvent`, which meant it recurred EVERY round, not
+just at fight start. `beginTableTurn` now only draws and announces the card;
+`applyTableTurnEffects` resolves it, after `beginTurn`.
+
+Measured on the live client, same practice fight before and after:
+
+    currentFighter() sans hasCurrentFighter : ~200 -> 0
+    [_FL_] ACTION FAILURE                   : ~200 -> 0
+    generic effet inconnu                   :    n -> 0
+    position en dehors des limites          :   40 -> 0
+
+with the round card's effects still applied, so the reorder cost a frame and
+nothing else.
+### B-112 - 6011's two loadout blobs were swapped, so fighters had no spells
+
+Found while fixing B-111's inventory overflow. `bp_1.encode()` writes
+`Oh().cd()` and then `Oi().cd()`, and on a fighter those are `Oh() -> ajv_2 aTs`,
+the 6-slot SPELL inventory serialised as a flat `[i32 spellId]` list, and
+`Oi() -> en_1 aTr`, the 5-slot EQUIPMENT inventory serialised as
+`[i16 slot][i32 cardId]` pairs (`gn_0.java:513,517`, `ee_2.java:137,139`).
+
+The 6011 handler read them the other way round. Nothing ever failed to parse,
+because a flat list and a slotted list happen to appear in exactly that order -
+so the shapes lined up and only the MEANINGS were transposed: spell ids were
+stored as equipped cards, card ids as spells. That is why every fighter came out
+of the loadout screen with `spells=0 objects=<n>` and could not cast anything;
+the practice-fight dump showed exactly that, and it is why a scripted `cast` was
+refused with "caster does not know this spell".
+
+The fighter CREATE path (`fighter_codec.go`) always read the order correctly, so
+the two paths had been contradicting each other.
+
+Both decoders and both encoders were the wrong shape as a consequence
+(`decodeLoadoutCards` was flat and invented sequential slots because it was
+really parsing the slotless spell blob). All four are corrected, along with the
+caps, which were also applied to the opposite inventory: spells 6 (`ajv_2`),
+equipment 5 (`en_1`).
+
+The two e2e tests that covered this had encoded the bug as a requirement - they
+built a flat blob, called it "cards", and asserted the server stored it as cards,
+which it dutifully did. Rewritten against the client's byte order. This is the
+second time a green test has pinned the wrong behaviour (see
+`TestWorldElementsSpawnedOnEntry`); the lesson repeats - a test written from the
+same misreading as the code cannot catch it, only the client can.
+
+Verified: unit (blob order, round-trip, caps, slot filtering), rewritten e2e,
+5 mutations, and live - the client's inventory rejections during login went to 0.
 ### B-110 - every push/pull NPE'd the client, and no buff icon could ever appear: the 8120 blob was missing two parts
 
 Two independent live bugs with one root cause: `buildRunningEffect` only ever

@@ -304,8 +304,14 @@ func writeCombatFighterBlob(w *protocol.Writer, ff *FightFighter) {
 	w.Raw(sb)
 
 	// card/equipment inventory blob: {i16 pos, i32 id}
+	//
+	// Filtered, because the receiving inventory cannot hold arbitrary positions:
+	// `en_1.a` rejects anything outside [0,5) with "position en dehors des limites"
+	// and then the whole item with "impossible d'ajouter l'item <id>". Sending a
+	// fighter's full stored list produced 40 such rejections per fight — the
+	// server believed in equipment the client had thrown away.
 	cardBlob := protocol.NewWriter()
-	for _, obj := range f.Objects {
+	for _, obj := range equipForWire(f.Objects) {
 		cardBlob.U16(uint16(obj.Slot)).I32(obj.TemplateID)
 	}
 	cb := cardBlob.Bytes()

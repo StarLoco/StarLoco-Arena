@@ -164,9 +164,10 @@ func encodeFighterBlob(f *domain.Fighter) []byte {
 	w.U16(uint16(len(sb)))
 	w.Raw(sb)
 
-	// card blob
+	// card blob — same 5-slot filter as the fight blob (see equipForWire); the
+	// roster inventory is the same `en_1` on the client side.
 	cardBlob := protocol.NewWriter()
-	for _, obj := range f.Objects {
+	for _, obj := range equipForWire(f.Objects) {
 		cardBlob.U16(uint16(obj.Slot)).I32(obj.TemplateID)
 	}
 	cb := cardBlob.Bytes()

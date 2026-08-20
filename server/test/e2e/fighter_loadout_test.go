@@ -24,9 +24,15 @@ func createFighter(t *testing.T, a *testclient.Client, st *store.Store, coachID 
 	return fighters[len(fighters)-1].ID
 }
 
-// TestFighterEquipLoadout: equipping a fighter's cards + spells via 6011 is
-// acked with 6010 (result 0) echoing the stored loadout, and the loadout
-// persists (survives a relogin).
+// TestFighterEquipLoadout: equipping a fighter's spells + equipment via 6011 is
+// acked with 6010 (result 0) echoing the stored loadout, and it persists.
+//
+// The blob ORDER here is the client's, not the server's former belief:
+// `bp_1.encode()` sends `Oh().cd()` (the ajv_2 SPELL inventory, a flat [i32]
+// list) and then `Oi().cd()` (the en_1 EQUIPMENT inventory, [i16 slot][i32]
+// pairs). This test used to be written the other way round - it built a flat
+// blob, called it "cards", and asserted the server stored it as cards. It passed,
+// because the server made exactly the same mistake. Both are fixed together.
 func TestFighterEquipLoadout(t *testing.T) {
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "load_a", "LoadA")
@@ -35,19 +41,17 @@ func TestFighterEquipLoadout(t *testing.T) {
 
 	fighterID := createFighter(t, a, st, uint(aID), "Champ", 5)
 
-	// Build 6011: [i64 fighterId][i16 teamId][i16 lenCards][cards][i16 lenSpells][spells].
-	// cards (Oh) = [i32 cardId]* ; spells (Oi) = [i16 slot][i32 spellId]*.
-	cards := testclient.NewW().I32(101).I32(102).I32(103).Bytes()
-	spells := testclient.NewW().U16(0).I32(555).U16(1).I32(556).Bytes()
+	// 6011: [i64 fighterId][i16 teamId][i16 lenSpells][spells][i16 lenCards][cards]
+	spells := testclient.NewW().I32(101).I32(102).I32(103).Bytes()
+	cards := testclient.NewW().U16(0).I32(555).U16(3).I32(556).Bytes()
 	req := testclient.NewW().
 		I64(int64(fighterID)).
 		U16(0). // teamId
-		U16(uint16(len(cards))).Raw(cards).
 		U16(uint16(len(spells))).Raw(spells).
+		U16(uint16(len(cards))).Raw(cards).
 		Bytes()
 	_ = a.Send(2, testclient.OpUpdateFighterInventory, req)
 
-	// 6010 reply: [i64 fighterId][i8 result][i16 lenCards][cards][i16 lenSpells][spells].
 	f, _, err := a.WaitFor(testclient.OpUpdatedFighterInventory, testclient.DefaultTimeout)
 	if err != nil {
 		t.Fatalf("no UpdatedFighterInventory(6010): %v", err)
@@ -59,54 +63,62 @@ func TestFighterEquipLoadout(t *testing.T) {
 	if res := r.U8(); res != 0 {
 		t.Fatalf("6010 result = %d, want 0", res)
 	}
-	// Cards echo: [i32]* — expect 3 ids.
-	cl := int(r.U16())
-	if cl != 12 { // 3 * 4 bytes
-		t.Errorf("cards blob len = %d, want 12", cl)
-	}
-	cr := testclient.NewR(r.RawN(cl))
-	for _, want := range []int32{101, 102, 103} {
-		if got := cr.I32(); got != want {
-			t.Errorf("card = %d, want %d", got, want)
-		}
-	}
-	// Spells echo: [i16 slot][i32 id]* — expect 2.
+	// Spells echo first, flat.
 	sl := int(r.U16())
-	if sl != 12 { // 2 * 6 bytes
+	if sl != 12 { // 3 * 4 bytes
 		t.Errorf("spells blob len = %d, want 12", sl)
 	}
 	sr := testclient.NewR(r.RawN(sl))
-	if slot, id := sr.U16(), sr.I32(); slot != 0 || id != 555 {
-		t.Errorf("spell 0 = slot %d id %d, want slot 0 id 555", slot, id)
+	for _, want := range []int32{101, 102, 103} {
+		if got := sr.I32(); got != want {
+			t.Errorf("spell = %d, want %d", got, want)
+		}
 	}
-	if slot, id := sr.U16(), sr.I32(); slot != 1 || id != 556 {
-		t.Errorf("spell 1 = slot %d id %d, want slot 1 id 556", slot, id)
+	// Equipment echoes second, with its slots.
+	cl := int(r.U16())
+	if cl != 12 { // 2 * 6 bytes
+		t.Errorf("cards blob len = %d, want 12", cl)
+	}
+	cr := testclient.NewR(r.RawN(cl))
+	if slot, id := cr.U16(), cr.I32(); slot != 0 || id != 555 {
+		t.Errorf("card 0 = slot %d id %d, want slot 0 id 555", slot, id)
+	}
+	if slot, id := cr.U16(), cr.I32(); slot != 3 || id != 556 {
+		t.Errorf("card 1 = slot %d id %d, want slot 3 id 556", slot, id)
 	}
 
-	// Verify persisted in the DB.
+	// Verify persisted in the DB, on the correct side of the fence.
 	time.Sleep(150 * time.Millisecond)
 	fr, err := st.Fighters.Get(fighterID)
 	if err != nil {
 		t.Fatalf("get fighter: %v", err)
 	}
-	if len(fr.Objects) != 3 {
-		t.Errorf("persisted cards = %d, want 3", len(fr.Objects))
+	if len(fr.Spells) != 3 {
+		t.Errorf("persisted spells = %d, want 3 (the flat blob is SPELLS)", len(fr.Spells))
 	}
-	if len(fr.Spells) != 2 {
-		t.Errorf("persisted spells = %d, want 2", len(fr.Spells))
+	if len(fr.Objects) != 2 {
+		t.Errorf("persisted equipment = %d, want 2 (the slotted blob is EQUIPMENT)", len(fr.Objects))
 	}
-	// Spell slots must round-trip.
-	slots := map[int16]int32{}
+	ids := map[int32]bool{}
 	for _, sp := range fr.Spells {
-		slots[sp.Slot] = sp.SpellID
+		ids[sp.SpellID] = true
 	}
-	if slots[0] != 555 || slots[1] != 556 {
-		t.Errorf("persisted spell slots = %+v, want {0:555,1:556}", slots)
+	if !ids[101] || !ids[103] {
+		t.Errorf("persisted spells = %+v, want 101..103", fr.Spells)
+	}
+	slots := map[int16]int32{}
+	for _, o := range fr.Objects {
+		slots[o.Slot] = o.TemplateID
+	}
+	if slots[0] != 555 || slots[3] != 556 {
+		t.Errorf("persisted equipment slots = %+v, want {0:555,3:556}", slots)
 	}
 }
 
-// TestFighterLoadoutCap: card/spell blobs beyond the slot caps (6 cards / 5
-// spells) are truncated.
+// TestFighterLoadoutCap: each blob is truncated to what the CLIENT's own
+// inventory can hold - `ajv_2(6)` spells and `en_1(...,5,...)` equipment. The
+// caps used to be applied to the opposite blob, so a 6th piece of equipment was
+// accepted that the client would refuse on arrival.
 func TestFighterLoadoutCap(t *testing.T) {
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "load_b", "LoadB")
@@ -115,20 +127,20 @@ func TestFighterLoadoutCap(t *testing.T) {
 
 	fighterID := createFighter(t, a, st, uint(aID), "Capped", 5)
 
-	// 8 cards (>6) and 7 spells (>5).
-	cw := testclient.NewW()
-	for i := 0; i < 8; i++ {
-		cw.I32(int32(200 + i))
-	}
+	// 8 spells (>6) and 7 equipment rows (>5, and positions 5/6 do not exist).
 	sw := testclient.NewW()
-	for i := 0; i < 7; i++ {
-		sw.U16(uint16(i)).I32(int32(600 + i))
+	for i := 0; i < 8; i++ {
+		sw.I32(int32(600 + i))
 	}
-	cards, spells := cw.Bytes(), sw.Bytes()
+	cw := testclient.NewW()
+	for i := 0; i < 7; i++ {
+		cw.U16(uint16(i)).I32(int32(200 + i))
+	}
+	spells, cards := sw.Bytes(), cw.Bytes()
 	req := testclient.NewW().
 		I64(int64(fighterID)).U16(0).
-		U16(uint16(len(cards))).Raw(cards).
 		U16(uint16(len(spells))).Raw(spells).
+		U16(uint16(len(cards))).Raw(cards).
 		Bytes()
 	_ = a.Send(2, testclient.OpUpdateFighterInventory, req)
 	if _, _, err := a.WaitFor(testclient.OpUpdatedFighterInventory, testclient.DefaultTimeout); err != nil {
@@ -137,10 +149,15 @@ func TestFighterLoadoutCap(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 	fr, _ := st.Fighters.Get(fighterID)
-	if len(fr.Objects) != 6 {
-		t.Errorf("cards capped to %d, want 6", len(fr.Objects))
+	if len(fr.Spells) != 6 {
+		t.Errorf("spells capped to %d, want 6 (ajv_2 holds 6)", len(fr.Spells))
 	}
-	if len(fr.Spells) != 5 {
-		t.Errorf("spells capped to %d, want 5", len(fr.Spells))
+	if len(fr.Objects) != 5 {
+		t.Errorf("equipment capped to %d, want 5 (en_1 holds 5)", len(fr.Objects))
+	}
+	for _, o := range fr.Objects {
+		if o.Slot >= 5 {
+			t.Errorf("stored equipment at slot %d, which the client cannot hold", o.Slot)
+		}
 	}
 }
