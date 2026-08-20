@@ -189,10 +189,22 @@ invalid data made visible**, not new breakage: those loadouts could never have
 been assembled through the retail UI, which only ever offers five type-bound
 slots. Practice fights still start and run clean.
 
-The provenance of the ten rows remains unexplained - all ten are genuine fighter
-cards, so it is NOT the B-112 transposition - most likely an older uncapped
-`buildFighter`. A one-time data repair (or simply rebuilding the dev roster) is
-the maintainer's call; the server now refuses to create such a loadout again.
+**Provenance, narrowed and then closed off.** The ten rows are all genuine fighter
+cards, so they are not the B-112 transposition; and `decodeLoadoutCards` has been
+capped at 6 since the first commit, so 6011 cannot have written ten either. That
+leaves exactly one writer: `buildFighter`, the fighter-CREATE path, which deduped
+on the incoming slot and stopped there - no cap, no type check, the sender's
+position taken on trust.
+
+What sent such a blob is still unknown and may never be known (an older build, a
+tool, a hand-made row). Rather than keep guessing, the hole itself is now shut:
+`buildFighter` runs the same canonicalisation as the loadout path, and when no
+card table is loaded it falls back to the type-independent clamp (one item per
+position, positions inside the inventory) instead of passing the list through. A
+data-less dev server can no longer persist a loadout the client would refuse.
+
+Repairing or rebuilding the existing dev roster is still the maintainer's call -
+the read-path normalisation already hides those rows from the client.
 
 ### B-113 - Nx was inverted, and round-card effects landed where the client cannot take them
 

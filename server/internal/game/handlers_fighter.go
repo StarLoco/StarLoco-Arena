@@ -371,11 +371,17 @@ func (s *Session) computeLoadoutBudget(cards []domain.FighterObject) int16 {
 // type's, with "impossible d'ajouter l'item <id>". Trusting the incoming position
 // therefore produced rejections even when it was inside the 5-slot range.
 //
-// With no card table loaded the input is passed through unchanged: a data-less
-// dev server should not silently empty every loadout.
+// With no card table loaded it falls back to equipForWire, which cannot know an
+// item's type but can still enforce the shape the inventory demands: one item per
+// position, positions inside [0, maxFighterEquipSlots). A data-less dev server
+// therefore still cannot persist a loadout the client would refuse outright,
+// while nothing is silently emptied for want of game data.
 func (s *Session) canonicalEquipSlots(cards []domain.FighterObject) []domain.FighterObject {
-	if s.deps == nil || s.deps.FighterCards == nil || len(cards) == 0 {
+	if len(cards) == 0 {
 		return cards
+	}
+	if s.deps == nil || s.deps.FighterCards == nil {
+		return equipForWire(cards)
 	}
 	out := make([]domain.FighterObject, 0, len(cards))
 	used := make(map[int16]bool, maxFighterEquipSlots)

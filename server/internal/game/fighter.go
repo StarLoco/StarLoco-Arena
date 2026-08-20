@@ -83,15 +83,25 @@ func (s *Session) buildFighter(coachID uint, fb *FighterBlob) *domain.Fighter {
 		f.Spells = append(f.Spells, domain.FighterSpell{SpellID: id})
 	}
 
-	// Cards: one per slot (first wins).
+	// Cards: one per slot, at the position the card's TYPE demands.
+	//
+	// This path used to dedupe on the INCOMING slot and stop there - no cap, and
+	// the sender's position taken on trust. That made it the only writer able to
+	// persist a loadout the client can never hold, and the dev roster's ten-row
+	// fighters (slots 0..9) can only have come through here: the 6011 handler has
+	// been capped at 6 since the first commit, so it could not have produced them.
+	// Whatever sent that blob, the hole was real, so it is closed rather than
+	// merely explained.
+	incoming := make([]domain.FighterObject, 0, len(fb.Cards))
 	slotUsed := make(map[int16]bool)
 	for _, c := range fb.Cards {
 		if slotUsed[c.Slot] {
 			continue
 		}
 		slotUsed[c.Slot] = true
-		f.Objects = append(f.Objects, domain.FighterObject{TemplateID: c.ID, Slot: c.Slot})
+		incoming = append(incoming, domain.FighterObject{TemplateID: c.ID, Slot: c.Slot})
 	}
+	f.Objects = s.canonicalEquipSlots(incoming)
 
 	f.Budget = s.computeFighterBudget(f)
 	return f

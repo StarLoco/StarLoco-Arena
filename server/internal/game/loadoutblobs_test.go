@@ -120,3 +120,34 @@ func TestDecodeLoadoutCardsRejectsUnstorableSlots(t *testing.T) {
 		}
 	}
 }
+
+// TestCreatePathCannotStoreAnUnstorableLoadout closes the only remaining writer
+// that could persist equipment the client will never hold.
+//
+// buildFighter used to dedupe on the INCOMING slot with no cap and no type check,
+// which is the only path that can explain the dev roster's ten-row fighters at
+// slots 0..9 - the 6011 handler has been capped at 6 since the first commit. The
+// provenance of that blob is still unknown; the hole is not.
+func TestCreatePathCannotStoreAnUnstorableLoadout(t *testing.T) {
+	// No card table here on purpose: even without one the shape must be storable.
+	s := &Session{deps: &Deps{}}
+	fb := &FighterBlob{Name: "Overloaded", BreedID: 5}
+	for i := int16(0); i < 10; i++ {
+		fb.Cards = append(fb.Cards, FighterCardRef{Slot: i, ID: 900 + int32(i)})
+	}
+	f := s.buildFighter(1, fb)
+	if len(f.Objects) > maxFighterEquipSlots {
+		t.Fatalf("stored %d items from a 10-card blob, want at most %d",
+			len(f.Objects), maxFighterEquipSlots)
+	}
+	seen := map[int16]bool{}
+	for _, o := range f.Objects {
+		if o.Slot < 0 || o.Slot >= maxFighterEquipSlots {
+			t.Errorf("slot %d is outside the client's inventory", o.Slot)
+		}
+		if seen[o.Slot] {
+			t.Errorf("two items in slot %d", o.Slot)
+		}
+		seen[o.Slot] = true
+	}
+}
