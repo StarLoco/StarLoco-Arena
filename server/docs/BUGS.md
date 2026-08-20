@@ -164,14 +164,35 @@ loadout.
 Live: `impossible d'ajouter l'item` 40 -> 30 -> **0**. A full login-plus-fight run
 now logs zero protocol errors.
 
-**Consequence worth knowing:** a fighter that had stored 10 rows now presents 4
-(`objects=4[95 103 125 122]` - pet, cloak, hat, dofus, no weapon) and its stats
-drop with it (135 HP / allDmg 55% -> 95 HP / 15%). The server had been computing
-stats from equipment the client discarded on arrival, so the two disagreed all
-along; this makes them agree. The provenance of the 10 rows is still unexplained
-- all ten are genuine fighter cards, so it is NOT the B-112 transposition - most
-likely an older uncapped `buildFighter`. Worth confirming if pre-existing
-fighters matter.
+**What the fighters were actually wearing before.** Worth spelling out, because
+it is worse than "some equipment was dropped". The dev roster stored ten cards at
+sequential slots 0-9; matched against each card's own type slot:
+
+    stored order [122 95 125 121 103 129 102 156 158 128]  slots 0..9
+    card type    [  5  2   4   5   3   3   3   3   2   4]
+    canonical    [  4  1   3   4   2   2   2   2   1   3]  <- required position
+    accepted?    [  n  Y   n   n   n   n   n   n   n   n]
+
+Exactly ONE item - the pet, which happened to be stored at its own slot - was
+ever accepted. The client had been rendering these fighters with a single piece
+of gear while the server computed their stats from all ten. After the fix they
+wear four (pet, cloak, hat, dofus; they own no weapon) and visibly change
+appearance in the team panel.
+
+**A/B'd, because the team-budget readout moved.** Disabling the injection put it
+back to 5750/6000, so the change is definitely mine. It is not a regression: the
+client computes that total from the equipment it is actually holding, so a roster
+whose gear was being thrown away silently read as cheap. Now that the gear
+arrives, this account's team reads 10000/6000 - over the cap the game's own help
+text states ("ne jamais depasser 6000 points de budget"). That is **pre-existing
+invalid data made visible**, not new breakage: those loadouts could never have
+been assembled through the retail UI, which only ever offers five type-bound
+slots. Practice fights still start and run clean.
+
+The provenance of the ten rows remains unexplained - all ten are genuine fighter
+cards, so it is NOT the B-112 transposition - most likely an older uncapped
+`buildFighter`. A one-time data repair (or simply rebuilding the dev roster) is
+the maintainer's call; the server now refuses to create such a loadout again.
 
 ### B-113 - Nx was inverted, and round-card effects landed where the client cannot take them
 
