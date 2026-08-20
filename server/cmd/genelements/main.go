@@ -56,6 +56,39 @@ var policyWorlds = []struct {
 	{79, "Demon I's den"},
 	{80, "Card Master hub"},
 	{85, "Gostof / Baan island"},
+
+	// The 24 clan islands, one per Demon des Heures, held by that demon's leading
+	// active clan and reached with Zaap card 859 (see zaap.go, guild_repo.go).
+	//
+	// These were left out as "unreachable content" while there was no clan system,
+	// which was correct at the time and stopped being correct when clans landed: a
+	// live teleport to world 88 was refused with "destination zaap missing" because
+	// nothing here registered the island's Zaap - the one element that is both the
+	// arrival point and the only way back off.
+	{86, "clan island (demon 1)"},
+	{87, "clan island (demon 2)"},
+	{88, "clan island (demon 3)"},
+	{89, "clan island (demon 4)"},
+	{90, "clan island (demon 5)"},
+	{91, "clan island (demon 6)"},
+	{92, "clan island (demon 7)"},
+	{93, "clan island (demon 8)"},
+	{94, "clan island (demon 9)"},
+	{95, "clan island (demon 10)"},
+	{96, "clan island (demon 11)"},
+	{97, "clan island (demon 12)"},
+	{98, "clan island (demon 13)"},
+	{99, "clan island (demon 14)"},
+	{100, "clan island (demon 15)"},
+	{101, "clan island (demon 16)"},
+	{102, "clan island (demon 17)"},
+	{103, "clan island (demon 18)"},
+	{104, "clan island (demon 19)"},
+	{105, "clan island (demon 20)"},
+	{106, "clan island (demon 21)"},
+	{107, "clan island (demon 22)"},
+	{108, "clan island (demon 23)"},
+	{109, "clan island (demon 24)"},
 }
 
 // kindFor maps an env element type to the game package's elementKind constant NAME.

@@ -234,9 +234,21 @@ var goldenWorldElements = map[int16][]worldElement{
 // generator stores the element's real authored z — more informative, read by
 // nothing, and not a disagreement about fact.
 func TestGeneratedTableMatchesTheHandTranscription(t *testing.T) {
-	if len(worldElements) != len(goldenWorldElements) {
-		t.Fatalf("generated table has %d worlds, hand transcription has %d",
-			len(worldElements), len(goldenWorldElements))
+	// The generated table deliberately covers worlds this fixture does not: the 24
+	// clan islands joined the generator's policy list when clans landed, and their
+	// independent oracle is docs/OVERWORLD-MAP.md (see
+	// TestClanIslandZaapsMatchTheDocumentedTable) rather than a second hand-typed
+	// copy of the same hex.
+	//
+	// Every generated world must still be covered by ONE of the two, so the check
+	// that matters - no world served without an independent oracle - survives.
+	islands := clanIslandWorlds()
+	for world := range worldElements {
+		if _, ok := goldenWorldElements[world]; ok || islands[world] {
+			continue
+		}
+		t.Errorf("world %d is served but has no independent oracle: add it to "+
+			"goldenWorldElements, or document it as a clan island", world)
 	}
 	var compared int
 	for world, want := range goldenWorldElements {

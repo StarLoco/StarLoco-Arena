@@ -3,10 +3,12 @@ package game
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
@@ -296,5 +298,151 @@ func TestInactiveClanGetsNoIslandCard(t *testing.T) {
 	}
 	if !found {
 		t.Error("the clan reached the threshold while leading its demon but got no island zaap")
+	}
+}
+
+// clanIslandWorlds is the set of worlds that are clan islands, derived from the
+// demon table rather than restated, so it cannot drift from the allocation.
+func clanIslandWorlds() map[int16]bool {
+	out := make(map[int16]bool, store.DemonCount)
+	for d := int16(1); d <= store.DemonCount; d++ {
+		if w, ok := store.IslandWorldForDemon(d); ok {
+			out[w] = true
+		}
+	}
+	return out
+}
+
+// TestEveryClanIslandHasAReachableZaap is the test that was missing: the island
+// allocation, the card grant and the destination table were each correct, and the
+// teleport still failed on a live client with "destination zaap missing" because
+// worlds 86-109 were not in the generator's policy list, so no element of theirs
+// was ever served.
+//
+// zaapAt is what the handler actually calls, so this asserts the path a teleport
+// really takes rather than a table in isolation.
+func TestEveryClanIslandHasAReachableZaap(t *testing.T) {
+	for demon := int16(1); demon <= store.DemonCount; demon++ {
+		world, ok := store.IslandWorldForDemon(demon)
+		if !ok {
+			t.Fatalf("demon %d has no island world", demon)
+		}
+		inst, ok := clanIslandZaap[world]
+		if !ok {
+			t.Errorf("world %d (demon %d) has no clan-island zaap instance", world, demon)
+			continue
+		}
+		z, ok := zaapAt(world, inst)
+		if !ok {
+			t.Errorf("demon %d's island (world %d, instance %d) has no registered zaap - "+
+				"a teleport there is refused as \"destination zaap missing\"", demon, world, inst)
+			continue
+		}
+		if z.cellX == 0 && z.cellY == 0 {
+			t.Errorf("world %d zaap sits at the origin, which is not a real cell", world)
+		}
+	}
+}
+
+// TestClanIslandZaapsMatchTheDocumentedTable checks the generated element table
+// against docs/OVERWORLD-MAP.md, which recorded these cells by hand from the
+// client's env layers. It is the independent oracle for the island worlds, in the
+// role goldenWorldElements plays for the eleven original ones.
+func TestClanIslandZaapsMatchTheDocumentedTable(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "OVERWORLD-MAP.md"))
+	if err != nil {
+		t.Skipf("docs unavailable: %v", err)
+	}
+	sec := string(raw)
+	i := strings.Index(sec, "### Clan island Zaaps")
+	if i < 0 {
+		t.Fatal("the Clan island Zaaps section is gone from OVERWORLD-MAP.md")
+	}
+	sec = sec[i:]
+	if j := strings.Index(sec, "\n## "); j > 0 {
+		sec = sec[:j]
+	}
+	// The prose uses typographic minus/dash characters, so world 109's alt is
+	// written with U+2212 rather than an ASCII hyphen. Normalise instead of
+	// rewriting the document: a regex that quietly skips the one negative altitude
+	// in the table is worse than one that understands it.
+	sec = strings.NewReplacer("\u2212", "-", "\u2013", "-", "\u2014", "-").Replace(sec)
+
+	// | world | inst | cell | alt | world | inst | cell | alt |  - two islands per
+	// row. The delimiting pipes are deliberately NOT matched: the halves share the
+	// pipe between them, so anchoring on it consumes the separator and silently
+	// finds only the first island of every row.
+	row := regexp.MustCompile(`(\d+)\s*\|\s*(\d+)\s*\|\s*\((-?\d+),\s*(-?\d+)\)\s*\|\s*(-?\d+)`)
+	n := func(s string) int64 { v, _ := strconv.ParseInt(s, 10, 64); return v }
+
+	documented := 0
+	seen := map[int64]bool{}
+	for _, m := range row.FindAllStringSubmatch(sec, -1) {
+		world, inst := int16(n(m[1])), n(m[2])
+		x, y, alt := int32(n(m[3])), int32(n(m[4])), int16(n(m[5]))
+		documented++
+		seen[inst] = true
+
+		z, ok := zaapAt(world, inst)
+		if !ok {
+			t.Errorf("world %d instance %d is documented but the server serves no zaap there",
+				world, inst)
+			continue
+		}
+		if z.cellX != x || z.cellY != y || z.alt != alt {
+			t.Errorf("world %d instance %d: served (%d,%d) alt %d, documented (%d,%d) alt %d",
+				world, inst, z.cellX, z.cellY, z.alt, x, y, alt)
+		}
+	}
+	if documented < 25 {
+		t.Fatalf("parsed only %d documented island zaaps; the table format changed", documented)
+	}
+
+	// And nothing served on an island world is undocumented.
+	for world := range clanIslandWorlds() {
+		for _, e := range worldElements[world] {
+			if e.kind == kindZaap && !seen[e.instanceID] {
+				t.Errorf("world %d serves zaap instance %d, which OVERWORLD-MAP.md does not document",
+					world, e.instanceID)
+			}
+		}
+	}
+}
+
+// TestClanIslandZaapAltitudesMatchTheTopology checks the one field that cannot be
+// eyeballed. The arrival `alt` in ENTER_INSTANCE must be the cell's lowest walkable
+// altitude, because the client seeds its overworld pathfinder with the coach's cell
+// and altitude and needs a walkable layer at exactly that height; when it does not
+// match, the coach arrives, renders correctly, and simply cannot walk - no error,
+// no packet, nothing to see.
+//
+// Real-data test: skips when the shipped maps are absent, per repo convention.
+func TestClanIslandZaapAltitudesMatchTheTopology(t *testing.T) {
+	root := filepath.Join("..", "..", "data-dist")
+	if _, err := os.Stat(filepath.Join(root, "maps", "tplg")); err != nil {
+		t.Skipf("shipped maps unavailable: %v", err)
+	}
+	for world := range clanIslandWorlds() {
+		topo, err := gamedata.LoadWorldTopology(root, world)
+		if err != nil {
+			t.Errorf("world %d: topology unavailable: %v", world, err)
+			continue
+		}
+		for _, e := range worldElements[world] {
+			if e.kind != kindZaap {
+				continue
+			}
+			got, ok := topo.LowestWalkableAlt(e.cellX, e.cellY)
+			if !ok {
+				t.Errorf("world %d instance %d: cell (%d,%d) has NO walkable layer - "+
+					"a coach arriving there could never move", world, e.instanceID, e.cellX, e.cellY)
+				continue
+			}
+			if got != e.alt {
+				t.Errorf("world %d instance %d cell (%d,%d): served alt %d, topology says %d "+
+					"- the coach would arrive unable to walk",
+					world, e.instanceID, e.cellX, e.cellY, e.alt, got)
+			}
+		}
 	}
 }

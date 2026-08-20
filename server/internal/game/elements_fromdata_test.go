@@ -128,8 +128,10 @@ func TestCommittedTableIsStillWhatTheDataSays(t *testing.T) {
 			}
 		}
 	}
-	if checked != 139 {
-		t.Errorf("compared %d elements, expected 139 — the hand table changed size", checked)
+	// 139 until the 24 clan islands joined the generator's policy list, which added
+	// a Zaap and a Fusion altar to each (world 102 has two Zaaps).
+	if checked != 188 {
+		t.Errorf("compared %d elements, expected 188 - the hand table changed size", checked)
 	}
 }
 
@@ -188,8 +190,10 @@ func TestEnvDescriptorsMatchTheHandTableArgs(t *testing.T) {
 	if cardMasters != 21 {
 		t.Errorf("checked %d Card Masters, expected 21", cardMasters)
 	}
-	if fusionLabs != 6 {
-		t.Errorf("checked %d Fusion altars, expected 6", fusionLabs)
+	// 6 until the clan islands joined the policy list: every one of the 24 carries a
+	// Fusion altar of its own, which is content the server was simply not serving.
+	if fusionLabs != 30 {
+		t.Errorf("checked %d Fusion altars, expected 30", fusionLabs)
 	}
 }
 
