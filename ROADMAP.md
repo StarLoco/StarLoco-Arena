@@ -1543,8 +1543,18 @@ is a signing certificate or SignPath); no published Docker image.
     Zaap and the guild-tag column already reserved in the ladder rows.
 32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.
 33. **X-vs-X challenge with allies** (26313/26314).
-34. **Versioned schema migrations** — replace `AutoMigrate` before the first
-    destructive schema change.
+34. [x] **Versioned schema migrations** - DONE, though not by deleting
+    `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen
+    `CREATE TABLE` SQL would exist three times and drift three ways, so the
+    baseline is expressed through GORM's own migrator: portable, and identical to
+    what every existing database was already built with. What is new is the
+    mechanism around it - a `schema_migrations` table, ordered one-shot steps each
+    in its own transaction, and `Store.SchemaVersion()`. A failed step records
+    nothing and is retried next start. Step 1 is defined against the LIVE models,
+    so a purely additive change still lands without a numbered migration; anything
+    destructive, or anything that must be ordered against a data fix, now has a
+    slot. Verified on the real dev database: adopted in place at version 1 with
+    all 4 accounts and 13 fighters intact.
 35. [x] **Web admin panel** — DONE. Ported from v2.04 onto the 2.70 store and
     restyled: HMAC-signed sessions, CSRF, a player account area showing every
     stored datum, an admin console (searchable account list, deep per-account

@@ -73,6 +73,17 @@ func OpenConfig(c Config) (*Store, error) {
 		return nil, fmt.Errorf("store: open (%s): %w", c.Driver, err)
 	}
 
+	// Any failure from here on must hand the connection back, not abandon it: a
+	// leaked handle keeps the file open, which on Windows also keeps it LOCKED -
+	// so a server that failed to start once could not be restarted cleanly, and a
+	// test could not delete its own temp database.
+	failed := func(err error) (*Store, error) {
+		if sqlDB, derr := gdb.DB(); derr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, err
+	}
+
 	if isSQLite {
 		// Pragmas: WAL for concurrent reads, busy timeout to avoid SQLITE_BUSY.
 		for _, pragma := range []string{
@@ -81,7 +92,7 @@ func OpenConfig(c Config) (*Store, error) {
 			"PRAGMA foreign_keys=ON",
 		} {
 			if err := gdb.Exec(pragma).Error; err != nil {
-				return nil, fmt.Errorf("store: %s: %w", pragma, err)
+				return failed(fmt.Errorf("store: %s: %w", pragma, err))
 			}
 		}
 	}
@@ -98,28 +109,11 @@ func OpenConfig(c Config) (*Store, error) {
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	}
 
-	if err := gdb.AutoMigrate(
-		&domain.Account{},
-		&domain.Coach{},
-		&domain.CoachCard{},
-		&domain.CoachFriend{},
-		&domain.CoachIgnored{},
-		&domain.CoachCurrency{},
-		&domain.CoachStat{},
-		&domain.CoachAchievement{},
-		&domain.CoachTomeCard{},
-		&domain.Fighter{},
-		&domain.FighterSpell{},
-		&domain.FighterObject{},
-		&domain.FighterCondition{},
-		&domain.Team{},
-		&domain.TeamFighter{},
-		&domain.Mail{},
-		&domain.MailCard{},
-		&domain.Tournament{},
-		&domain.TournamentRegistration{},
-	); err != nil {
-		return nil, fmt.Errorf("store: migrate: %w", err)
+	// Versioned migrations (see migrations.go). Replaces the bare AutoMigrate
+	// call that used to live here: the schema now has a recorded version, so a
+	// destructive change or a data backfill has somewhere to go.
+	if err := runMigrations(gdb); err != nil {
+		return failed(err)
 	}
 
 	s := &Store{db: gdb}
