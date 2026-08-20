@@ -242,7 +242,7 @@ func (s *Session) completeLogin(coach *domain.Coach) error {
 	}
 
 	sends := [](func() ([]byte, error)){
-		func() ([]byte, error) { return buildCoachInformation(coach, tomeIDs) },
+		func() ([]byte, error) { return buildCoachInformation(coach, tomeIDs, s.deps.guildMembership(coach.ID)) },
 		func() ([]byte, error) { return buildFriendList(coach, s.deps.World) },
 		func() ([]byte, error) { return buildIgnoreList(coach) },
 		func() ([]byte, error) { return buildPlayerStatisticsReport(coach) },

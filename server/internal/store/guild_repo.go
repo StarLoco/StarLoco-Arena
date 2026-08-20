@@ -1,0 +1,173 @@
+package store
+
+import (
+	"errors"
+	"strings"
+	"time"
+
+	"gorm.io/gorm"
+
+	"github.com/StarLoco/arena-2.70/internal/domain"
+)
+
+// Guild rank constants, taken from the client's own rules (`aia_0`):
+// level 1 is the leader and level 10 the default rung, neither is deletable, and
+// a guild may hold at most ten ranks.
+const (
+	GuildRankLeader  int16 = 1
+	GuildRankDefault int16 = 10
+	GuildMaxRanks          = 10
+
+	// Rights bits (`aen_1`). Bit 0 is "leader", and because every accessor is
+	// `(rights & 1) | (rights & bit)` it implies all the others.
+	GuildRightLeader  int32 = 1
+	GuildRightInvite  int32 = 2
+	GuildRightRemove  int32 = 4
+	GuildRightPromote int32 = 8
+	GuildRightDemote  int32 = 16
+)
+
+// ErrGuildNameTaken is returned when a guild name is already in use or unusable.
+// The caller maps it to the client's result code 11 ("not valid or already
+// being used"), which is a single code for both cases - so the server does not
+// need to distinguish them either.
+var ErrGuildNameTaken = errors.New("store: guild name unavailable")
+
+// ErrAlreadyInGuild is returned when a coach that is already a member tries to
+// create or join another guild (client result code / string
+// `guild.error.alreadyGuildMember`).
+var ErrAlreadyInGuild = errors.New("store: coach already in a guild")
+
+// GuildRepo is the guild persistence layer.
+type GuildRepo struct{ db *gorm.DB }
+
+// Create makes a guild owned by leaderCoachID, seeds the two mandatory ranks and
+// puts the leader at rank 1, all in one transaction: a guild with no leader row
+// would present an empty member list and no one able to manage it.
+func (r *GuildRepo) Create(name string, leaderCoachID uint, leaderRankName, defaultRankName string) (*domain.Guild, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, ErrGuildNameTaken
+	}
+	var g domain.Guild
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var n int64
+		if err := tx.Model(&domain.GuildMember{}).
+			Where("coach_id = ?", leaderCoachID).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			return ErrAlreadyInGuild
+		}
+		if err := tx.Model(&domain.Guild{}).
+			Where("name = ?", name).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			return ErrGuildNameTaken
+		}
+		g = domain.Guild{Name: name, LeaderCoachID: leaderCoachID, CreatedAt: time.Now().UTC()}
+		if err := tx.Create(&g).Error; err != nil {
+			return err
+		}
+		ranks := []domain.GuildRank{
+			{GuildID: g.ID, Level: GuildRankLeader, Rights: GuildRightLeader, Name: leaderRankName},
+			{GuildID: g.ID, Level: GuildRankDefault, Rights: 0, Name: defaultRankName},
+		}
+		if err := tx.Create(&ranks).Error; err != nil {
+			return err
+		}
+		return tx.Create(&domain.GuildMember{
+			GuildID: g.ID, CoachID: leaderCoachID,
+			RankLevel: GuildRankLeader, JoinedAt: time.Now().UTC(),
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+// ByID loads a guild.
+func (r *GuildRepo) ByID(id uint) (*domain.Guild, error) {
+	var g domain.Guild
+	err := r.db.First(&g, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &g, err
+}
+
+// MembershipOf returns a coach's membership, or ErrNotFound when it has none.
+func (r *GuildRepo) MembershipOf(coachID uint) (*domain.GuildMember, error) {
+	var m domain.GuildMember
+	err := r.db.Where("coach_id = ?", coachID).First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &m, err
+}
+
+// Ranks returns a guild's ranks ordered by level (1 first), which is the order
+// the client's own rank list uses (`wu_0` sorts ascending).
+func (r *GuildRepo) Ranks(guildID uint) ([]domain.GuildRank, error) {
+	var out []domain.GuildRank
+	err := r.db.Where("guild_id = ?", guildID).Order("level ASC").Find(&out).Error
+	return out, err
+}
+
+// Rank returns one rank of a guild.
+func (r *GuildRepo) Rank(guildID uint, level int16) (*domain.GuildRank, error) {
+	var rk domain.GuildRank
+	err := r.db.Where("guild_id = ? AND level = ?", guildID, level).First(&rk).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &rk, err
+}
+
+// Members returns a guild's memberships ordered by rank then id, mirroring the
+// client's own member sort (`Wt` orders by rank).
+func (r *GuildRepo) Members(guildID uint) ([]domain.GuildMember, error) {
+	var out []domain.GuildMember
+	err := r.db.Where("guild_id = ?", guildID).
+		Order("rank_level ASC, id ASC").Find(&out).Error
+	return out, err
+}
+
+// AddMember joins a coach at the default rank. Refuses a coach that already
+// belongs somewhere, so a race between two invitations cannot produce a coach in
+// two guilds - the unique index would reject it anyway, but this returns the
+// error the handler can map to a client code.
+func (r *GuildRepo) AddMember(guildID, coachID uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var n int64
+		if err := tx.Model(&domain.GuildMember{}).
+			Where("coach_id = ?", coachID).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			return ErrAlreadyInGuild
+		}
+		return tx.Create(&domain.GuildMember{
+			GuildID: guildID, CoachID: coachID,
+			RankLevel: GuildRankDefault, JoinedAt: time.Now().UTC(),
+		}).Error
+	})
+}
+
+// RemoveMember drops a coach from a guild. Returns whether a row went.
+func (r *GuildRepo) RemoveMember(guildID, coachID uint) (bool, error) {
+	res := r.db.Where("guild_id = ? AND coach_id = ?", guildID, coachID).
+		Delete(&domain.GuildMember{})
+	return res.RowsAffected > 0, res.Error
+}
+
+// CoachIDsIn returns every member coach id of a guild. Used by clan chat to find
+// who to deliver to without loading whole rows.
+func (r *GuildRepo) CoachIDsIn(guildID uint) ([]uint, error) {
+	var out []uint
+	err := r.db.Model(&domain.GuildMember{}).
+		Where("guild_id = ?", guildID).Pluck("coach_id", &out).Error
+	return out, err
+}

@@ -321,7 +321,7 @@ func handleClanMessage(s *Session, f *protocol.C2SFrame) error {
 		return handleGMCommand(s, msg)
 	}
 
-	guildID, ok := coachGuildID(s.Coach)
+	guildID, ok := s.deps.coachGuildID(s.Coach)
 	if !ok {
 		s.log.Debug("clan chat from a coach with no guild",
 			"coach", s.Coach.Name, "claimed", claimedGuild)

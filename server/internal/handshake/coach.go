@@ -77,6 +77,10 @@ type Coach struct {
 	// 0x200 stat-pairs blob. criterionZaapUnlock is always added on top, so this
 	// may be nil. See buildCriteriaBlob for the ordering/dedup rules.
 	Criteria []Criterion
+	// Guild is the coach's clan membership, emitted in the 0x20 blob. nil when the
+	// coach is in no guild, which is what the client reads as "no clan".
+	Guild *GuildMembership
+
 	// Tome is every card template the coach has ever owned (client aez_0.dBd),
 	// emitted in the 0x80 blob. It gates the card-based achievements and the
 	// client's "new card" highlighting. May be nil.
@@ -253,8 +257,12 @@ func EncodeCoachInformations(c Coach) ([]byte, error) {
 	// 0x400: standing
 	w.I32(c.Standing) // bMU
 
-	// 0x20: guild blob (empty -> no guild)
-	w.U16(0)
+	// 0x20: guild blob. THE gate for the whole clan feature client-side - every
+	// entry point (the /c pipe, the guild tab, the invite context menu, the demon
+	// affiliation button) reads sj_1.aPY(), which is set from exactly here and
+	// from opcode 552. While this was an empty blob the client could not be shown
+	// a clan at all, however much the server knew.
+	w.Raw(buildGuildBlob(c.Guild))
 
 	// 0x80: the TOME ("grimoire") — every card template the coach has ever owned.
 	// buildTomeBlob owns the length prefix for the same reason the criteria blob

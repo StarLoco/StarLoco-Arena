@@ -43,12 +43,28 @@ one matching context.
 `i64 memberId, i32 privileges, i16 rank, str:u8 rankName, str:u8 memberName,
 bool connected`.
 
-**part 1 `ut_2` (guild info):**
-`str:u8 guildName, i64 guildId, i16, i16, i32, i32, i16 tag`.
+**part 1 `ut_2` (another player's clan tag, opcode 554):**
+`str:u8 guildName, i64 playerId, i16, i16, i32, i32, i16 demonId`.
 
-**part 2 `uu_2` (full member):**
-`i64 memberId, i32 privileges, i16 rank, str:u8 rankName, i16, str:u8 guildName,
-i16, i32, i32, i16 tag`.
+> The `i64` was previously documented as a guildId. It is the **player** id:
+> `ut_2.f` calls `ca_0.a(ca_0, long)`, which sets `Pl` = `Ke()`, and the handler
+> `lh_1.java:153` reads it back with `ca_07.Ke()` to find the actor to tag.
+
+**part 2 `uu_2` (the local coach's OWN membership — opcode 552, and the 0x20
+blob of CoachInformations 2052 / ActorSpawn 4096):**
+`i64 guildId, i32 rights, i16 rankLevel, str:u8 rankName, i16, str:u8 guildName,
+i16, i32, i32, i16 demonId`.
+
+> The leading `i64` was previously documented as a memberId. It is the **guild**
+> id: `uu_2.f` calls `ca_0.c(ca_0, long)`, which sets `bZ` = `Kd()` — and that is
+> the id the client echoes back in `/c` (3199) and in every guild operation, so
+> sending a member id here would make every subsequent request address the wrong
+> guild.
+
+**Strings on the guild family are UTF-8**, not the cp1252 the coach/fighter names
+use: they go through `aey_0.hH`/`aey_0.V`, which name the charset outright
+(`getBytes("UTF-8")`). The difference is invisible until a clan or rank name
+carries an accent.
 
 ---
 

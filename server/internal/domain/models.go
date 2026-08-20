@@ -209,3 +209,47 @@ func (CoachFriend) TableName() string   { return "coach_friends" }
 func (CoachIgnored) TableName() string  { return "coach_ignored" }
 func (CoachCurrency) TableName() string { return "coach_currencies" }
 func (CoachStat) TableName() string     { return "coach_stats" }
+
+// --- Guilds ("clans" in the UI; the code says guild everywhere, the player-
+// facing text says clan, and the two untranslated FR strings that still say
+// "guilde" are a translation miss, not a second concept). ---
+
+// Guild is a clan. DemonID is the Demon des Heures it is affiliated to (0 = none)
+// and gates the clan island; the client appends it to the displayed name.
+type Guild struct {
+	ID            uint   `gorm:"primaryKey"`
+	Name          string `gorm:"uniqueIndex;size:64;not null"`
+	DemonID       int16  `gorm:"not null;default:0"`
+	LeaderCoachID uint   `gorm:"not null;index"`
+	CreatedAt     time.Time
+}
+
+func (Guild) TableName() string { return "guilds" }
+
+// GuildRank is one rung of a guild's ladder. Level 1 is the leader and level 10
+// the default rung; the client refuses to delete either and caps a guild at ten
+// ranks (`aia_0`). Rights is the bitmask `aen_1` reads: bit0 leader/all,
+// bit1 invite, bit2 remove, bit3 promote, bit4 demote - and bit0 grants
+// everything, because every accessor is `(rights & 1) | (rights & bit)`.
+type GuildRank struct {
+	ID      uint   `gorm:"primaryKey"`
+	GuildID uint   `gorm:"uniqueIndex:idx_guild_rank_level;not null"`
+	Level   int16  `gorm:"uniqueIndex:idx_guild_rank_level;not null"`
+	Rights  int32  `gorm:"not null;default:0"`
+	Name    string `gorm:"size:64;not null"`
+}
+
+func (GuildRank) TableName() string { return "guild_ranks" }
+
+// GuildMember links a coach to a guild at a rank level. A coach can be in at most
+// one guild, which the unique index on CoachID enforces at the storage layer
+// rather than only in the handler.
+type GuildMember struct {
+	ID        uint  `gorm:"primaryKey"`
+	GuildID   uint  `gorm:"not null;index"`
+	CoachID   uint  `gorm:"uniqueIndex;not null"`
+	RankLevel int16 `gorm:"not null;default:10"`
+	JoinedAt  time.Time
+}
+
+func (GuildMember) TableName() string { return "guild_members" }

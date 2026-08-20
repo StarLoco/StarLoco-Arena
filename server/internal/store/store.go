@@ -35,6 +35,7 @@ type Store struct {
 	Mail     *MailRepo
 	// Tournaments are the standing events the web console edits.
 	Tournaments *TournamentRepo
+	Guilds      *GuildRepo
 }
 
 // Open connects to a SQLite database at path (dev convenience / tests) and
@@ -123,6 +124,7 @@ func OpenConfig(c Config) (*Store, error) {
 	s.Teams = &TeamRepo{db: gdb}
 	s.Mail = &MailRepo{db: gdb}
 	s.Tournaments = &TournamentRepo{db: gdb}
+	s.Guilds = &GuildRepo{db: gdb}
 
 	// A fresh database starts with the line-up that used to be compiled in, so
 	// a new install behaves as before and an admin has something to edit.

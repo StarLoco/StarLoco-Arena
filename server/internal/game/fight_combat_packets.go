@@ -187,30 +187,16 @@ func displacementPart(dest Pos, collidedWireID int64) effectPart {
 		Bytes()}
 }
 
-// writeBinarSerial encodes parts in the wire form the 2.70 client's aJj.ad()
-// (and its ajl_2 serializer) expects:
-//
-//	[i8 numParts]
-//	numParts × { [i8 partIdx][i32 absOffset] }   // directory
-//	per part: [i8 partIdx][payload]              // absOffset points at the partIdx byte
-//
-// aJj.ad reads each part's payload from absOffset+1 and derives its length from
-// the next part's offset (or the blob end for the last), so the directory
-// offsets must be the absolute byte position of each part block.
+// writeBinarSerial encodes an effect's parts. The container is shared with the
+// guild blob, so it lives in protocol.PartTable; this keeps the local name and
+// the sort, because effect options arrive in whatever order the call site listed
+// them while the encoder requires ascending indexes.
 func writeBinarSerial(parts []binarPart) []byte {
-	w := protocol.NewWriter()
-	w.U8(uint8(len(parts)))
-	off := 1 + len(parts)*5 // count byte + directory (5 bytes/entry)
+	out := make([]protocol.Part, 0, len(parts))
 	for _, p := range parts {
-		w.U8(p.idx)
-		w.I32(int32(off))
-		off += 1 + len(p.data) // partIdx byte + payload
+		out = append(out, protocol.Part{Idx: p.idx, Data: p.data})
 	}
-	for _, p := range parts {
-		w.U8(p.idx)
-		w.Raw(p.data)
-	}
-	return w.Bytes()
+	return protocol.PartTable(out...)
 }
 
 // buildActionSequenceExecute builds the empty 8200 flush barrier.

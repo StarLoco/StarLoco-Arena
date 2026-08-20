@@ -94,6 +94,21 @@ var migrations = []migration{
 			return tx.AutoMigrate(baselineModels()...)
 		},
 	},
+	{
+		// Guilds ("clans"). Additive, so AutoMigrate could have carried it - but
+		// it gets its own version anyway: this is the first schema change since
+		// the mechanism landed, and a numbered step is what lets a later data
+		// migration say "after guilds existed" without guessing.
+		Version: 2,
+		Name:    "guilds",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(
+				&domain.Guild{},
+				&domain.GuildRank{},
+				&domain.GuildMember{},
+			)
+		},
+	},
 }
 
 // runMigrations applies every step the database has not recorded yet, in order.

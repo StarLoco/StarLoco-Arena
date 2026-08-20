@@ -12,7 +12,10 @@ import (
 func nowNanos() int64 { return time.Now().UnixNano() }
 
 // buildCoachInformation builds CoachInformations (2052) from a persisted coach.
-func buildCoachInformation(c *domain.Coach, tome []int32) ([]byte, error) {
+//
+// guild may be nil (no clan), which reproduces byte-for-byte what this message
+// carried before guilds existed.
+func buildCoachInformation(c *domain.Coach, tome []int32, guild *handshake.GuildMembership) ([]byte, error) {
 	return handshake.EncodeCoachInformations(handshake.Coach{
 		ID:        int64(c.ID),
 		Name:      c.Name,
@@ -22,6 +25,7 @@ func buildCoachInformation(c *domain.Coach, tome []int32) ([]byte, error) {
 		Standing:  c.Standing,
 		Criteria:  coachCriteria(c),
 		Tome:      tome,
+		Guild:     guild,
 	})
 }
 

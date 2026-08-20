@@ -57,7 +57,8 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
 | Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
 | Achievements | ✅ | 332/5/13 decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced, tome grow-only (B-106). 47 are structurally blocked on 2v2/tournaments; the rest need their statistic to start moving |
-| Guilds / clans, 2v2 | ⬜ | Structurally blocked (see §8.16) |
+| Guilds / clans | 🟡 | **Not** structurally blocked — the client's clan feature is fully wired and reachable (item 31). Storage, ranks/rights and the 0x20 membership blob are in; the create/invite/list opcodes are next |
+| 2v2 | ⬜ | Deferred by the maintainer (item 30) |
 | Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
 

@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/handshake"
 )
 
 // Chat safety, mirroring the retail client's own constraints.
@@ -194,17 +195,71 @@ func (d *Deps) fightAllies(coachID uint) []*Session {
 }
 
 // guildSessions returns the online sessions of every member of guildID except
-// excludeCoach. Guilds are not modelled yet (roadmap item 31), so this is always
-// empty; it exists so the clan-chat path is complete and validated rather than
-// half-written, and so the one place that needs a membership lookup is obvious.
+// excludeCoach.
 func (d *Deps) guildSessions(guildID int64, excludeCoach uint) []*Session {
-	return nil
+	if d == nil || d.Store == nil || d.Store.Guilds == nil || guildID <= 0 {
+		return nil
+	}
+	ids, err := d.Store.Guilds.CoachIDsIn(uint(guildID))
+	if err != nil || len(ids) == 0 {
+		return nil
+	}
+	want := make(map[uint]bool, len(ids))
+	for _, id := range ids {
+		if id != excludeCoach {
+			want[id] = true
+		}
+	}
+	var out []*Session
+	d.Sessions.Each(func(sess *Session) {
+		if sess.Coach != nil && want[sess.Coach.ID] {
+			out = append(out, sess)
+		}
+	})
+	return out
 }
 
-// coachGuildID returns the coach's guild, if any. Always (0, false) until guild
-// membership exists — see guildSessions.
-func coachGuildID(c *domain.Coach) (int64, bool) {
-	return 0, false
+// coachGuildID returns the coach's guild, if any.
+//
+// Read from storage rather than from a field on the coach: membership changes
+// (joining, being kicked, the guild being destroyed) have to be visible to a
+// session that was already online, and routing clan chat through a cached copy
+// is how a kicked member keeps hearing it.
+func (d *Deps) coachGuildID(c *domain.Coach) (int64, bool) {
+	if d == nil || d.Store == nil || d.Store.Guilds == nil || c == nil {
+		return 0, false
+	}
+	m, err := d.Store.Guilds.MembershipOf(c.ID)
+	if err != nil || m == nil {
+		return 0, false
+	}
+	return int64(m.GuildID), true
+}
+
+// guildMembership assembles the coach's 0x20 blob payload, or nil when it is in
+// no clan. Nil is the same wire bytes the server sent before guilds existed.
+func (d *Deps) guildMembership(coachID uint) *handshake.GuildMembership {
+	if d == nil || d.Store == nil || d.Store.Guilds == nil {
+		return nil
+	}
+	m, err := d.Store.Guilds.MembershipOf(coachID)
+	if err != nil || m == nil {
+		return nil
+	}
+	g, err := d.Store.Guilds.ByID(m.GuildID)
+	if err != nil || g == nil {
+		return nil
+	}
+	out := &handshake.GuildMembership{
+		GuildID:   int64(g.ID),
+		GuildName: g.Name,
+		RankLevel: m.RankLevel,
+		DemonID:   g.DemonID,
+	}
+	if rk, err := d.Store.Guilds.Rank(g.ID, m.RankLevel); err == nil && rk != nil {
+		out.Rights, out.RankName = rk.Rights, rk.Name
+	}
+	return out
 }
 
 // appendSessionOnce keeps the ally list free of duplicates (several fighters can
