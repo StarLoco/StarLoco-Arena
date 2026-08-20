@@ -217,10 +217,14 @@ func (CoachStat) TableName() string     { return "coach_stats" }
 // Guild is a clan. DemonID is the Demon des Heures it is affiliated to (0 = none)
 // and gates the clan island; the client appends it to the displayed name.
 type Guild struct {
-	ID            uint   `gorm:"primaryKey"`
-	Name          string `gorm:"uniqueIndex;size:64;not null"`
-	DemonID       int16  `gorm:"not null;default:0"`
-	LeaderCoachID uint   `gorm:"not null;index"`
+	ID      uint   `gorm:"primaryKey"`
+	Name    string `gorm:"uniqueIndex;size:64;not null"`
+	DemonID int16  `gorm:"not null;default:0"`
+	// IslandWorld is the clan island allotted to this guild (world 86-109), or 0
+	// when it holds none. There are only 24 islands in the shipped data, so this
+	// is a scarce, persisted allocation rather than a function of the guild id.
+	IslandWorld   int16 `gorm:"not null;default:0"`
+	LeaderCoachID uint  `gorm:"not null;index"`
 	CreatedAt     time.Time
 }
 

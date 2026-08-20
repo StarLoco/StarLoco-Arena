@@ -216,3 +216,72 @@ func setStrength(t *testing.T, s *Store, coachID uint, v int32) {
 		t.Fatalf("set strength: %v", err)
 	}
 }
+
+// TestClanIslandAllocationIsStableAndUnique: there are only 24 islands, so two
+// clans must never resolve to the same world, and a clan's island must not move
+// on a second call. Deriving the world from the guild id would satisfy neither
+// once ids pass 24.
+func TestClanIslandAllocationIsStableAndUnique(t *testing.T) {
+	s := newTestStore(t)
+	a := guildTestCoach(t, s, "ChefA")
+	b := guildTestCoach(t, s, "ChefB")
+	ga, _ := s.Guilds.Create("ClanA", a, "Chef", "Membre")
+	gb, _ := s.Guilds.Create("ClanB", b, "Chef", "Membre")
+
+	w1, err := s.Guilds.AssignIsland(ga.ID)
+	if err != nil {
+		t.Fatalf("assign A: %v", err)
+	}
+	if w1 < GuildIslandFirst || w1 > GuildIslandLast {
+		t.Fatalf("island %d is outside the shipped range %d-%d", w1, GuildIslandFirst, GuildIslandLast)
+	}
+	again, err := s.Guilds.AssignIsland(ga.ID)
+	if err != nil || again != w1 {
+		t.Errorf("second call moved the island: %d -> %d (%v)", w1, again, err)
+	}
+	w2, err := s.Guilds.AssignIsland(gb.ID)
+	if err != nil {
+		t.Fatalf("assign B: %v", err)
+	}
+	if w2 == w1 {
+		t.Errorf("two clans were given the same island (%d)", w1)
+	}
+}
+
+// TestClanIslandsRunOut: the client has an "your clan is not ranked high enough
+// to have an island" message precisely because they are finite. Once all 24 are
+// held, the next clan must be refused rather than handed a duplicate or a world
+// that does not exist.
+func TestClanIslandsRunOut(t *testing.T) {
+	s := newTestStore(t)
+	total := int(GuildIslandLast-GuildIslandFirst) + 1
+	for i := 0; i <= total; i++ {
+		leader := guildTestCoach(t, s, "Chef"+itoaTest(i))
+		g, err := s.Guilds.Create("Clan"+itoaTest(i), leader, "Chef", "Membre")
+		if err != nil {
+			t.Fatalf("create %d: %v", i, err)
+		}
+		w, err := s.Guilds.AssignIsland(g.ID)
+		if i < total {
+			if err != nil || w == 0 {
+				t.Fatalf("clan %d got no island (%v) but %d should exist", i, err, total)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrNoIslandFree) {
+			t.Errorf("clan %d past the limit got island %d (%v), want ErrNoIslandFree", i, w, err)
+		}
+	}
+}
+
+func itoaTest(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}

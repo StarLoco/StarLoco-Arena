@@ -1559,7 +1559,21 @@ is a signing certificate or SignPath); no published Docker image.
     Also done: the clan tag now fills the column reserved in the 1v1 board, and
     the clan ladder returns real rows (score = the sum of member ratings - a
     server choice, since the client renders the number without interpreting it).
-    Remaining: the clan-island Zaap (card 859) and demon affiliation. **Do not implement 513 (rename) or 551 (icon)** —
+    Also done: the clan-island Zaap. Card 859 is the one Zaap card with no fixed
+    destination - it goes to the coach's OWN island, allotted from the 24 the map
+    data ships (worlds 86-109). Allocation is persisted, not derived from the
+    guild id, because the islands are finite and a clan's island must not move.
+    **Item 31 is complete** apart from one piece that turned out to belong
+    elsewhere:
+    - **Demon affiliation is not a guild feature.** The `%affiliate%` button does
+      not send an "affiliate" message: it opens a card-offering TRADE
+      (`demonAffiliationDialog`, with a split-quantity sub-dialog) and sends
+      `Zu` = **5470** `[i16 demonId][i16 count] count x {[i32 cardId][i16 qty]}`,
+      answered on 5403. That is the demon-REPUTATION system - card costs, a
+      per-demon reputation ladder, and the "top clan holds the island" rule the
+      client's `error.guild.noIsland` refers to. It needs the demon ladder to
+      exist first (`buildDemonLadder` still returns an empty window), so it is
+      tracked with the demon/totem work rather than here. **Do not implement 513 (rename) or 551 (icon)** —
     both are reachable only from the client's `Test` Lua debug library, with no
     UI and no assets.
 32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.

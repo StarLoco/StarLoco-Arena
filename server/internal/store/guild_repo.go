@@ -14,6 +14,14 @@ import (
 // level 1 is the leader and level 10 the default rung, neither is deletable, and
 // a guild may hold at most ten ranks.
 const (
+	// Clan islands are worlds 86-109 in the shipped map data - exactly 24 of
+	// them, one per island, each with its own Zaap (see
+	// docs/OVERWORLD-MAP.md "Clan island Zaaps"). They are a finite resource,
+	// which is why the client has a "your clan is not ranked high enough to have
+	// an island" error at all.
+	GuildIslandFirst int16 = 86
+	GuildIslandLast  int16 = 109
+
 	GuildRankLeader  int16 = 1
 	GuildRankDefault int16 = 10
 	GuildMaxRanks          = 10
@@ -322,4 +330,47 @@ func (r *GuildRepo) NamesByCoachName(names []string) (map[string]string, error) 
 		out[row.Coach] = row.Guild
 	}
 	return out, nil
+}
+
+// ErrNoIslandFree is returned when every clan island is already allotted. The
+// caller maps it to the client's own `error.guild.noIsland` message.
+var ErrNoIslandFree = errors.New("store: no clan island available")
+
+// AssignIsland gives a guild the lowest free clan island, or returns the one it
+// already holds. Allocation is persisted rather than derived from the guild id:
+// there are only 24 islands, so two clans must never resolve to the same world,
+// and a clan's island must not move when another is destroyed.
+func (r *GuildRepo) AssignIsland(guildID uint) (int16, error) {
+	var world int16
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var g domain.Guild
+		if err := tx.First(&g, guildID).Error; err != nil {
+			return err
+		}
+		if g.IslandWorld != 0 {
+			world = g.IslandWorld
+			return nil
+		}
+		var taken []int16
+		if err := tx.Model(&domain.Guild{}).
+			Where("island_world <> 0").Pluck("island_world", &taken).Error; err != nil {
+			return err
+		}
+		used := make(map[int16]bool, len(taken))
+		for _, w := range taken {
+			used[w] = true
+		}
+		for w := GuildIslandFirst; w <= GuildIslandLast; w++ {
+			if !used[w] {
+				world = w
+				break
+			}
+		}
+		if world == 0 {
+			return ErrNoIslandFree
+		}
+		return tx.Model(&domain.Guild{}).Where("id = ?", guildID).
+			Update("island_world", world).Error
+	})
+	return world, err
 }

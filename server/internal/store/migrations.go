@@ -109,6 +109,16 @@ var migrations = []migration{
 			)
 		},
 	},
+	{
+		// Clan islands. Additive again, but numbered for the same reason: it is
+		// the version a later "assign islands to existing clans" data step would
+		// have to run after.
+		Version: 3,
+		Name:    "guild_islands",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.Guild{})
+		},
+	},
 }
 
 // runMigrations applies every step the database has not recorded yet, in order.

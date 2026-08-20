@@ -26,6 +26,15 @@ func handleZaapTeleport(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 	dest, ok := zaapCardDest[cardID]
+	if !ok && cardID == clanIslandZaapCard {
+		// The one Zaap card with no fixed destination: it goes to the coach's
+		// OWN clan island, allotted on first use from the 24 the map data ships.
+		dest, ok = s.deps.clanIslandDest(s.Coach.ID)
+		if !ok {
+			s.log.Debug("zaap use: no clan island for this coach", "coach", s.Coach.Name)
+			return nil
+		}
+	}
 	if !ok {
 		s.log.Debug("zaap use: not a known zaap card", "card", cardID)
 		return nil
