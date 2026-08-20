@@ -87,10 +87,22 @@ func buildSpellCast(uid int32, casterWireID int64, spellID int32, target Pos, cr
 // first byte the client read as numParts=0, so it parsed nothing and the
 // damage/HP-loss never showed (the reported "spell casts but no effect" bug).
 //
-// durationTurns is the packet's Nx field: for a timed CharacBuff the client sets
-// the effect's remaining turns from it (mv_0.ax → RunningEffect.jt(Nx)); it is
-// ignored for an instant effect (damage/heal/AP-MP), so pass 0 there.
-func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireID, targetWireID int64, cell Pos, value, durationTurns int32, mustExecNow bool, opts ...effectPart) ([]byte, error) {
+// elapsedTurns is the packet's Nx field, and it is NOT the duration — it is the
+// number of turns the effect has ALREADY RUN. `mv_0.ax` passes it to
+// `ZT.jt(Nx)`, which computes
+//
+//	remaining = <the effect record's own effect_duration> − Nx
+//
+// (`ZT.java:135`). The duration therefore comes from the DATA, resolved through
+// part 0's generic effect id; Nx only offsets it. Passing the full duration here
+// — which the server used to do, and which this comment used to describe as
+// "the client sets the effect's remaining turns from it" — yields
+// `remaining = 0`, i.e. a buff that never lasts a single turn client-side.
+//
+// So pass 0 for a freshly applied effect. A non-zero value is only correct when
+// re-synchronising an effect that is already part-way through (reconnect,
+// spectator join).
+func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireID, targetWireID int64, cell Pos, value, elapsedTurns int32, mustExecNow bool, opts ...effectPart) ([]byte, error) {
 	part0 := protocol.NewWriter().
 		I64(casterWireID).
 		I64(targetWireID).
@@ -112,8 +124,8 @@ func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireI
 	w := protocol.NewWriter()
 	writeActionHeader(w, uid)
 	w.U8(boolByte(mustExecNow))
-	w.U8(0)              // triggered
-	w.I32(durationTurns) // Nx: buff duration in turns (0 = instant)
+	w.U8(0)             // triggered
+	w.I32(elapsedTurns) // Nx: turns ALREADY elapsed (0 for a fresh effect)
 	w.I32(runningEffectID)
 	w.U16(uint16(len(blob)))
 	w.Raw(blob)

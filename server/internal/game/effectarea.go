@@ -168,7 +168,7 @@ func (f *Fight) applySetAura(caster *FightFighter, ef gamedata.Effect, _ Pos) {
 	}
 	f.effectAreas = append(f.effectAreas, area)
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, caster.WireID, caster.Pos, templateID, turns, false)
+		caster.WireID, caster.WireID, caster.Pos, templateID, 0, false)
 	f.broadcast(eff)
 	if f.deps.Log != nil {
 		f.deps.Log.Debug("aura placed", "area", area.id, "template", templateID,

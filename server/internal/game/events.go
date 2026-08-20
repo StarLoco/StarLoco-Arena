@@ -142,8 +142,22 @@ func (f *Fight) beginTableTurn() {
 	f.tableEvent = f.drawRoundEvent()
 	table, _ := buildNewTableTurn(f.nextActionUID(), uint8(f.tableTurn), f.tableEvent)
 	f.broadcast(table)
-	f.applyRoundEvent(f.tableEvent)
 	if f.deps != nil && f.deps.Log != nil {
 		f.deps.Log.Info("table turn", "fight", f.ID, "turn", f.tableTurn, "eventCard", f.tableEvent)
 	}
+}
+
+// applyTableTurnEffects resolves the round card's effects. It is DELIBERATELY
+// separate from beginTableTurn and must run only after FIGHTER_TURN_BEGIN.
+//
+// A timed effect makes the client call `ZT.jt`, which anchors the expiry on
+// "whose turn is it" (`cn_0.JG()` -> `aGT.dh()`). The client clears that anchor
+// on every NEW_TABLE_TURN and only re-establishes it on the next
+// FIGHTER_TURN_BEGIN, so anything sent in between throws
+// `IllegalStateException: currentFighter() sans hasCurrentFighter()`. The action
+// is caught and dropped, which leaves the buff registered on the fighter but
+// never executed and never able to expire - a permanent inert entry in its list.
+// Sending it after the turn begins costs one frame of latency and nothing else.
+func (f *Fight) applyTableTurnEffects() {
+	f.applyRoundEvent(f.tableEvent)
 }

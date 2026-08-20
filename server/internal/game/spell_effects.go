@@ -319,16 +319,16 @@ func (f *Fight) removeEffectByID(ff *FightFighter, rid, limit int32) {
 
 // applyVisualEffect broadcasts a client-visual-only effect (look change 60/98,
 // drunk 126, damage redirect 139) on the fighter at `cell` so the client renders
-// it; the server keeps no state for it. A duration (e.g. drunk) rides Nx.
+// it; the server keeps no state for it. Its duration comes from the effect record
+// the client resolves itself, so Nx (turns already elapsed) is 0.
 func (f *Fight) applyVisualEffect(caster *FightFighter, ef gamedata.Effect, cell Pos) {
 	victim := f.fighterAtCell(cell)
 	if victim == nil {
 		return
 	}
 	val := ef.Roll(f.rngSource())
-	turns, _ := ef.DurationTurns()
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, val, turns, false,
+		caster.WireID, victim.WireID, victim.Pos, val, 0, false,
 		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
@@ -771,7 +771,7 @@ func (f *Fight) applyDamageTransfer(caster *FightFighter, ef gamedata.Effect, ta
 	}
 	victim.transfer = &damageTransfer{to: caster, pct: pct, turns: turns}
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, pct, turns, false,
+		caster.WireID, victim.WireID, victim.Pos, pct, 0, false,
 		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
@@ -1144,7 +1144,7 @@ func (f *Fight) applyBuff(caster *FightFighter, ef gamedata.Effect, target Pos) 
 	// part 4 names the source spell — without it the client files the buff under
 	// no spell and its buff bar skips it entirely (ee_2.java:562).
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, val, turns, false,
+		caster.WireID, victim.WireID, victim.Pos, val, 0, false,
 		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }

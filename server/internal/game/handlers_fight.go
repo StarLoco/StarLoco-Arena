@@ -381,15 +381,17 @@ func (f *Fight) transition(from, to FightPhase) bool {
 // fighter's turn, and arms the turn clock.
 func (f *Fight) startFirstTurn() {
 	f.tableTurn = 1
-	// np_1 type 12 lands BEFORE the first round card, so a fight-long buff is
-	// already in place when round 1 resolves (and, being sent before the first
-	// turn begins, the client shows its icon from the very first fighter).
-	f.applyFightStartEffects()
 	f.beginTableTurn()
 	if len(f.Timeline) > 0 {
 		f.turnIndex = 0
 		f.beginTurn(f.Timeline[0])
 	}
+	// Both effect passes run AFTER the first FIGHTER_TURN_BEGIN: a timed effect
+	// sent while no fighter is current throws client-side and is dropped (see
+	// applyTableTurnEffects). np_1 type 12 still lands before the round card, so
+	// a fight-long buff is in place when round 1 resolves.
+	f.applyFightStartEffects()
+	f.applyTableTurnEffects()
 }
 
 // beginTurn refills the fighter, broadcasts its FIGHTER_TURN_BEGIN and arms the
@@ -538,6 +540,7 @@ func (f *Fight) endTurn(wireID int64) {
 		return // no living fighter (fight should be ending)
 	}
 
+	newRound := false
 	if newTable {
 		f.tableTurn++
 		// A new round elapsed: age every fighter's timed buffs (reverting those
@@ -549,6 +552,7 @@ func (f *Fight) endTurn(wireID int64) {
 		f.tickEffectAreas()
 		f.tickPoisons()
 		f.beginTableTurn()
+		newRound = true
 		// Sudden death: once the fight reaches the configured turn the arena
 		// collapses to a small central area (suddendeath.go). Fires once.
 		f.maybeTriggerSuddenDeath()
@@ -569,6 +573,10 @@ func (f *Fight) endTurn(wireID int64) {
 		}
 	}
 	f.beginTurn(next)
+	if newRound {
+		// After FIGHTER_TURN_BEGIN, never before it.
+		f.applyTableTurnEffects()
+	}
 }
 
 func handleGiveUp(s *Session, _ *protocol.C2SFrame) error {

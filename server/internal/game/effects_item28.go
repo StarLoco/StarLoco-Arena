@@ -134,7 +134,7 @@ func (f *Fight) applySpellReturn(caster *FightFighter, ef gamedata.Effect, cell 
 	}
 	victim.spellReturn = true
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, pct, turns, false,
+		caster.WireID, victim.WireID, victim.Pos, pct, 0, false,
 		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 }
