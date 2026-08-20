@@ -358,12 +358,10 @@ Measured against the shipped data (`server/data-dist`, 203 spells / 533 effect r
 
 | Metric | Value |
 |---|---|
-| Spells with **every** effect row modelled | **177 / 203 (87 %)** |
-| Spells with *some* rows modelled | 23 |
-| Spells with no modelled row (or no rows at all) | 3 |
-| **Effect rows resolved** | **505 / 533 (94.7 %)** |
+| Spells with **every** effect row modelled | **203 / 203 (100 %)** |
+| **Effect rows resolved** | **533 / 533 (100 %)** |
 | Fighter-card (weapon) effect rows resolved | **72 / 72 (100 %)** |
-| Distinct mechanic kinds implemented | **33** (over ~143 mapped `mh_2` action ids) |
+| Distinct mechanic kinds implemented | **38** (over ~143 mapped `mh_2` action ids) |
 
 **The 31 modelled kinds:** flat elemental damage (direct + "par sort"), HP leech,
 heal, %-of-max-HP damage, poison (a real per-round DoT with re-roll), damage
@@ -372,23 +370,24 @@ MP loss, AP steal, MP steal, AP gain, MP gain, teleport, swap, push, pull,
 summon, state, buff, trap, dispel, visual-only, carry, throw, aura, zone MP loss,
 line damage, damage transfer, remove-effect-by-id.
 
-**The 28 unresolved rows — 9 distinct action ids, all documented no-ops** (the
-cast still animates and its other rows still resolve):
+**Every action id in the shipped data is now resolved** (ROADMAP item 28). The
+last nine were closed by reading the client rather than guessing from the French
+labels, and only five of them turned out to be server work:
 
-| Action | Client label | Rows |
-|---:|---|---:|
-| 140 | Diminution du cooldown d'un sort | 12 |
-| 84 | Révéler l'invisible | 6 |
-| 88 | Renvoi de sort | 2 |
-| 170 | Aucun effet | 2 |
-| 153 | Est repoussé de sa cible | 2 |
-| 68 | Tourne le regard vers la cellule ciblée | 1 |
-| 150 | Inverse les effets des cases bonus | 1 |
-| 171 | Devenir évanescent | 1 |
-| 172 | Bouger vers la cible adverse la plus proche | 1 |
+| Action | Client label | Resolution |
+|---:|---|---|
+| 140 | Diminution du cooldown d'un sort | **modelled** - rewrites the source spell's cooldown to now+params[0]; only ever shortens, and an infinite (63) cooldown collapses too |
+| 84 | Reveler l'invisible | **modelled** - clears the server's own invisibility state; the client expires its `co_0` on receipt |
+| 88 | Renvoi de sort | **modelled** - the next damaging spell is redirected to its caster, server-side (the client's `amv_1` redirects locally, so the server must agree) |
+| 153 | Est repousse de sa cible | **modelled** - push with the roles swapped (`azw_0` is `na_2` using `bWl` for `bWm`); shares the shove core |
+| 150 | Inverse les effets des cases bonus | **modelled, server-only** - the client's flag `yl_1.aDR` has zero readers, so the inversion can only live server-side |
+| 68 | Tourne le regard vers la cellule ciblee | cosmetic -> `KindVisual` (turns the sprite, nothing else) |
+| 170 | Aucun effet | cosmetic -> `KindVisual` (the null effect; exists to play an animation) |
+| 171 | Devenir evanescent | cosmetic -> `KindVisual` (a blue material tint; the real numbers are actions 80 + 164) |
+| 172 | Bouger vers la cible adverse la plus proche | **dead code** - calls `gn_0.Qf()`, an empty method with no override anywhere; the behaviour already lives in the server's summon AI |
 
-170 and 68 are cosmetic; 140, 88, 150, 171, 153, 172 need bespoke RE.
-
+Two of these (140, 153) were blocked on 8120 blob parts the server never sent -
+see B-110.
 **The "triggerée en zone" family is now complete** (was 165/166/169): the client's
 `mh_2` table shows it as one shape with six members — `165` fire, `166` water,
 `167` air, `168` earth (one `aez_1` class each), `169` AP (`MM`) and `177` MP
@@ -1527,8 +1526,11 @@ is a signing certificate or SignPath); no published Docker image.
     Fixing the live check turned up a genuine defect, now fixed (B-107): the GM
     teleports left the coach on a cell with the wrong altitude, so the client
     refused to move it ("Invalid start cell for pathfind search").
-28. **The remaining 12 unsupported effect action ids** (§8.5) — needs bespoke
-    client-state RE plus live verification for each.
+28. ~~**The remaining unsupported effect action ids**~~ — **DONE**. Nine, not
+    twelve (§8.5): five modelled (140 / 84 / 88 / 153 / 150), three cosmetic in
+    the client and now `KindVisual` so they still animate (68 / 170 / 171), one
+    dead client code (172 calls an empty method with no override). Effect rows
+    resolved: **100 %**.
 
 ### Tier 3 — large systems
 

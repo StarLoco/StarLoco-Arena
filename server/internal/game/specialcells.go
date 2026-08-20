@@ -149,7 +149,7 @@ func (f *Fight) applyTurnStartSpecialCell(ff *FightFighter) (died bool) {
 		// applyHPDelta clamps to MaxHP and broadcasts the ACTUAL amount, so the
 		// client's HP bar cannot overshoot.
 		if ff.HP < ff.MaxHP {
-			f.applyHPDelta(ff, ff, gamedata.ActionHeal, 0, f.scaleBonusCell(specialHealingHeartHP))
+			f.applyHPDelta(ff, ff, gamedata.ActionHeal, 0, f.scaleBonusCellAt(specialHealingHeartHP, ff.Pos.X, ff.Pos.Y))
 		}
 		return false
 	}
@@ -166,26 +166,26 @@ func (f *Fight) applyTurnStartSpecialCell(ff *FightFighter) (died bool) {
 	var boostAction, boostValue int32
 	switch kind {
 	case specialCellEnthusiasm:
-		b.dmgPct = f.scaleBonusCell(specialEnthusiasmDmg)
+		b.dmgPct = f.scaleBonusCellAt(specialEnthusiasmDmg, ff.Pos.X, ff.Pos.Y)
 		ff.Stats.dmgPctAll += b.dmgPct
 		boostAction, boostValue = runEffectDmgPctBoost, b.dmgPct
 	case specialCellShield:
-		b.resPct = f.scaleBonusCell(specialShieldRes)
+		b.resPct = f.scaleBonusCellAt(specialShieldRes, ff.Pos.X, ff.Pos.Y)
 		ff.Stats.resPctAll += b.resPct
 		boostAction, boostValue = runEffectResPctBoost, b.resPct
 	case specialCellEagleEye:
-		b.rng = f.scaleBonusCell(specialEagleEyeRange)
+		b.rng = f.scaleBonusCellAt(specialEagleEyeRange, ff.Pos.X, ff.Pos.Y)
 		ff.Range += b.rng
 		boostAction, boostValue = runEffectRangeBoost, b.rng
 	case specialCellPanacea:
-		b.healPct = f.scaleBonusCell(specialPanaceaHeal)
+		b.healPct = f.scaleBonusCellAt(specialPanaceaHeal, ff.Pos.X, ff.Pos.Y)
 		ff.Stats.healPct += b.healPct
 		boostAction, boostValue = runEffectHealBoost, b.healPct
 	case specialCellMotivation:
 		// Raise the ceiling as well as the current value: AP is clamped to MaxAP,
 		// so bumping only the current value would be silently clamped straight
 		// back down and the tile would do nothing.
-		b.ap = f.scaleBonusCell(specialMotivationAP)
+		b.ap = f.scaleBonusCellAt(specialMotivationAP, ff.Pos.X, ff.Pos.Y)
 		ff.MaxAP += b.ap
 		ff.AP += b.ap
 		boostAction, boostValue = runEffectAPBoost, b.ap
@@ -272,8 +272,24 @@ func buildEffectAreaAction(uid int32, instanceID, templateID, fighterWireID int6
 // turn-start triggered like the buffs, which puts it under "bien d'autres
 // choses". Nothing in the data distinguishes it either way.
 func (f *Fight) scaleBonusCell(v int32) int32 {
-	if f == nil || f.Rules.BonusCellMultiplier <= 1 {
+	if f == nil {
 		return v
 	}
-	return v * f.Rules.BonusCellMultiplier
+	if f.Rules.BonusCellMultiplier > 1 {
+		v *= f.Rules.BonusCellMultiplier
+	}
+	return v
+}
+
+// scaleBonusCellAt is scaleBonusCell for a magnitude about to be applied on a
+// specific cell: effect 150 ("Inverse les effets des cases bonus") negates it
+// while its curse is live, so the tile's boost becomes a penalty and its heal
+// becomes damage. Applied after the multiplier, so a cursed x10 tile hurts ten
+// times as much.
+func (f *Fight) scaleBonusCellAt(v, x, y int32) int32 {
+	v = f.scaleBonusCell(v)
+	if f != nil && f.cellIsCursed(x, y) {
+		return -v
+	}
+	return v
 }

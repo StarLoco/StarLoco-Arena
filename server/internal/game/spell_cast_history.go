@@ -21,6 +21,13 @@ type spellCastRecord struct {
 	hasLastCast           bool
 	castsThisTurn         int32
 	castsThisTurnByTarget map[int64]int32 // targetWireID -> count, this table-turn only
+
+	// recastFrom is an absolute table-turn override written by effect 140
+	// ("diminution du cooldown d'un sort"): from this turn on the spell is
+	// castable again regardless of its normal cooldown. Mirrors the client's
+	// `sH.akS` map, which stores exactly this — an absolute expiry turn.
+	recastFrom    int32
+	hasRecastFrom bool
 }
 
 // spellCastHistory is the per-fighter cast-frequency tracker. The zero value is
@@ -64,7 +71,15 @@ func (h *spellCastHistory) canCast(spellID int32, cooldown, castMaxPerTurn, cast
 		return true
 	}
 	if cooldown > 0 && r.hasLastCast {
-		if cooldown == 63 || currentTableTurn-r.lastCastTableTurn < int32(cooldown) {
+		// Once effect 140 has written an expiry it IS the cooldown, exactly as in
+		// the client, where `sH.akS` holds one absolute expiry turn per spell and
+		// the cast gate reads only that. Keeping the normal rule as a second
+		// opinion would make the override unable to do anything but grant.
+		if r.hasRecastFrom {
+			if currentTableTurn < r.recastFrom {
+				return false
+			}
+		} else if cooldown == 63 || currentTableTurn-r.lastCastTableTurn < int32(cooldown) {
 			return false // last cast too recent (63 = never again this fight)
 		}
 	}
@@ -77,6 +92,40 @@ func (h *spellCastHistory) canCast(spellID int32, cooldown, castMaxPerTurn, cast
 	return true
 }
 
+// recastAfter implements effect 140: make the spell castable again `turns` table
+// turns from now.
+//
+// It mirrors `sH.a(fv, turn, r)` exactly, including both of its guards: the spell
+// must currently BE on cooldown (there is nothing to shorten otherwise), and the
+// new expiry must actually be sooner than the old one — with an infinite (63)
+// cooldown counting as later than any finite turn, which is the whole point of
+// the effect on a once-per-fight spell.
+func (h *spellCastHistory) recastAfter(spellID int32, cooldown uint8, turns, currentTableTurn int32) {
+	if cooldown == 0 {
+		return // not a cooldown spell: nothing to shorten
+	}
+	r, ok := h.records[spellID]
+	if !ok || !r.hasLastCast {
+		return // never cast, so not on cooldown
+	}
+	infinite := cooldown == 63
+	expiry := r.lastCastTableTurn + int32(cooldown)
+	if !infinite && currentTableTurn >= expiry {
+		return // already off cooldown
+	}
+	if r.hasRecastFrom && r.recastFrom <= currentTableTurn {
+		return // an earlier 140 already freed it
+	}
+	newExpiry := currentTableTurn + turns
+	if !infinite && newExpiry >= expiry {
+		return // would delay it, not shorten it
+	}
+	if r.hasRecastFrom && newExpiry >= r.recastFrom {
+		return
+	}
+	r.recastFrom, r.hasRecastFrom = newExpiry, true
+}
+
 // storeCast records a successful cast; call AFTER canCast passed and the cast is
 // committed.
 func (h *spellCastHistory) storeCast(spellID int32, cooldown, castMaxPerTurn, castMaxPerTarget uint8, currentTableTurn int32, targetWireID int64, hasTarget bool) {
@@ -84,6 +133,10 @@ func (h *spellCastHistory) storeCast(spellID int32, cooldown, castMaxPerTurn, ca
 	if cooldown > 0 {
 		r.lastCastTableTurn = currentTableTurn
 		r.hasLastCast = true
+		// A fresh cast re-arms the normal cooldown: any 140 discount belonged to
+		// the PREVIOUS cast and must not carry over, or the spell would stay
+		// permanently discounted.
+		r.recastFrom, r.hasRecastFrom = 0, false
 	}
 	if castMaxPerTurn > 0 {
 		r.castsThisTurn++

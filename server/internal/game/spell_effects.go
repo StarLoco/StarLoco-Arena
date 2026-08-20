@@ -92,6 +92,15 @@ func (f *Fight) resolveEffect(caster *FightFighter, ef gamedata.Effect, target P
 	case gamedata.KindPull:
 		f.applyPushPull(caster, ef, target, false)
 		return
+	case gamedata.KindSelfPush:
+		f.applySelfPush(caster, ef, target)
+		return
+	case gamedata.KindSpellCooldown:
+		f.applySpellCooldown(caster, ef)
+		return
+	case gamedata.KindCurseBonusCells:
+		f.applyCurseBonusCells(caster, ef, target)
+		return
 	case gamedata.KindSummon:
 		f.applySummon(caster, ef, target)
 		return
@@ -177,6 +186,10 @@ func (f *Fight) applyPerTargetEffect(caster *FightFighter, ef gamedata.Effect, c
 		f.applyRemoveEffect(caster, ef, cell)
 	case gamedata.KindVisual:
 		f.applyVisualEffect(caster, ef, cell)
+	case gamedata.KindRevealInvisible:
+		f.applyRevealInvisible(caster, ef, cell)
+	case gamedata.KindSpellReturn:
+		f.applySpellReturn(caster, ef, cell)
 	}
 }
 
@@ -335,6 +348,19 @@ func (f *Fight) applyDamageEffect(caster *FightFighter, ef gamedata.Effect, targ
 	base := ef.Roll(f.rngSource())
 	if base <= 0 {
 		return
+	}
+	// Spell return (88): the WHOLE hit changes target before anything is
+	// computed. This must happen server-side now that we send blob part 4,
+	// because part 4 is what lets the client register its own `amv_1` trigger -
+	// and that trigger redirects locally on receipt. If the server did not
+	// redirect too, the client would show the caster taking a hit the server
+	// gave the victim.
+	if f.consumeSpellReturn(victim) {
+		if victim == caster {
+			return // a self-hit has nowhere to bounce
+		}
+		victim = caster
+		target = caster.Pos
 	}
 	// Run the Dofus damage formula: the rolled base is boosted by the caster's
 	// elemental damage stats and reduced by the victim's resistances (neutral /
@@ -940,14 +966,31 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 	if dx == 0 && dy == 0 {
 		return
 	}
-	curX, curY := victim.Pos.X, victim.Pos.Y
+	var stopAt *Pos
+	if !push {
+		stopAt = &caster.Pos // pull stops on the caster's cell (no collision damage)
+	}
+	f.shoveFighter(caster, victim, victim.WireID, ef, dx, dy, distance, stopAt)
+}
+
+// shoveFighter is the shared body of every forced displacement: push (37), pull
+// (38) and self-push (153). It ray-walks `mover` up to `distance` cells along
+// (dx,dy) with the client's own stopping rules, applies collision damage, moves
+// the server model and broadcasts the native effect with its destination.
+//
+// caster/targetWireID are the effect's two fighter slots, which are NOT always
+// "the shover and the shoved": for 153 the client moves the effect's CASTER
+// (`azw_0` uses `bWl` where `na_2` uses `bWm`), so there the caster IS the mover
+// and the target is the fighter it recoils from.
+func (f *Fight) shoveFighter(caster, mover *FightFighter, targetWireID int64, ef gamedata.Effect, dx, dy, distance int32, stopAt *Pos) {
+	curX, curY := mover.Pos.X, mover.Pos.Y
 	curAlt := f.Arena().altitudeAt(curX, curY)
 	var moved int32
 	stoppedOnVoid, hitFighter := false, (*FightFighter)(nil)
 	for i := int32(0); i < distance; i++ {
 		nx, ny := curX+dx, curY+dy
-		if !push && nx == caster.Pos.X && ny == caster.Pos.Y {
-			break // pull stops on the caster's cell (no collision damage)
+		if stopAt != nil && nx == stopAt.X && ny == stopAt.Y {
+			break
 		}
 		if !f.Arena().walkable(nx, ny) {
 			stoppedOnVoid = true
@@ -963,9 +1006,9 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 		curX, curY, curAlt = nx, ny, f.Arena().altitudeAt(nx, ny)
 		moved++
 	}
-	shoveFrom := victim.Pos
+	shoveFrom := mover.Pos
 	if moved > 0 {
-		victim.Pos = Pos{X: curX, Y: curY, Z: curAlt}
+		mover.Pos = Pos{X: curX, Y: curY, Z: curAlt}
 	}
 	// Collision damage for the cells it could not travel.
 	cellsLeft := distance - moved
@@ -988,11 +1031,11 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 		blocked = hitFighter.WireID
 	}
 	eff, _ := buildRunningEffect(f.nextActionUID(), ef.ActionID, ef.EffectID,
-		caster.WireID, victim.WireID, victim.Pos, moved, 0, true,
-		displacementPart(victim.Pos, blocked), sourceSpellPart(f.sourceSpellID))
+		caster.WireID, targetWireID, mover.Pos, moved, 0, true,
+		displacementPart(mover.Pos, blocked), sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 	if collision > 0 {
-		f.applyCollisionDamage(caster, victim, collision)
+		f.applyCollisionDamage(caster, mover, collision)
 		// A fighter shoved into another (push OR pull) shares the impact: the
 		// blocker takes the same collision damage (v2.04b applyPushPull).
 		if hitFighter != nil {
@@ -1002,8 +1045,8 @@ func (f *Fight) applyPushPull(caster *FightFighter, ef gamedata.Effect, target P
 	// Being shoved onto a trap arms it, exactly as walking on would. Checked
 	// after the collision so a fighter the impact already killed does not also
 	// spring the trap.
-	if moved > 0 && victim.HP > 0 {
-		f.checkEffectAreasMove(shoveFrom, victim.Pos, victim)
+	if moved > 0 && mover.HP > 0 {
+		f.checkEffectAreasMove(shoveFrom, mover.Pos, mover)
 	}
 }
 

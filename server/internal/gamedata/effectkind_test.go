@@ -29,8 +29,18 @@ func TestEffectKindClassification(t *testing.T) {
 		{58, KindCarry}, {59, KindThrow}, {176, KindAura}, {177, KindZoneMPLoss},
 		{129, KindDamageTransfer},
 		{178, KindLineDamage}, {181, KindLineDamage},
-		// Truly unsupported exotics.
-		{170, KindUnsupported}, {999, KindUnsupported},
+		// ROADMAP item 28: the last unmodelled ids, resolved by reading the
+		// client rather than by guessing at the labels.
+		{153, KindSelfPush}, {84, KindRevealInvisible},
+		{140, KindSpellCooldown}, {150, KindCurseBonusCells},
+		// Cosmetic in the client, so a no-op server-side is the CORRECT model -
+		// but they must still be broadcast, hence Visual and not Unsupported.
+		// 68 turns a sprite, 170 does nothing at all, 171 tints the fighter blue.
+		{68, KindVisual}, {170, KindVisual}, {171, KindVisual},
+		// 172's client implementation calls gn_0.Qf(), an empty method with no
+		// override anywhere - the effect provably does nothing, so it stays
+		// unsupported deliberately rather than for lack of investigation.
+		{172, KindUnsupported}, {999, KindUnsupported},
 	}
 	for _, c := range cases {
 		if got := (Effect{ActionID: c.action}).Kind(); got != c.want {

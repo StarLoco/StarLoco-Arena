@@ -86,6 +86,38 @@ const (
 	// 126 is now a tracked KindState so the canCastWhenDrunk criterion can read it.)
 	KindVisual
 
+	// KindSelfPush (153 "Est repoussé de sa cible") shoves the CASTER away from
+	// its target - the client class `azw_0` is `na_2` (push 37) with `bWl`/`bWm`
+	// swapped, down to the same stability guard, altitude rule and collision
+	// damage. Like push it needs blob part 3 (the destination) or it NPEs.
+	KindSelfPush
+
+	// KindRevealInvisible (84 "Révéler l'invisible") strips invisibility from
+	// every fighter in the area: the client walks the target's running effects
+	// and expires each `co_0` (action 57), reverting its dodge/block swing and
+	// re-showing the sprite (`aum`). The server must clear its own state too or
+	// targeting/AI keep treating the fighter as hidden.
+	KindRevealInvisible
+
+	// KindSpellCooldown (140 "Diminution du cooldown d'un sort") makes the SOURCE
+	// spell recastable in params[0] turns instead of its normal wait. The client
+	// applies this to the spell named in blob part 4 (`aus_0` -> `gn_0.a(fv,…)`
+	// -> `sH.a`), and that is the only per-spell cooldown mutator it has, so 8120
+	// with this action IS the cooldown-update message.
+	KindSpellCooldown
+
+	// KindCurseBonusCells (150 "Inverse les effets des cases bonus") curses the
+	// target cell so a bonus tile there harms instead of helps. Entirely
+	// server-owned: the client's counterpart sets a flag (`yl_1.aX`) whose getter
+	// `FI()` has ZERO callers, and its EffectArea execute body is empty.
+	KindCurseBonusCells
+
+	// KindSpellReturn (88 "Renvoi de sort") sends the next damaging spell aimed
+	// at the fighter back at its caster. The client half is a TRIGGER buff
+	// (`amv_1`) that re-points the incoming effect with `h(ajQ())`; the server
+	// must redirect too, since it is the one that resolves damage.
+	KindSpellReturn
+
 	// KindCarry (58 "Porter quelqu'un") / KindThrow (59 "Jeter quelqu'un"): the
 	// caster picks up a target fighter (stacked on its cell) and later throws it
 	// to a target cell. Bidirectional carry links, ported from the v2.04b resolver.
@@ -170,7 +202,16 @@ var effectKind = func() map[int32]EffectKind {
 	m[66] = KindTrap   // Pose un piège (persistent ground-effect area)
 	m[62] = KindDispel // Désenvoûtement
 	// Client-visual-only effects (rendered, no server mechanic).
-	for _, id := range []int32{60, 98, 139} {
+	//
+	// 68 "Tourne le regard vers la cellule ciblée" turns the target's sprite to
+	// face the effect cell (`ez_0`: build a direction, `bWm.b(dir)`) and nothing
+	// else. 170 "Aucun effet" is the null effect - `eo_1` does not even override
+	// the execute hook, so its whole purpose is to make the client play the
+	// authored animation. 171 "Devenir évanescent" sets state `deG`, whose ONLY
+	// reader in the entire client swaps the fighter's material to a blue tint
+	// (`ee_2` -> `vD.java:172-178`); the real Evanescence numbers are separate
+	// rows (actions 80 + 164), both already resolved.
+	for _, id := range []int32{60, 98, 139, 68, 170, 171} {
 		m[id] = KindVisual
 	}
 	m[58] = KindCarry       // Porter quelqu'un
@@ -178,6 +219,19 @@ var effectKind = func() map[int32]EffectKind {
 	m[176] = KindAura       // Pose une aura
 	m[177] = KindZoneMPLoss // Perte de PM triggerée en zone
 	m[169] = KindZoneAPLoss // Perte de points d'action triggeree en zone
+	m[153] = KindSelfPush   // Est repoussé de sa cible
+	m[84] = KindRevealInvisible
+	m[140] = KindSpellCooldown
+	m[150] = KindCurseBonusCells
+	m[88] = KindSpellReturn
+	// 172 "Bouger vers la cible adverse la plus proche" stays UNSUPPORTED on
+	// purpose: its client implementation (`gM`) is `if (bWm instanceof gn_0)
+	// ((gn_0)bWm).Qf();`, and `gn_0.Qf()` is an EMPTY method body declared once
+	// with no override anywhere in the client - the same shape as the dead
+	// `do_1.a(...)` found in B-109. Sending the effect provably does nothing. The
+	// behaviour it names (a summon charging the nearest enemy) already exists
+	// server-side in ai.go's aggressive AI, which is what actually drives the
+	// three shipped summons that carry this row.
 	// Zone-triggered ELEMENTAL HP loss: one mh_2 aez_1 class per element
 	// (165 fire, 166 water, 167 air, 168 earth - see damageElement). Same shape
 	// as 177/169: the spell's own zone, centred on the caster, caster excluded.

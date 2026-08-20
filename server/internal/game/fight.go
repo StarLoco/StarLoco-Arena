@@ -88,6 +88,10 @@ type FightFighter struct {
 	// transfer is an active damage-transfer link (129): a share of the damage this
 	// fighter takes is redirected to transfer.to (see spell_effects.go).
 	transfer *damageTransfer
+
+	// spellReturn arms effect 88 ("Renvoi de sort"): the next damaging spell
+	// aimed at this fighter is redirected to its caster, then the flag clears.
+	spellReturn bool
 	// CastHistory enforces each spell's cast-frequency limits (min interval / max
 	// per turn / max per target) for this fighter — see spell_cast_history.go.
 	CastHistory spellCastHistory
@@ -200,6 +204,11 @@ type Fight struct {
 	eventDeckPos int
 	summonSeq    int32        // per-fight counter for allocating unique summon wire ids
 	actionUID    atomic.Int32 // atomic: packet builders may read across goroutines
+
+	// cursedCells maps a cell to the table turn its effect-150 curse expires on
+	// ("Inverse les effets des cases bonus"): while cursed, a bonus tile there
+	// harms instead of helps. Server-owned - the client's own flag is inert.
+	cursedCells map[[2]int32]int32
 
 	// sourceSpellID names the spell currently resolving, so each RUNNING_EFFECT
 	// (8120) can carry it in blob part 4. It is 0 outside spell resolution (trap
