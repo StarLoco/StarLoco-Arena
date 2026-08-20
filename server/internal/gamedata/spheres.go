@@ -1,0 +1,370 @@
+package gamedata
+
+import "sort"
+
+// spheres.go decodes the SPHERE BOARD - the "Kanodo" (client string `sphereboard`)
+// - from record types 900 (boards, client class `bg_0`) and 901 (nodes, `aeI`).
+//
+// The Kanodo is a per-fighter talent tree, and the client's own help text
+// (content.59.53) is the clearest statement of the mechanic: a board is made of
+// spheres BOUGHT with the experience a fighter has earned. A sphere can only be
+// bought if it has a direct path to the sphere the progression cursor currently
+// sits on - the cursor being drawn as the fighter's own head. Buying one grants
+// its payload: a characteristic bonus, a new spell, or a set of equipment the
+// fighter may then wear. Some spheres are deliberately a MALUS, "a sacrifice a
+// fighter must make to continue its learning". Portal spheres teleport the cursor
+// elsewhere on the board, and barrier spheres demand a card be sacrificed to open
+// the way.
+//
+// What the client does and does not own here matters for the server's job:
+//
+//   - The board LAYOUT is client-side data. `vj_2`/`dq_1` load these same records
+//     out of the client's own data files and register them in `akp_1`, so the
+//     server never sends the graph.
+//   - The fighter's PROGRESS is server state, and the fighter blob already carries
+//     it: `[i32 sphereBoardId][i32 xp][i32 totalXp] ... [i16 sphereX][i16 sphereY]
+//     [i16 sphereCount]{[i32 sphereId]}` (see game/fighter_codec.go). The cursor is
+//     that (sphereX, sphereY) pair and the list is the bought nodes - `ee_2.NE()`
+//     on the client side.
+//   - Buying is C2S 23009 (`aow_2`, arch 3): [i64 fighterId][i32 sphereId]
+//     [i32 cardTemplateId], the card being the barrier sacrifice and 0 otherwise.
+//
+// The node's TYPE (Bonus / Malus / Spell / Item / Summon / Teleport / Barrier /
+// DeadEnd) is NOT stored: `ayr_0.aKZ()` derives it from the node's own contents -
+// a spell id makes it a Spell, otherwise the FIRST effect's action id is matched
+// against fixed sets. So this package stores what the record holds and leaves the
+// classification to whoever needs it.
+
+// Sphere board record types.
+const (
+	TypeSphereBoard = 900
+	TypeSphere      = 901
+)
+
+// SphereBoard is one decoded board (`bg_0` -> runtime `Ei`).
+//
+// Three of its fields are named by the client itself: `Ei.getFieldValue` maps
+// "breed" to the byte, "season" to the first i32 after the id, and "spheres" to
+// the id list.
+type SphereBoard struct {
+	ID int32
+	// Season is `Ei`'s "season" property. Boards are versioned by season, which is
+	// why 15 of them exist for far fewer breeds.
+	Season int32
+	// Breed is the class this board belongs to, resolved by the client through the
+	// breed name table (content type 5).
+	Breed uint8
+	// The remaining four fields are decoded for completeness and are read by
+	// NOTHING. `ks_2` exposes them as Xp(), cx(), cy() and Xo(); a case-sensitive
+	// search of the whole client finds no caller of any of them - `dq_1` passes
+	// them into Ei's constructor and they are never looked at again.
+	//
+	// They are kept as raw values rather than given invented meanings, because the
+	// obvious guesses are all refuted by the shipped data: the i16 pair is not the
+	// grid extent (board 30 carries 83x1 while its nodes reach 84x78), the i32 is
+	// 5 on every breed board and 0 on the three others, and the id list holds three
+	// small numbers that resolve to no node on any board.
+	UnreadInt int32
+	UnreadA   int16
+	UnreadB   int16
+	UnreadIDs []int32
+	leftover  int
+}
+
+// Leftover reports unconsumed bytes; 0 means the record was fully accounted for.
+func (b *SphereBoard) Leftover() int { return b.leftover }
+
+// Sphere is one decoded node (`aeI` -> runtime `ayr_0`).
+type Sphere struct {
+	ID int32
+	// BoardID is the board this node belongs to: `vj_2` registers each node under
+	// `aeI.NH()`, so it is the grouping key rather than anything on the board side.
+	BoardID int32
+	// XPCost is what buying costs in fighter experience (`aus()`). A fighter that
+	// already owns the node pays a TENTH of this - the client's own re-purchase
+	// discount in afb_1 case 16926.
+	XPCost int32
+	// X and Y are the node's 1-BASED grid position (`aut()`, `auu()`). The cursor
+	// on the wire is 0-based: the client sets it with `aLe() = aut()-1` and renders
+	// it with `MU() = cursor+1`.
+	X int16
+	Y int16
+	// SpellID is the spell this node unlocks, 0 when it unlocks none. Non-zero is
+	// also what makes `aKZ()` classify the node as a Spell sphere, before it looks
+	// at any effect.
+	SpellID int32
+	// EquipmentPoolID points at a record-type-251 equipment pool - the "ensemble
+	// d'equipements qui se debloque" of the help text. 0 when the node grants none.
+	EquipmentPoolID int32
+	// Effects are `Ht` rows, the same structure spells and cards use, and are what
+	// a Bonus or Malus node actually applies.
+	Effects []Effect
+	// BarrierCards are the card templates that open this node when it is a Barrier
+	// (`auv()`); the client accepts any one of them and consumes it.
+	BarrierCards []int32
+	// DeadEnd is `auw()`: the node is impassable ("Cette sphere est
+	// infranchissable"). It is the last thing `aKZ()` tests before falling through
+	// to an empty node.
+	DeadEnd bool
+	// TeleportX and TeleportY are a portal node's arrival cell, 1-based like X/Y.
+	// Zero on every node that is not a portal.
+	TeleportX int16
+	TeleportY int16
+	// leftover is how many bytes of the record the decoder did not consume. Zero on
+	// every shipped row is what proves the field layout, independently of what the
+	// fields are called.
+	leftover int
+}
+
+// Leftover reports unconsumed bytes; 0 means the record was fully accounted for.
+func (s *Sphere) Leftover() int { return s.leftover }
+
+// The client derives a node's KIND from its contents rather than storing one.
+// `ayr_0.aKZ()` tests, strictly in this order:
+//
+//	SpellID != 0            -> "Spell"
+//	len(Effects) > 0        -> "Malus" / "Summon" / "Bonus", split on the FIRST
+//	                           effect's action id against two fixed sets
+//	len(BarrierCards) > 0   -> "Barrier"
+//	TeleportX != 0          -> "Teleport"
+//	EquipmentPoolID != 0    -> "Item"
+//	DeadEnd                 -> "DeadEndType"
+//	otherwise               -> "EmptyType"
+//
+// Order matters: a node carrying both a spell and effects is a Spell sphere, and
+// the teleport test is on X alone. The predicates below cover every branch that
+// is a simple field test; the Bonus/Malus/Summon split needs the effect action
+// tables and is left to whoever needs it.
+
+// IsSpell reports the first branch: the node unlocks a spell.
+func (s *Sphere) IsSpell() bool { return s != nil && s.SpellID != 0 }
+
+// IsBarrier reports whether the node demands a card sacrifice, which is exactly
+// "it lists cards that open it".
+func (s *Sphere) IsBarrier() bool { return s != nil && len(s.BarrierCards) > 0 }
+
+// IsTeleport reports whether the node is a portal. The client tests the X
+// coordinate ALONE, so this does too - a portal arriving at column 0 would be
+// classified as something else by the client, and the server must agree with it
+// rather than be more correct than it.
+func (s *Sphere) IsTeleport() bool { return s != nil && s.TeleportX != 0 }
+
+// IsItem reports that the node unlocks an equipment pool (record type 251).
+func (s *Sphere) IsItem() bool { return s != nil && s.EquipmentPoolID != 0 }
+
+// SphereBoards is the decoded catalogue.
+type SphereBoards struct {
+	boards       map[int32]*SphereBoard
+	spheres      map[int32]*Sphere
+	byBoard      map[int32][]*Sphere
+	byBoardCell  map[boardCell]*Sphere
+	boardIDs     []int32
+	boardByBreed map[uint8][]*SphereBoard
+}
+
+type boardCell struct {
+	board int32
+	x, y  int16
+}
+
+// LoadSphereBoards decodes types 900 and 901.
+func (s *Store) LoadSphereBoards() (*SphereBoards, error) {
+	out := &SphereBoards{
+		boards:       make(map[int32]*SphereBoard),
+		spheres:      make(map[int32]*Sphere),
+		byBoard:      make(map[int32][]*Sphere),
+		byBoardCell:  make(map[boardCell]*Sphere),
+		boardByBreed: make(map[uint8][]*SphereBoard),
+	}
+	for _, e := range s.EntriesOf(TypeSphereBoard) {
+		rec, err := s.ReadRecord(e.Position)
+		if err != nil {
+			return nil, err
+		}
+		if b := decodeSphereBoard(rec.Data); b != nil {
+			out.boards[b.ID] = b
+		}
+	}
+	for _, e := range s.EntriesOf(TypeSphere) {
+		rec, err := s.ReadRecord(e.Position)
+		if err != nil {
+			return nil, err
+		}
+		if sp := decodeSphere(rec.Data); sp != nil {
+			out.spheres[sp.ID] = sp
+		}
+	}
+	out.reindex()
+	return out, nil
+}
+
+// NewSphereBoards builds a catalogue from explicit definitions (tests/tooling).
+func NewSphereBoards(boards []*SphereBoard, spheres []*Sphere) *SphereBoards {
+	out := &SphereBoards{
+		boards:       make(map[int32]*SphereBoard, len(boards)),
+		spheres:      make(map[int32]*Sphere, len(spheres)),
+		byBoard:      make(map[int32][]*Sphere),
+		byBoardCell:  make(map[boardCell]*Sphere),
+		boardByBreed: make(map[uint8][]*SphereBoard),
+	}
+	for _, b := range boards {
+		if b != nil {
+			out.boards[b.ID] = b
+		}
+	}
+	for _, sp := range spheres {
+		if sp != nil {
+			out.spheres[sp.ID] = sp
+		}
+	}
+	out.reindex()
+	return out
+}
+
+func (c *SphereBoards) reindex() {
+	c.byBoard = make(map[int32][]*Sphere, len(c.boards))
+	c.byBoardCell = make(map[boardCell]*Sphere, len(c.spheres))
+	c.boardIDs = make([]int32, 0, len(c.boards))
+	c.boardByBreed = make(map[uint8][]*SphereBoard, len(c.boards))
+
+	for id, b := range c.boards {
+		c.boardIDs = append(c.boardIDs, id)
+		c.boardByBreed[b.Breed] = append(c.boardByBreed[b.Breed], b)
+	}
+	sort.Slice(c.boardIDs, func(i, j int) bool { return c.boardIDs[i] < c.boardIDs[j] })
+
+	for _, sp := range c.spheres {
+		c.byBoard[sp.BoardID] = append(c.byBoard[sp.BoardID], sp)
+		c.byBoardCell[boardCell{sp.BoardID, sp.X, sp.Y}] = sp
+	}
+	for _, list := range c.byBoard {
+		sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	}
+}
+
+// Board returns a board by id.
+func (c *SphereBoards) Board(id int32) *SphereBoard {
+	if c == nil {
+		return nil
+	}
+	return c.boards[id]
+}
+
+// Sphere returns a node by id.
+func (c *SphereBoards) Sphere(id int32) *Sphere {
+	if c == nil {
+		return nil
+	}
+	return c.spheres[id]
+}
+
+// SpheresOf returns every node of a board, ascending by id.
+func (c *SphereBoards) SpheresOf(boardID int32) []*Sphere {
+	if c == nil {
+		return nil
+	}
+	return c.byBoard[boardID]
+}
+
+// At returns the node occupying a board cell, using the record's own 1-based
+// coordinates. This is the lookup the adjacency rule needs: "a direct path to the
+// sphere the cursor sits on" is a neighbourhood in this grid.
+func (c *SphereBoards) At(boardID int32, x, y int16) *Sphere {
+	if c == nil {
+		return nil
+	}
+	return c.byBoardCell[boardCell{boardID, x, y}]
+}
+
+// BoardsForBreed returns the boards defined for a breed (one per season).
+func (c *SphereBoards) BoardsForBreed(breed uint8) []*SphereBoard {
+	if c == nil {
+		return nil
+	}
+	return c.boardByBreed[breed]
+}
+
+// BoardIDs returns every board id, ascending.
+func (c *SphereBoards) BoardIDs() []int32 {
+	if c == nil {
+		return nil
+	}
+	return c.boardIDs
+}
+
+// Len reports how many nodes were decoded.
+func (c *SphereBoards) Len() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.spheres)
+}
+
+// BoardCount reports how many boards were decoded.
+func (c *SphereBoards) BoardCount() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.boards)
+}
+
+// decodeSphereBoard parses a `bg_0` record from its own deserializer:
+//
+//	[i32 id][i32 season][u8 breed][i32 ?][i16 ?][i16 ?][u8 n]{n x i32 ?}
+//
+// Every byte is accounted for (Leftover() == 0 on all 15 shipped boards); the
+// trailing four fields are simply never read by the client.
+func decodeSphereBoard(data []byte) *SphereBoard {
+	c := &cur{b: data}
+	b := &SphereBoard{}
+	b.ID = c.i32()
+	b.Season = c.i32()
+	b.Breed = c.u8()
+	b.UnreadInt = c.i32()
+	b.UnreadA = c.i16()
+	b.UnreadB = c.i16()
+
+	n := int(c.u8())
+	for i := 0; i < n && c.ok(); i++ {
+		b.UnreadIDs = append(b.UnreadIDs, c.i32())
+	}
+	if !c.ok() || b.ID <= 0 {
+		return nil
+	}
+	b.leftover = len(c.b) - c.pos
+	return b
+}
+
+// decodeSphere parses an `aeI` record from its own deserializer:
+//
+//	[i32 id][i32 boardId][i32 xpCost][i16 x][i16 y][i32 spellId][i32 equipmentPool]
+//	[i32 m]{m x Ht wrapper}[u8 n]{n x i32 cardId}[u8 deadEnd][i16 tpX][i16 tpY]
+//
+// The effect block is the same wrapper spells and conditions use, so it reuses
+// decodeEffectList rather than introducing a second reader.
+func decodeSphere(data []byte) *Sphere {
+	c := &cur{b: data}
+	s := &Sphere{}
+	s.ID = c.i32()
+	s.BoardID = c.i32()
+	s.XPCost = c.i32()
+	s.X = c.i16()
+	s.Y = c.i16()
+	s.SpellID = c.i32()
+	s.EquipmentPoolID = c.i32()
+	s.Effects = decodeEffectList(c)
+
+	n := int(c.u8())
+	for i := 0; i < n && c.ok(); i++ {
+		s.BarrierCards = append(s.BarrierCards, c.i32())
+	}
+	s.DeadEnd = c.u8() == 1
+	s.TeleportX = c.i16()
+	s.TeleportY = c.i16()
+
+	if !c.ok() || s.ID <= 0 {
+		return nil
+	}
+	s.leftover = len(c.b) - c.pos
+	return s
+}
