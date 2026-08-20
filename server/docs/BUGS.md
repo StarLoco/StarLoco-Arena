@@ -13,35 +13,32 @@ decompiled client, no runtime).
 
 ## Open / suspected
 
-### B-111 — the fighter equipment slot is the item's TYPE, not a free index (partly open)
+### `generic effet inconnu : 0` — the frames that genuinely have no effect record (documented, won't fix)
 
-Three live errors were found by tailing `output.log` during a real fight; two are
-fixed (see B-112), the third is only partly.
+Part 0's third field is the **generic effect id**, which the client resolves into
+the effect RECORD (`yi_1.f` → `gR().iK(n2)`). It is the shipped `Ht.effect_id`,
+i.e. exactly our `gamedata.Effect.EffectID`, and `0` is the data format's "no
+record" sentinel — so the lookup can never succeed and the client logs it.
 
-**Remaining: 30 `impossible d'ajouter l'item <id>` per fight, with no
-accompanying "position en dehors des limites".** That pairing is the tell: the
-position is now inside the 5-slot range, so the rejection is coming from the
-OTHER gate — `ne_2.a`, which refuses any item whose position is not the one its
-type demands. The client builds each equipment piece with
-`vi_1.ap((byte)uh_0.getType())` (`eh_2.java:81`), so a fighter card's record
-`Type` IS its slot type: weapon 1, pet 2, cloak 3, hat 4, dofus 5, occupying
-positions 0-4.
+A null record is not what it first looks like. Every read of it is null-guarded,
+so nothing crashes and the damage numbers are right (the value is applied
+verbatim). What breaks is PERSISTENCE: `akF()`, `akD()` and `isInfinite()` all
+read the record, so with none the effect is never added to the target's buff
+container and `jt()` is a no-op. **Any effect meant to LAST cannot last if it
+carries generic id 0.** Every remaining site is instantaneous, so the cost today
+is a log line — but it is a live trap for whoever gives one of them a duration.
 
-Fixed at ingest: `Session.canonicalEquipSlots` now rewrites each equipped card's
-position from its card type and drops collisions, so anything saved from here on
-is storable. NOT fixed for rows already in the database, and not enforced in the
-two serializers (`fight_packets.writeCombatFighterBlob`,
-`fighter_codec.encodeFighterBlob`) because neither has `Deps` in scope to look up
-a card's type — they can only dedupe and clamp the range, which is what
-`equipForWire` does. The clean fix is to thread the card table (or a resolver)
-into both writers, or to store the canonical slot once at load. Until then a
-fighter whose stored rows predate the fix still ships positions the client will
-refuse.
+Fixed where a real id was in scope: the zone AP/MP drain (`applyZoneResourceLoss`
+had `ef` right there) and the damage rebound (`ef.EffectID` is now threaded
+through `applyDamageRebound` / `dealReboundDamage`).
 
-The "we send 10" provenance is still unexplained: `decodeLoadoutCards` now caps at
-5 and the retail UI can only ever emit 5 positions, so the 10-row loadouts in the
-local database are either legacy or arrived through the unvalidated `buildFighter`
-path. Worth confirming before assuming the ingest fix covers everything.
+**Deliberately left at 0**: the AP/MP debit frames, close combat, the walk cost,
+the special-cell boosts and fallback damage. These are server-invented actions
+with no shipped `Ht` row — there is none with action 91/92 — so the only way to
+silence the log would be to attach a FOREIGN record, and if that record carried a
+finite `effect_duration` it would turn every AP debit into a timed buff that calls
+`jt()`, re-creating B-113. A log line is the cheaper bug.
+
 ### Coach action deck — nothing populates it in the 2.70 build (investigation CLOSED)
 
 The wrong-namespace half is fixed (B-088). The remaining question was what should
@@ -142,6 +139,39 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-111 - the fighter equipment slot is the item's TYPE, not a free index
+
+The client's fighter item inventory is a fixed 5-slot `ArrayInventory` (`en_1`,
+`ee_2.java:139`) and the position is **not** an index: each piece is built with
+`vi_1.ap((byte)uh_0.getType())` (`eh_2.java:81`), so a fighter card's record
+`Type` IS its slot type - weapon 1, pet 2, cloak 3, hat 4, dofus 5, at positions
+0-4 - and `ne_2.a` refuses any item whose position is not its type's.
+
+Two independent gates with two different messages, which is what made the first
+attempt look complete when it was not: clamping the range removed every
+`position en dehors des limites` and left 30 `impossible d'ajouter l'item`
+behind. The ABSENCE of the first message beside the second was the clue.
+
+Fixed at the source of truth rather than at each writer. `FighterRepo` takes an
+injected `EquipSlotOf` (the store must not import game data) and normalises on
+BOTH read paths, so every consumer - roster blob, fight blob, stat computation -
+sees the same storable set the client will accept. The repair is read-only: the
+rows on disk are untouched, and with no card table loaded the fighter comes back
+exactly as stored, so a data-less dev server does not silently empty every
+loadout.
+
+Live: `impossible d'ajouter l'item` 40 -> 30 -> **0**. A full login-plus-fight run
+now logs zero protocol errors.
+
+**Consequence worth knowing:** a fighter that had stored 10 rows now presents 4
+(`objects=4[95 103 125 122]` - pet, cloak, hat, dofus, no weapon) and its stats
+drop with it (135 HP / allDmg 55% -> 95 HP / 15%). The server had been computing
+stats from equipment the client discarded on arrival, so the two disagreed all
+along; this makes them agree. The provenance of the 10 rows is still unexplained
+- all ten are genuine fighter cards, so it is NOT the B-112 transposition - most
+likely an older uncapped `buildFighter`. Worth confirming if pre-existing
+fighters matter.
 
 ### B-113 - Nx was inverted, and round-card effects landed where the client cannot take them
 

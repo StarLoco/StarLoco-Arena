@@ -9,7 +9,56 @@ import (
 )
 
 // FighterRepo persists a coach's fighters.
-type FighterRepo struct{ db *gorm.DB }
+type FighterRepo struct {
+	db *gorm.DB
+
+	// EquipSlotOf maps a fighter-card template id to the equipment position it
+	// must occupy, reporting false for an id that is not equippable. It is
+	// injected at startup (the store must not depend on the game-data package),
+	// and when nil every fighter is returned exactly as stored.
+	//
+	// It exists because a fighter's equipment position is NOT a free index: the
+	// client derives it from the card's own record type
+	// (`vi_1.ap((byte)uh_0.getType())`, eh_2.java:81) and refuses on arrival any
+	// item whose position is not its type's, or whose position falls outside the
+	// 5-slot inventory. Normalising here, at the two read paths, keeps every
+	// consumer - the roster blob, the fight blob, stat computation - agreed with
+	// what the client will actually hold.
+	EquipSlotOf func(templateID int32) (slot int16, ok bool)
+}
+
+// maxEquipSlots is the client's fighter item inventory size (`en_1(..., 5, ...)`,
+// ee_2.java:139).
+const maxEquipSlots = 5
+
+// normalizeEquipment rewrites a fighter's equipment to the storable subset: each
+// item at the position its card type demands, at most one per position, in
+// ascending order.
+//
+// Read-only repair: the rows on disk are left alone, so a server started without
+// game data (EquipSlotOf nil) still returns them untouched, and nothing is
+// destroyed by a mis-loaded card table.
+func (r *FighterRepo) normalizeEquipment(f *domain.Fighter) {
+	if r.EquipSlotOf == nil || f == nil || len(f.Objects) == 0 {
+		return
+	}
+	// One pass per position, taking the first card that belongs there: the break
+	// is what enforces "at most one item per slot", so no separate seen-set is
+	// needed (an earlier version carried one and it was pure decoration - a
+	// mutation that deleted it changed nothing).
+	out := make([]domain.FighterObject, 0, maxEquipSlots)
+	for slot := int16(0); slot < maxEquipSlots; slot++ {
+		for _, o := range f.Objects {
+			if got, ok := r.EquipSlotOf(o.TemplateID); !ok || got != slot {
+				continue
+			}
+			o.Slot = slot
+			out = append(out, o)
+			break
+		}
+	}
+	f.Objects = out
+}
 
 // Create inserts a fighter (with its spells + objects) in one transaction.
 func (r *FighterRepo) Create(f *domain.Fighter) error {
@@ -69,6 +118,9 @@ func (r *FighterRepo) ListByCoach(coachID uint) ([]domain.Fighter, error) {
 	var fighters []domain.Fighter
 	err := r.db.Preload("Spells").Preload("Objects").Preload("Conditions").
 		Where("coach_id = ?", coachID).Find(&fighters).Error
+	for i := range fighters {
+		r.normalizeEquipment(&fighters[i])
+	}
 	return fighters, err
 }
 
@@ -79,6 +131,7 @@ func (r *FighterRepo) Get(id uint) (*domain.Fighter, error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
+	r.normalizeEquipment(&f)
 	return &f, err
 }
 

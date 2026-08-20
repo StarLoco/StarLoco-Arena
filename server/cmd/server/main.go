@@ -394,6 +394,21 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		tm = game.NewTournamentManager()
 	}
 
+	// Teach the fighter repo where a card may be equipped, so every fighter it
+	// hands out already matches what the client's 5-slot inventory will accept.
+	// The store cannot import game data itself, so the mapping is injected: a
+	// card's record type IS its slot type (vi_1 — weapon 1 … dofus 5, at
+	// positions 0-4).
+	if st != nil && fighterCards != nil {
+		st.Fighters.EquipSlotOf = func(templateID int32) (int16, bool) {
+			c := fighterCards.Get(templateID)
+			if c == nil || c.Type < 1 || c.Type > 5 {
+				return 0, false
+			}
+			return int16(c.Type) - 1, true
+		}
+	}
+
 	return &game.Deps{
 		Store:          st,
 		World:          game.NewRegistry(cfg.World.AoIRadius),

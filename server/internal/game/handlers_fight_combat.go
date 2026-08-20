@@ -701,7 +701,9 @@ func (f *Fight) closeCombat(ff *FightFighter, target Pos) {
 			base = closeCombatCritDamages
 		}
 		final := f.computeElementalDamage(ff, victim, base, elem)
-		final = f.applyDamageRebound(ff, victim, final) // 89: reflect a share to the attacker
+		// 89: reflect a share to the attacker. Close combat is not a spell, so it
+		// has no effect record to name - 0 is honest here (see B-111).
+		final = f.applyDamageRebound(ff, victim, final, 0)
 		f.applyHPDelta(ff, victim, directElementActionID(elem), 0, -final)
 	}
 	if seq, err := buildActionSequenceExecute(); err == nil {

@@ -368,7 +368,7 @@ func (f *Fight) applyDamageEffect(caster *FightFighter, ef gamedata.Effect, targ
 	final := f.computeElementalDamage(caster, victim, base, damageElement(ef.ActionID))
 	// Damage rebound (89): reflect a share of the mitigated hit back to the
 	// attacker before it lands, reducing what the victim takes.
-	final = f.applyDamageRebound(caster, victim, final)
+	final = f.applyDamageRebound(caster, victim, final, ef.EffectID)
 	before := victim.HP
 	f.applyHPDelta(caster, victim, ef.ActionID, ef.EffectID, -final)
 	if leech && final > 0 {
@@ -461,7 +461,7 @@ func (f *Fight) applyScaledDamage(caster *FightFighter, ef gamedata.Effect, targ
 		return
 	}
 	final := f.computeElementalDamage(caster, victim, val, damageElement(ef.ActionID))
-	final = f.applyDamageRebound(caster, victim, final)
+	final = f.applyDamageRebound(caster, victim, final, ef.EffectID)
 	f.applyHPDelta(caster, victim, ef.ActionID, ef.EffectID, -final)
 }
 
@@ -591,7 +591,7 @@ func (f *Fight) dealTransferredDamage(caster, to *FightFighter, runEffectID, gen
 // leaves the caster's loss un-broadcast — the reflected HP IS broadcast, matching
 // the 2.70 damage-transfer convention (the client renders server HP verbatim and
 // would otherwise desync the attacker's gauge).
-func (f *Fight) applyDamageRebound(caster, victim *FightFighter, final int32) int32 {
+func (f *Fight) applyDamageRebound(caster, victim *FightFighter, final, genericID int32) int32 {
 	if caster == nil || caster == victim || final <= 0 {
 		return final
 	}
@@ -606,7 +606,7 @@ func (f *Fight) applyDamageRebound(caster, victim *FightFighter, final int32) in
 	if rebound <= 0 {
 		return final
 	}
-	f.dealReboundDamage(victim, caster, rebound)
+	f.dealReboundDamage(victim, caster, rebound, genericID)
 	final -= rebound
 	if final < 0 {
 		final = 0
@@ -617,7 +617,7 @@ func (f *Fight) applyDamageRebound(caster, victim *FightFighter, final int32) in
 // dealReboundDamage applies reflected damage straight to the attacker's HP (no
 // immune/resist/rebound re-check — a single hop) and broadcasts it as neutral HP
 // loss sourced from the reflector, killing the attacker if it drops to 0.
-func (f *Fight) dealReboundDamage(from, to *FightFighter, amount int32) {
+func (f *Fight) dealReboundDamage(from, to *FightFighter, amount, genericID int32) {
 	if to == nil || amount <= 0 {
 		return
 	}
@@ -625,8 +625,9 @@ func (f *Fight) dealReboundDamage(from, to *FightFighter, amount int32) {
 	if to.HP < 0 {
 		to.HP = 0
 	}
-	eff, _ := buildRunningEffect(f.nextActionUID(), protocol.RunEffectHPLoss, 0,
-		from.WireID, to.WireID, to.Pos, amount, 0, false)
+	eff, _ := buildRunningEffect(f.nextActionUID(), protocol.RunEffectHPLoss, genericID,
+		from.WireID, to.WireID, to.Pos, amount, 0, false,
+		sourceSpellPart(f.sourceSpellID))
 	f.broadcast(eff)
 	if to.HP <= 0 {
 		dies, _ := buildFighterDies(f.nextActionUID(), to.WireID)
@@ -681,8 +682,9 @@ func (f *Fight) applyZoneResourceLoss(caster *FightFighter, ef gamedata.Effect, 
 		} else {
 			victim.MP -= drained
 		}
-		eff, _ := buildRunningEffect(f.nextActionUID(), runEffect, 0,
-			caster.WireID, victim.WireID, victim.Pos, drained, 0, true)
+		eff, _ := buildRunningEffect(f.nextActionUID(), runEffect, ef.EffectID,
+			caster.WireID, victim.WireID, victim.Pos, drained, 0, true,
+			sourceSpellPart(f.sourceSpellID))
 		f.broadcast(eff)
 	}
 }
@@ -708,7 +710,7 @@ func (f *Fight) applyZoneDamage(caster *FightFighter, ef gamedata.Effect, _ Pos)
 			continue
 		}
 		final := f.computeElementalDamage(caster, victim, base, elem)
-		final = f.applyDamageRebound(caster, victim, final)
+		final = f.applyDamageRebound(caster, victim, final, ef.EffectID)
 		f.applyHPDelta(caster, victim, ef.ActionID, ef.EffectID, -final)
 	}
 }
