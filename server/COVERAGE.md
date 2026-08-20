@@ -107,6 +107,8 @@ BUGS.md B-108.
 | 557 | GuildRankDelete (`Ko`) | C2S | ✓ | A | ✓ | ✓ |
 | 2600 | GuildMemberStats (`mL`) | C2S | ✓ | A | — | — |
 | 2601 | GuildMemberReport (`kq_2`) | S2C | ✓ | A | — | — |
+| 5470 | DemonAffiliate (`Zu`, arch 3) | C2S | ✓ | A | ✓ | — |
+| 5403 | DemonAffiliateResult (`mj_1`) | S2C | ✓ | A | ✓ | — |
 | 3198 | ClanContent | S2C | ✓ | A (ano_1) | — | — |
 | 3161 | UserGroupContent (`/p`) | C2S | ✓ | A (aux_, arch 3) | — | ✓ **live** |
 | 3170 | GroupContent | S2C | ✓ | A (aik_1) | — | — |

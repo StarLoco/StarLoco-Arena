@@ -257,3 +257,16 @@ type GuildMember struct {
 }
 
 func (GuildMember) TableName() string { return "guild_members" }
+
+// GuildDemonReputation is a clan's standing with one Demon des Heures. Earned by
+// offering cards at the demon's totem (opcode 5470); the highest-standing clan
+// for a demon holds that demon's island.
+type GuildDemonReputation struct {
+	ID      uint  `gorm:"primaryKey"`
+	GuildID uint  `gorm:"uniqueIndex:idx_guild_demon;not null"`
+	DemonID int16 `gorm:"uniqueIndex:idx_guild_demon;not null"`
+	// Points is the quarterly reputation the demon ladder ranks on.
+	Points int64 `gorm:"not null;default:0"`
+}
+
+func (GuildDemonReputation) TableName() string { return "guild_demon_reputations" }

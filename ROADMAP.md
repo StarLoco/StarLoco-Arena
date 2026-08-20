@@ -57,7 +57,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
 | Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
 | Achievements | ✅ | 332/5/13 decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced, tome grow-only (B-106). 47 are structurally blocked on 2v2/tournaments; the rest need their statistic to start moving |
-| Guilds / clans | 🟡 | **Not** structurally blocked — the client's clan feature is fully wired and reachable (item 31). Storage, ranks/rights and the 0x20 membership blob are in; the create/invite/list opcodes are next |
+| Guilds / clans | ✅ | **Complete** (item 31), and never structurally blocked — the client's clan feature is fully wired; the server was writing an empty 0x20 blob, which every entry point gates on. Create/invite/accept, ranks + rights, kick/quit/destroy, clan chat, clan tag + clan ladder, demon affiliation, and clan islands on the retail rule (one island per demon, held by its top clan). Live-verified |
 | 2v2 | ⬜ | Deferred by the maintainer (item 30) |
 | Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
@@ -1559,23 +1559,26 @@ is a signing certificate or SignPath); no published Docker image.
     Also done: the clan tag now fills the column reserved in the 1v1 board, and
     the clan ladder returns real rows (score = the sum of member ratings - a
     server choice, since the client renders the number without interpreting it).
-    Also done: the clan-island Zaap. Card 859 is the one Zaap card with no fixed
-    destination - it goes to the coach's OWN island, allotted from the 24 the map
-    data ships (worlds 86-109). Allocation is persisted, not derived from the
-    guild id, because the islands are finite and a clan's island must not move.
-    **Item 31 is complete** apart from one piece that turned out to belong
-    elsewhere:
-    - **Demon affiliation is not a guild feature.** The `%affiliate%` button does
-      not send an "affiliate" message: it opens a card-offering TRADE
-      (`demonAffiliationDialog`, with a split-quantity sub-dialog) and sends
-      `Zu` = **5470** `[i16 demonId][i16 count] count x {[i32 cardId][i16 qty]}`,
-      answered on 5403. That is the demon-REPUTATION system - card costs, a
-      per-demon reputation ladder, and the "top clan holds the island" rule the
-      client's `error.guild.noIsland` refers to. It needs the demon ladder to
-      exist first (`buildDemonLadder` still returns an empty window), so it is
-      tracked with the demon/totem work rather than here. **Do not implement 513 (rename) or 551 (icon)** —
-    both are reachable only from the client's `Test` Lua debug library, with no
-    UI and no assets.
+    Also done, and it closes the feature: **clan islands, on the retail rule.**
+    The client states it outright - *"Seul le clan le plus puissant au service de
+    chaque Démon reçoit une île de clan"* - and the data agrees: **24 demon
+    totems (ids 1-24) and exactly 24 islands (worlds 86-109)**, a 1:1. So an
+    island is not chosen and not random: it belongs to a DEMON, and is held by
+    that demon's top-ranked clan. A clan's only lever is which demon to serve.
+    The island is therefore DERIVED, never stored - a clan that is overtaken
+    loses it, which an allotted island could not express.
+    Implemented with it: demon affiliation (**5470**, a card OFFERING with a
+    split-quantity dialog, not a button; leader-only, one-way, answered on 5403)
+    and the per-demon clan ladder (**27510/27511**), which had been replying with
+    a well-formed empty window since it was written.
+    The client cannot express a choice of island at all: card 859 sends only
+    `[i32 cardTemplateId]`, so the destination is entirely server-side.
+    Two server-side rates are ours, since the client only ever renders totals and
+    fixes neither: a card is worth its own VALUE in reputation (rare gives more),
+    and the clan-board score is the sum of member ratings. Both are stated in
+    tests rather than buried.
+    **Not implemented, deliberately:** 513 (rename) and 551 (icon) - reachable
+    only from the client's `Test` Lua debug library, no UI, no assets.
 32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting

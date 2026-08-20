@@ -119,6 +119,17 @@ var migrations = []migration{
 			return tx.AutoMigrate(&domain.Guild{})
 		},
 	},
+	{
+		// Demon reputation. A clan's island is derived from this rather than
+		// stored, so the island column added in 3 is now unused - left in place
+		// rather than dropped, because dropping a column is the one thing
+		// AutoMigrate cannot do and it costs nothing to keep.
+		Version: 4,
+		Name:    "guild_demon_reputation",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.GuildDemonReputation{})
+		},
+	},
 }
 
 // runMigrations applies every step the database has not recorded yet, in order.

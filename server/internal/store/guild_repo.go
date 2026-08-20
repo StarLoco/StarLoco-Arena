@@ -54,6 +54,10 @@ var ErrGuildRankLimit = errors.New("store: guild rank limit reached")
 // which the client refuses to delete and which the guild cannot work without.
 var ErrGuildRankProtected = errors.New("store: guild rank cannot be removed")
 
+// ErrGuildDemonInvalid / ErrGuildAlreadyAffiliated guard demon affiliation.
+var ErrGuildDemonInvalid = errors.New("store: no such demon")
+var ErrGuildAlreadyAffiliated = errors.New("store: guild already serves a demon")
+
 // GuildRepo is the guild persistence layer.
 type GuildRepo struct{ db *gorm.DB }
 
@@ -332,45 +336,112 @@ func (r *GuildRepo) NamesByCoachName(names []string) (map[string]string, error) 
 	return out, nil
 }
 
-// ErrNoIslandFree is returned when every clan island is already allotted. The
-// caller maps it to the client's own `error.guild.noIsland` message.
-var ErrNoIslandFree = errors.New("store: no clan island available")
+// DemonCount is the number of Demons des Heures: 24 totems ship in the world
+// data, carrying demon ids 1..24 - and the shipped map data has exactly 24 clan
+// islands. That 1:1 is the whole attribution rule.
+const DemonCount int16 = 24
 
-// AssignIsland gives a guild the lowest free clan island, or returns the one it
-// already holds. Allocation is persisted rather than derived from the guild id:
-// there are only 24 islands, so two clans must never resolve to the same world,
-// and a clan's island must not move when another is destroyed.
-func (r *GuildRepo) AssignIsland(guildID uint) (int16, error) {
-	var world int16
+// IslandWorldForDemon maps a demon to the island its champion clan holds.
+//
+// The pairing (demon N -> world 85+N) is the server's, not the client's: nothing
+// in the data names which island belongs to which demon, and the client is never
+// told - it only ever receives a destination. What IS from the client is the rule
+// itself: "Seul le clan le plus puissant au service de chaque Demon recoit une
+// ile de clan" - one island per demon, held by its strongest servant.
+func IslandWorldForDemon(demonID int16) (int16, bool) {
+	if demonID < 1 || demonID > DemonCount {
+		return 0, false
+	}
+	w := GuildIslandFirst + demonID - 1
+	if w > GuildIslandLast {
+		return 0, false
+	}
+	return w, true
+}
+
+// AddDemonReputation credits a clan's standing with a demon and returns the new
+// total.
+func (r *GuildRepo) AddDemonReputation(guildID uint, demonID int16, points int64) (int64, error) {
+	var total int64
 	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var rep domain.GuildDemonReputation
+		err := tx.Where("guild_id = ? AND demon_id = ?", guildID, demonID).First(&rep).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			rep = domain.GuildDemonReputation{GuildID: guildID, DemonID: demonID, Points: points}
+			total = points
+			return tx.Create(&rep).Error
+		}
+		if err != nil {
+			return err
+		}
+		rep.Points += points
+		total = rep.Points
+		return tx.Save(&rep).Error
+	})
+	return total, err
+}
+
+// DemonReputationRow is one line of a demon's clan ladder.
+type DemonReputationRow struct {
+	GuildID uint
+	Name    string
+	Points  int64
+}
+
+// DemonLadder returns the clans serving a demon, strongest first. Ties break on
+// guild id so the order is stable - the top slot decides who holds an island, and
+// an island that changed hands on every query would be worse than none.
+func (r *GuildRepo) DemonLadder(demonID int16, limit int) ([]DemonReputationRow, error) {
+	var out []DemonReputationRow
+	q := r.db.Table("guild_demon_reputations AS rep").
+		Select("rep.guild_id AS guild_id, g.name AS name, rep.points AS points").
+		Joins("JOIN guilds g ON g.id = rep.guild_id").
+		Where("rep.demon_id = ? AND g.demon_id = ?", demonID, demonID).
+		Order("rep.points DESC, rep.guild_id ASC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	return out, q.Scan(&out).Error
+}
+
+// IslandOf resolves the island a clan currently holds, if any.
+//
+// Derived, never stored: a clan holds its demon's island only while it is that
+// demon's top-ranked servant. Storing the allocation would let a clan keep an
+// island after being overtaken, which is precisely the thing the mechanic is
+// about.
+func (r *GuildRepo) IslandOf(guildID uint) (int16, bool, error) {
+	g, err := r.ByID(guildID)
+	if err != nil || g == nil || g.DemonID == 0 {
+		return 0, false, err
+	}
+	world, ok := IslandWorldForDemon(g.DemonID)
+	if !ok {
+		return 0, false, nil
+	}
+	rows, err := r.DemonLadder(g.DemonID, 1)
+	if err != nil || len(rows) == 0 || rows[0].GuildID != guildID {
+		return 0, false, err
+	}
+	return world, true, nil
+}
+
+// SetDemon affiliates a clan to a demon. Refused once it already serves one:
+// the client only offers the button when `demonId == 0` (pq_1.java:56), and
+// switching allegiance would take an island from its holder for free.
+func (r *GuildRepo) SetDemon(guildID uint, demonID int16) error {
+	if demonID < 1 || demonID > DemonCount {
+		return ErrGuildDemonInvalid
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
 		var g domain.Guild
 		if err := tx.First(&g, guildID).Error; err != nil {
 			return err
 		}
-		if g.IslandWorld != 0 {
-			world = g.IslandWorld
-			return nil
-		}
-		var taken []int16
-		if err := tx.Model(&domain.Guild{}).
-			Where("island_world <> 0").Pluck("island_world", &taken).Error; err != nil {
-			return err
-		}
-		used := make(map[int16]bool, len(taken))
-		for _, w := range taken {
-			used[w] = true
-		}
-		for w := GuildIslandFirst; w <= GuildIslandLast; w++ {
-			if !used[w] {
-				world = w
-				break
-			}
-		}
-		if world == 0 {
-			return ErrNoIslandFree
+		if g.DemonID != 0 {
+			return ErrGuildAlreadyAffiliated
 		}
 		return tx.Model(&domain.Guild{}).Where("id = ?", guildID).
-			Update("island_world", world).Error
+			Update("demon_id", demonID).Error
 	})
-	return world, err
 }

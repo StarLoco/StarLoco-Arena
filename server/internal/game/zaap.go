@@ -94,8 +94,12 @@ func (d *Deps) clanIslandDest(coachID uint) (zaapDest, bool) {
 	if err != nil || m == nil {
 		return zaapDest{}, false
 	}
-	world, err := d.Store.Guilds.AssignIsland(m.GuildID)
-	if err != nil || world == 0 {
+	// The island is DERIVED, not allotted: a clan travels to its demon's island
+	// only while it is that demon's top-ranked servant. A clan that has been
+	// overtaken loses the destination, which is the mechanic working rather than
+	// a failure.
+	world, ok, err := d.Store.Guilds.IslandOf(m.GuildID)
+	if err != nil || !ok || world == 0 {
 		return zaapDest{}, false
 	}
 	inst, ok := clanIslandZaap[world]

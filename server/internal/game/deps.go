@@ -72,6 +72,7 @@ func RegisterAll(r *Router, d *Deps) {
 	registerChatHandlers(r, d)
 	registerGuildHandlers(r, d)
 	registerGuildAdminHandlers(r, d)
+	registerDemonAffiliationHandlers(r, d)
 	registerSocialHandlers(r, d)
 	registerInventoryHandlers(r, d)
 	registerShopHandlers(r, d)

@@ -2,6 +2,7 @@ package game
 
 import (
 	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
 // Demon totems and tournament totems.
@@ -43,7 +44,7 @@ func handleDemonLadderRequest(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	frame, err := buildDemonLadder(demonID)
+	frame, err := buildDemonLadder(demonID, s.deps.demonLadderRows(int16(demonID)), s.deps.viewerDemon(s.Coach.ID))
 	if err != nil {
 		return err
 	}
@@ -62,14 +63,22 @@ func handleDemonLadderRequest(s *Session, f *protocol.C2SFrame) error {
 // rows — omitting it throws inside the client's decoder and the dialog never
 // opens. statusFlag MUST be 1 for the client (awj) to (re)fill its rows. Guild
 // reputation is not modelled, so this is always an empty (count 0) window.
-func buildDemonLadder(demonID uint16) ([]byte, error) {
+func buildDemonLadder(demonID uint16, rows []store.DemonReputationRow, viewerDemon int16) ([]byte, error) {
 	const statusPopulate uint16 = 1
 	w := protocol.NewWriter().
 		U16(demonID).
 		U16(statusPopulate).
 		I32(0). // startRank
-		I32(0). // row count: no guild-reputation data yet
-		I64(0)  // per-message demon affiliation
+		I32(int32(len(rows)))
+	for _, e := range rows {
+		writeLadderString(w, e.Name)
+		w.I64(e.Points) // quarterly reputation
+		w.I64(0)        // differential quarterly (not tracked)
+		w.I64(e.Points) // monthly reputation
+	}
+	// Trailing per-message field: the VIEWER's own clan affiliation, which is
+	// what the window uses to decide whether to offer the affiliate control.
+	w.I64(int64(viewerDemon))
 	return protocol.EncodeS2C(protocol.OpDemonLadder, w.Bytes())
 }
 
@@ -249,4 +258,34 @@ func (s *Session) sendTournamentSearchError(code, subCode uint8) error {
 		return err
 	}
 	return s.Send(frame)
+}
+
+// demonLadderRows returns the clans serving a demon, strongest first. Empty when
+// guilds are unavailable, which is exactly what this message carried before.
+func (d *Deps) demonLadderRows(demonID int16) []store.DemonReputationRow {
+	if d == nil || d.Store == nil || d.Store.Guilds == nil {
+		return nil
+	}
+	rows, err := d.Store.Guilds.DemonLadder(demonID, ladderPageSize)
+	if err != nil {
+		return nil
+	}
+	return rows
+}
+
+// viewerDemon is the demon the viewer's own clan serves (0 = none/no clan). The
+// window reads it to decide whether the affiliate control applies.
+func (d *Deps) viewerDemon(coachID uint) int16 {
+	if d == nil || d.Store == nil || d.Store.Guilds == nil {
+		return 0
+	}
+	m, err := d.Store.Guilds.MembershipOf(coachID)
+	if err != nil || m == nil {
+		return 0
+	}
+	g, err := d.Store.Guilds.ByID(m.GuildID)
+	if err != nil || g == nil {
+		return 0
+	}
+	return g.DemonID
 }

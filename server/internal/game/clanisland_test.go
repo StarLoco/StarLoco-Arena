@@ -22,7 +22,10 @@ func TestClanIslandDestResolvesTheGuildsOwnIsland(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	d := &Deps{Store: st}
 
-	mk := func(login, coachName, guildName string) uint {
+	// A clan reaches its island by SERVING A DEMON and out-giving everyone else
+	// serving it - the island is demon N's, not the clan's. Two clans on
+	// different demons therefore hold different islands.
+	mk := func(login, coachName, guildName string, demon int16) uint {
 		t.Helper()
 		acc, err := st.Accounts.CreateAccount(login, "secret", false)
 		if err != nil {
@@ -32,13 +35,20 @@ func TestClanIslandDestResolvesTheGuildsOwnIsland(t *testing.T) {
 		if err != nil {
 			t.Fatalf("coach: %v", err)
 		}
-		if _, err := st.Guilds.Create(guildName, c.ID, "Chef", "Membre"); err != nil {
+		g, err := st.Guilds.Create(guildName, c.ID, "Chef", "Membre")
+		if err != nil {
 			t.Fatalf("guild: %v", err)
+		}
+		if err := st.Guilds.SetDemon(g.ID, demon); err != nil {
+			t.Fatalf("affiliate: %v", err)
+		}
+		if _, err := st.Guilds.AddDemonReputation(g.ID, demon, 100); err != nil {
+			t.Fatalf("reputation: %v", err)
 		}
 		return c.ID
 	}
-	a := mk("isl_a", "ChefA", "ClanA")
-	b := mk("isl_b", "ChefB", "ClanB")
+	a := mk("isl_a", "ChefA", "ClanA", 1)
+	b := mk("isl_b", "ChefB", "ClanB", 2)
 
 	da, ok := d.clanIslandDest(a)
 	if !ok {

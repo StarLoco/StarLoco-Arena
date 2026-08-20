@@ -217,71 +217,106 @@ func setStrength(t *testing.T, s *Store, coachID uint, v int32) {
 	}
 }
 
-// TestClanIslandAllocationIsStableAndUnique: there are only 24 islands, so two
-// clans must never resolve to the same world, and a clan's island must not move
-// on a second call. Deriving the world from the guild id would satisfy neither
-// once ids pass 24.
-func TestClanIslandAllocationIsStableAndUnique(t *testing.T) {
+// TestIslandBelongsToTheDemonsTopClan is the retail rule, and the reason the
+// island is derived rather than stored: "Seul le clan le plus puissant au service
+// de chaque Demon recoit une ile de clan". An allotted island would stay with a
+// clan that had been overtaken.
+func TestIslandBelongsToTheDemonsTopClan(t *testing.T) {
 	s := newTestStore(t)
 	a := guildTestCoach(t, s, "ChefA")
 	b := guildTestCoach(t, s, "ChefB")
 	ga, _ := s.Guilds.Create("ClanA", a, "Chef", "Membre")
 	gb, _ := s.Guilds.Create("ClanB", b, "Chef", "Membre")
 
-	w1, err := s.Guilds.AssignIsland(ga.ID)
-	if err != nil {
-		t.Fatalf("assign A: %v", err)
+	// Both serve demon 3, so both are competing for world 88.
+	if err := s.Guilds.SetDemon(ga.ID, 3); err != nil {
+		t.Fatalf("affiliate A: %v", err)
 	}
-	if w1 < GuildIslandFirst || w1 > GuildIslandLast {
-		t.Fatalf("island %d is outside the shipped range %d-%d", w1, GuildIslandFirst, GuildIslandLast)
+	if err := s.Guilds.SetDemon(gb.ID, 3); err != nil {
+		t.Fatalf("affiliate B: %v", err)
 	}
-	again, err := s.Guilds.AssignIsland(ga.ID)
-	if err != nil || again != w1 {
-		t.Errorf("second call moved the island: %d -> %d (%v)", w1, again, err)
+	if _, err := s.Guilds.AddDemonReputation(ga.ID, 3, 100); err != nil {
+		t.Fatalf("rep A: %v", err)
 	}
-	w2, err := s.Guilds.AssignIsland(gb.ID)
-	if err != nil {
-		t.Fatalf("assign B: %v", err)
+	if _, err := s.Guilds.AddDemonReputation(gb.ID, 3, 50); err != nil {
+		t.Fatalf("rep B: %v", err)
 	}
-	if w2 == w1 {
-		t.Errorf("two clans were given the same island (%d)", w1)
+
+	world, ok, err := s.Guilds.IslandOf(ga.ID)
+	if err != nil || !ok {
+		t.Fatalf("the leading clan has no island (%v)", err)
+	}
+	want, _ := IslandWorldForDemon(3)
+	if world != want {
+		t.Errorf("island = world %d, want %d (demon 3's island)", world, want)
+	}
+	if _, ok, _ := s.Guilds.IslandOf(gb.ID); ok {
+		t.Error("the SECOND-placed clan also holds an island")
+	}
+
+	// B overtakes A: the island must move with the standing.
+	if _, err := s.Guilds.AddDemonReputation(gb.ID, 3, 100); err != nil {
+		t.Fatalf("rep B2: %v", err)
+	}
+	if _, ok, _ := s.Guilds.IslandOf(ga.ID); ok {
+		t.Error("the overtaken clan kept its island")
+	}
+	if w, ok, _ := s.Guilds.IslandOf(gb.ID); !ok || w != want {
+		t.Errorf("the new leader got world %d (ok=%v), want %d", w, ok, want)
 	}
 }
 
-// TestClanIslandsRunOut: the client has an "your clan is not ranked high enough
-// to have an island" message precisely because they are finite. Once all 24 are
-// held, the next clan must be refused rather than handed a duplicate or a world
-// that does not exist.
-func TestClanIslandsRunOut(t *testing.T) {
+// TestUnaffiliatedClanHasNoIsland: serving no demon means no island, which is the
+// state every clan starts in.
+func TestUnaffiliatedClanHasNoIsland(t *testing.T) {
 	s := newTestStore(t)
-	total := int(GuildIslandLast-GuildIslandFirst) + 1
-	for i := 0; i <= total; i++ {
-		leader := guildTestCoach(t, s, "Chef"+itoaTest(i))
-		g, err := s.Guilds.Create("Clan"+itoaTest(i), leader, "Chef", "Membre")
-		if err != nil {
-			t.Fatalf("create %d: %v", i, err)
-		}
-		w, err := s.Guilds.AssignIsland(g.ID)
-		if i < total {
-			if err != nil || w == 0 {
-				t.Fatalf("clan %d got no island (%v) but %d should exist", i, err, total)
-			}
-			continue
-		}
-		if !errors.Is(err, ErrNoIslandFree) {
-			t.Errorf("clan %d past the limit got island %d (%v), want ErrNoIslandFree", i, w, err)
-		}
+	a := guildTestCoach(t, s, "Chef")
+	g, _ := s.Guilds.Create("ClanNeutre", a, "Chef", "Membre")
+	if _, ok, err := s.Guilds.IslandOf(g.ID); ok || err != nil {
+		t.Errorf("an unaffiliated clan holds an island (ok=%v, err=%v)", ok, err)
 	}
 }
 
-func itoaTest(n int) string {
-	if n == 0 {
-		return "0"
+// TestDemonIslandsAreOneToOne: 24 demons, 24 islands, no two demons sharing one.
+func TestDemonIslandsAreOneToOne(t *testing.T) {
+	seen := map[int16]int16{}
+	for d := int16(1); d <= DemonCount; d++ {
+		w, ok := IslandWorldForDemon(d)
+		if !ok {
+			t.Fatalf("demon %d has no island", d)
+		}
+		if w < GuildIslandFirst || w > GuildIslandLast {
+			t.Errorf("demon %d -> world %d, outside %d-%d", d, w, GuildIslandFirst, GuildIslandLast)
+		}
+		if prev, dup := seen[w]; dup {
+			t.Errorf("demons %d and %d share world %d", prev, d, w)
+		}
+		seen[w] = d
 	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
+	if len(seen) != int(DemonCount) {
+		t.Errorf("%d distinct islands for %d demons", len(seen), DemonCount)
 	}
-	return string(b)
+	if _, ok := IslandWorldForDemon(0); ok {
+		t.Error("demon 0 (unaffiliated) was given an island")
+	}
+	if _, ok := IslandWorldForDemon(DemonCount + 1); ok {
+		t.Error("a demon past the last one was given an island")
+	}
+}
+
+// TestAffiliationIsOneWay: the client only offers the affiliate control while
+// demonId == 0, and switching would take an island from its holder for free.
+func TestAffiliationIsOneWay(t *testing.T) {
+	s := newTestStore(t)
+	a := guildTestCoach(t, s, "Chef")
+	g, _ := s.Guilds.Create("ClanFidele", a, "Chef", "Membre")
+	if err := s.Guilds.SetDemon(g.ID, 5); err != nil {
+		t.Fatalf("first affiliation: %v", err)
+	}
+	if err := s.Guilds.SetDemon(g.ID, 6); !errors.Is(err, ErrGuildAlreadyAffiliated) {
+		t.Errorf("re-affiliation returned %v, want ErrGuildAlreadyAffiliated", err)
+	}
+	if err := s.Guilds.SetDemon(g.ID, 99); err == nil {
+		t.Error("a nonexistent demon was accepted")
+	}
 }
