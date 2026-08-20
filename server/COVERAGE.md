@@ -99,6 +99,14 @@ BUGS.md B-108.
 | 556 | GuildMemberGone (`h_0`) | S2C | ✓ | A | — | — |
 | 558 | GuildCreatedFeed (`ahU`) | S2C | ✓ | A | — | — |
 | 560 | GuildMemberFeed (`ry_1`) | S2C | ✓ | A | ✓ | — |
+| 505 | GuildLeave/Kick (`nP`) | C2S | ✓ | A | — | ✓ |
+| 511 | GuildDestroy (`awR`) | C2S | ✓ | A | — | ✓ |
+| 515 | GuildSetRank (`abn_2`) | C2S | ✓ | A | — | — |
+| 553 | GuildRankAdd (`abo_0`) | C2S | ✓ | A | ✓ | ✓ |
+| 555 | GuildRankModify (`Nr`) | C2S | ✓ | A | ✓ | ✓ |
+| 557 | GuildRankDelete (`Ko`) | C2S | ✓ | A | ✓ | ✓ |
+| 2600 | GuildMemberStats (`mL`) | C2S | ✓ | A | — | — |
+| 2601 | GuildMemberReport (`kq_2`) | S2C | ✓ | A | — | — |
 | 3198 | ClanContent | S2C | ✓ | A (ano_1) | — | — |
 | 3161 | UserGroupContent (`/p`) | C2S | ✓ | A (aux_, arch 3) | — | ✓ **live** |
 | 3170 | GroupContent | S2C | ✓ | A (aik_1) | — | — |

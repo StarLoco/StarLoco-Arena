@@ -66,6 +66,15 @@ const (
 	OpGuildMembership   = 552
 	OpGuildCreatedFeed  = 558
 	OpGuildMemberFeed   = 560
+	OpGuildLeave        = 505
+	OpGuildDestroy      = 511
+	OpGuildSetRank      = 515
+	OpGuildRankAdd      = 553
+	OpGuildRankModify   = 555
+	OpGuildRankDelete   = 557
+	OpGuildMemberStats  = 2600
+	OpGuildMemberReport = 2601
+	OpGuildMemberGone   = 556
 	OpUserClanContent   = 3199 // C2S
 	OpClanContent       = 3198 // S2C
 

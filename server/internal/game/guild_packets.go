@@ -145,3 +145,21 @@ func buildGuildMemberFeed(coachName string, removed bool) ([]byte, error) {
 	}
 	return protocol.EncodeS2C(protocol.OpGuildMemberFeed, w.Bytes())
 }
+
+// buildGuildMemberReport builds 2601 (`kq_2`), the member-stats popup:
+// [i64 coachId][u16 len][name][u16 len][PlayerStatisticsReport].
+//
+// The stats blob is the same one 2053 carries, so the popup shows the same
+// numbers the coach's own statistics window does.
+func buildGuildMemberReport(c *domain.Coach) ([]byte, error) {
+	stats, err := playerStatisticsBlob(c)
+	if err != nil {
+		return nil, err
+	}
+	w := protocol.NewWriter().
+		I64(int64(c.ID)).
+		StringU16(c.Name).
+		U16(uint16(len(stats))).
+		Raw(stats)
+	return protocol.EncodeS2C(protocol.OpGuildMemberReport, w.Bytes())
+}

@@ -1552,10 +1552,12 @@ is a signing certificate or SignPath); no published Docker image.
     dialog, the CLAN tab showing the guild name, `chrono (chef)` with its rank
     badge, the leader-only management button, and the client's own
     "recruit 4 more" rule computing off the real member list.
-    Remaining (all reachable, none blocking): 505 kick/quit, 511 destroy,
-    553/555/557 rank CRUD, 515 set-member-rank, 2600/2601 member stats, the
-    reserved guild-tag column in the four ladder boards, the clan ladder rows,
-    and the clan-island Zaap. **Do not implement 513 (rename) or 551 (icon)** —
+    Also done: 505 kick/quit, 511 destroy, 553/555/557 rank CRUD, 515
+    set-member-rank and 2600/2601 member stats - every privileged operation
+    re-deriving the caller's rank instead of trusting the request, since the
+    client hides each one from anyone without the right.
+    Remaining: the reserved guild-tag column in the four ladder boards, the clan
+    ladder rows, and the clan-island Zaap. **Do not implement 513 (rename) or 551 (icon)** —
     both are reachable only from the client's `Test` Lua debug library, with no
     UI and no assets.
 32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.

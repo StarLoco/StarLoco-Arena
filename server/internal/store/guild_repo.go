@@ -38,6 +38,14 @@ var ErrGuildNameTaken = errors.New("store: guild name unavailable")
 // `guild.error.alreadyGuildMember`).
 var ErrAlreadyInGuild = errors.New("store: coach already in a guild")
 
+// ErrGuildRankLimit is returned when a guild already holds the ten ranks the
+// client can display.
+var ErrGuildRankLimit = errors.New("store: guild rank limit reached")
+
+// ErrGuildRankProtected is returned for the leader (1) and default (10) rungs,
+// which the client refuses to delete and which the guild cannot work without.
+var ErrGuildRankProtected = errors.New("store: guild rank cannot be removed")
+
 // GuildRepo is the guild persistence layer.
 type GuildRepo struct{ db *gorm.DB }
 
@@ -170,4 +178,92 @@ func (r *GuildRepo) CoachIDsIn(guildID uint) ([]uint, error) {
 	err := r.db.Model(&domain.GuildMember{}).
 		Where("guild_id = ?", guildID).Pluck("coach_id", &out).Error
 	return out, err
+}
+
+// SetMemberRank moves a member to another rank level.
+func (r *GuildRepo) SetMemberRank(guildID, coachID uint, level int16) error {
+	return r.db.Model(&domain.GuildMember{}).
+		Where("guild_id = ? AND coach_id = ?", guildID, coachID).
+		Update("rank_level", level).Error
+}
+
+// AddRank appends a rank. The client caps a guild at GuildMaxRanks and refuses
+// to render more, so the cap is enforced here rather than trusting it.
+func (r *GuildRepo) AddRank(guildID uint, rights int32, name string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var existing []domain.GuildRank
+		if err := tx.Where("guild_id = ?", guildID).Order("level ASC").Find(&existing).Error; err != nil {
+			return err
+		}
+		if len(existing) >= GuildMaxRanks {
+			return ErrGuildRankLimit
+		}
+		// The client numbers a new rank by the current count, which lands it
+		// between the leader (1) and the default rung (10).
+		level := int16(len(existing))
+		if level <= GuildRankLeader {
+			level = GuildRankLeader + 1
+		}
+		for _, rk := range existing {
+			if rk.Level == level {
+				level++
+			}
+		}
+		if level >= GuildRankDefault {
+			return ErrGuildRankLimit
+		}
+		return tx.Create(&domain.GuildRank{
+			GuildID: guildID, Level: level, Rights: rights, Name: name,
+		}).Error
+	})
+}
+
+// UpdateRank rewrites a rank's rights and name. The leader rank keeps its
+// leader bit whatever is asked: a guild whose rank 1 lost it would have no one
+// able to manage it and no way back.
+func (r *GuildRepo) UpdateRank(guildID uint, level int16, rights int32, name string) error {
+	if level == GuildRankLeader {
+		rights |= GuildRightLeader
+	}
+	return r.db.Model(&domain.GuildRank{}).
+		Where("guild_id = ? AND level = ?", guildID, level).
+		Updates(map[string]any{"rights": rights, "name": name}).Error
+}
+
+// DeleteRank removes a rank and moves anyone holding it down to the default
+// rung. Levels 1 and 10 are refused, matching the client, which greys the button
+// out for both.
+func (r *GuildRepo) DeleteRank(guildID uint, level int16) error {
+	if level == GuildRankLeader || level == GuildRankDefault {
+		return ErrGuildRankProtected
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&domain.GuildMember{}).
+			Where("guild_id = ? AND rank_level = ?", guildID, level).
+			Update("rank_level", GuildRankDefault).Error; err != nil {
+			return err
+		}
+		return tx.Where("guild_id = ? AND level = ?", guildID, level).
+			Delete(&domain.GuildRank{}).Error
+	})
+}
+
+// Delete destroys a guild with its ranks and memberships. Returns the coach ids
+// that were members, so the caller can tell each of them.
+func (r *GuildRepo) Delete(guildID uint) ([]uint, error) {
+	var members []uint
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&domain.GuildMember{}).
+			Where("guild_id = ?", guildID).Pluck("coach_id", &members).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("guild_id = ?", guildID).Delete(&domain.GuildMember{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("guild_id = ?", guildID).Delete(&domain.GuildRank{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&domain.Guild{}, guildID).Error
+	})
+	return members, err
 }

@@ -75,7 +75,7 @@ func coachCriteria(c *domain.Coach) []handshake.Criterion {
 //
 // Field 6 is an internal model value (dN), NOT the ladder strength — strength
 // is carried elsewhere (the coach "strenght" field), so we do not emit it here.
-func buildPlayerStatisticsReport(c *domain.Coach) ([]byte, error) {
+func playerStatisticsBlob(c *domain.Coach) ([]byte, error) {
 	blob := protocol.NewWriter()
 	blob.U16(1) // model id
 	blob.I64(1) // report id
@@ -92,7 +92,17 @@ func buildPlayerStatisticsReport(c *domain.Coach) ([]byte, error) {
 	intEntry(7, c.ConsecutiveWins)   // dP: consecutive wins
 	intEntry(8, c.ConsecutiveLosses) // dO: consecutive losses
 
-	b := blob.Bytes()
+	return blob.Bytes(), nil
+}
+
+// buildPlayerStatisticsReport wraps the blob in its own message (2053). The blob
+// is split out so the guild member-stats popup (2601) can carry the same numbers
+// without the two drifting apart.
+func buildPlayerStatisticsReport(c *domain.Coach) ([]byte, error) {
+	b, err := playerStatisticsBlob(c)
+	if err != nil {
+		return nil, err
+	}
 	payload := protocol.NewWriter().U16(uint16(len(b)))
 	payload.Raw(b)
 	return protocol.EncodeS2C(protocol.OpPlayerStatisticsReport, payload.Bytes())

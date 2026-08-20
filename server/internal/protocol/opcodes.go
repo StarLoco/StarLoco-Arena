@@ -432,11 +432,19 @@ const (
 // Strings on ALL of these are UTF-8 (aey_0), not the cp1252 used for coach and
 // fighter names.
 const (
-	OpGuildCreate       = 509 // C2S atM  (arch 3): [u8 type][u8 len][name]
-	OpGuildInvite       = 501 // C2S uq_2: [u8 type][u8 mode] then (mode 0) [u8 len][coachName] | (mode 1) [i64 coachId], then [i64 guildId]
-	OpGuildInviteAnswer = 503 // C2S cg_0: [u8 type][u8 accepted][u8 len][inviterName][u8 len][guildName]
-	OpGuildGet          = 517 // C2S auZ:  [i64 playerId]
-	OpGuildMembersGet   = 519 // C2S add_2:[i64 guildId]
+	OpGuildCreate       = 509  // C2S atM  (arch 3): [u8 type][u8 len][name]
+	OpGuildInvite       = 501  // C2S uq_2: [u8 type][u8 mode] then (mode 0) [u8 len][coachName] | (mode 1) [i64 coachId], then [i64 guildId]
+	OpGuildInviteAnswer = 503  // C2S cg_0: [u8 type][u8 accepted][u8 len][inviterName][u8 len][guildName]
+	OpGuildGet          = 517  // C2S auZ:  [i64 playerId]
+	OpGuildMembersGet   = 519  // C2S add_2:[i64 guildId]
+	OpGuildLeave        = 505  // C2S nP:    [i64 guildId][i64 memberId] - quit (self) or kick
+	OpGuildDestroy      = 511  // C2S awR:   [i64 guildId]
+	OpGuildSetRank      = 515  // C2S abn_2: [i64 guildId][i64 memberId][i16 newRankLevel]
+	OpGuildRankAdd      = 553  // C2S abo_0: [i64 guildId][i32 rights][u8 len][name]
+	OpGuildRankModify   = 555  // C2S Nr:    [i64 guildId][i32 rights][i16 level][i16 level][u8 len][name] - both shorts carry the SAME level (aia_0.modifyRank sets each from aRe())
+	OpGuildRankDelete   = 557  // C2S Ko:    [i64 guildId][i16 level]
+	OpGuildMemberStats  = 2600 // C2S mL:   [i64 memberId]
+	OpGuildMemberReport = 2601 // S2C kq_2: [i64 coachId][u16 len][name][u16 len][PlayerStatisticsReport]
 
 	OpGuildInvitation  = 502 // S2C auf_0: [u8 type][u8 len][inviterName][u8 len][guildName]
 	OpGuildResult      = 504 // S2C mD:    [u8 type][i32 resultCode]
