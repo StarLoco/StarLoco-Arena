@@ -427,3 +427,37 @@ const (
 	VersionMajor = 2
 	VersionMinor = 70
 )
+
+// --- Guilds ("clans"). The client's own family: 13 C2S classes, 10 S2C.
+// Strings on ALL of these are UTF-8 (aey_0), not the cp1252 used for coach and
+// fighter names.
+const (
+	OpGuildCreate       = 509 // C2S atM  (arch 3): [u8 type][u8 len][name]
+	OpGuildInvite       = 501 // C2S uq_2: [u8 type][u8 mode] then (mode 0) [u8 len][coachName] | (mode 1) [i64 coachId], then [i64 guildId]
+	OpGuildInviteAnswer = 503 // C2S cg_0: [u8 type][u8 accepted][u8 len][inviterName][u8 len][guildName]
+	OpGuildGet          = 517 // C2S auZ:  [i64 playerId]
+	OpGuildMembersGet   = 519 // C2S add_2:[i64 guildId]
+
+	OpGuildInvitation  = 502 // S2C auf_0: [u8 type][u8 len][inviterName][u8 len][guildName]
+	OpGuildResult      = 504 // S2C mD:    [u8 type][i32 resultCode]
+	OpGuildRecord      = 510 // S2C arl_0: [u16 len][guild record -> KI.b]
+	OpGuildMembers     = 512 // S2C kf_1(512): [i32 N] N x {[i32 len][ca_0 part 0]}
+	OpGuildMembership  = 552 // S2C kf_1(552): [i32 1] {[i32 len][ca_0 part 2]} - MY membership
+	OpGuildTags        = 554 // S2C kf_1(554): [i32 N] N x {[i32 len][ca_0 part 1]} - other players' tags
+	OpGuildMemberGone  = 556 // S2C h_0:   [i64 playerId]
+	OpGuildCreatedFeed = 558 // S2C ahU:   [u8 len][coachName][u8 len][guildName]
+	OpGuildMemberFeed  = 560 // S2C ry_1:  [u8 len][coachName][u8 removed]
+)
+
+// Guild result codes carried by OpGuildResult (client lh_1.java:44-90).
+const (
+	GuildResultLeft          = 400
+	GuildResultDestroyed     = 401
+	GuildResultKicked        = 402
+	GuildResultCreated       = 403
+	GuildResultJoined        = 404
+	GuildResultBadName       = 11
+	GuildResultFull          = 20
+	GuildResultUserNotFound  = 35
+	GuildResultInviteRefused = 40
+)

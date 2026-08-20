@@ -1540,8 +1540,24 @@ is a signing certificate or SignPath); no published Docker image.
 30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
     2-team array to become a slice, the ready gate to count teams, per-team
     session lists, and the 8000 coach loop generalised.
-31. **Guilds / clans** — unblocks the clan ladder, clan-scoped chat, the clan-island
-    Zaap and the guild-tag column already reserved in the ladder rows.
+31. 🟡 **Guilds / clans** — **core loop DONE and live-verified.** The premise
+    held: the client's clan feature is fully wired and reachable (handler `lh_1`
+    registered on login, 13 C2S classes with production callers, the guild tab
+    one click from the HUD). What blocked it was the server writing an empty
+    0x20 blob, which is the ONLY thing besides 552 that sets `aPY()` — every
+    entry point reads it, which is why `/c` had emitted nothing.
+    Done: storage (guild/ranks/members, schema v2), the 0x20 membership blob,
+    clan chat, and 509 create / 501 invite / 503 answer / 517 get / 519 members
+    with 502/504/510/512/552/556/558/560. Live on the retail client: the success
+    dialog, the CLAN tab showing the guild name, `chrono (chef)` with its rank
+    badge, the leader-only management button, and the client's own
+    "recruit 4 more" rule computing off the real member list.
+    Remaining (all reachable, none blocking): 505 kick/quit, 511 destroy,
+    553/555/557 rank CRUD, 515 set-member-rank, 2600/2601 member stats, the
+    reserved guild-tag column in the four ladder boards, the clan ladder rows,
+    and the clan-island Zaap. **Do not implement 513 (rename) or 551 (icon)** —
+    both are reachable only from the client's `Test` Lua debug library, with no
+    UI and no assets.
 32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting

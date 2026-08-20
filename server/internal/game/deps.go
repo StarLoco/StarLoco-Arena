@@ -46,6 +46,10 @@ type Deps struct {
 	Achievements *gamedata.Achievements
 	Exchanges    *ExchangeManager
 	Matchmaker   *Matchmaker
+
+	// GuildInvites holds outstanding clan invitations (in memory by design - see
+	// handlers_guild.go).
+	GuildInvites *guildInvites
 	Challenges   *ChallengeManager
 	Fights       *FightManager
 	Sessions     *SessionRegistry
@@ -57,10 +61,16 @@ type Deps struct {
 
 // RegisterAll wires every feature handler group onto the router.
 func RegisterAll(r *Router, d *Deps) {
+	if d.GuildInvites == nil {
+		// Constructed here so every caller - server, tests, harness - gets one
+		// without having to know it exists.
+		d.GuildInvites = newGuildInvites()
+	}
 	registerConnectionHandlers(r, d)
 	registerLifecycleHandlers(r, d)
 	registerMovementHandlers(r, d)
 	registerChatHandlers(r, d)
+	registerGuildHandlers(r, d)
 	registerSocialHandlers(r, d)
 	registerInventoryHandlers(r, d)
 	registerShopHandlers(r, d)

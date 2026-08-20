@@ -52,6 +52,23 @@ const (
 	OpUpdateFighterInventory  = 6011 // C2S
 	OpUpdatedFighterInventory = 6010 // S2C
 
+	// Guilds ("clans"). Strings on this family are UTF-8, not the cp1252 the
+	// coach/fighter names use.
+	OpGuildCreate       = 509 // C2S (arch 3)
+	OpGuildInvite       = 501
+	OpGuildInviteAnswer = 503
+	OpGuildGet          = 517
+	OpGuildMembersGet   = 519
+	OpGuildInvitation   = 502
+	OpGuildResult       = 504
+	OpGuildRecord       = 510
+	OpGuildMembers      = 512
+	OpGuildMembership   = 552
+	OpGuildCreatedFeed  = 558
+	OpGuildMemberFeed   = 560
+	OpUserClanContent   = 3199 // C2S
+	OpClanContent       = 3198 // S2C
+
 	// Exchange
 	// These match the retail client's own numbering, which is NOT contiguous:
 	// see internal/protocol/opcodes.go. The test client previously used the

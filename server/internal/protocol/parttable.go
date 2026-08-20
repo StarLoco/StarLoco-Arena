@@ -73,3 +73,18 @@ func (w *Writer) StringU8UTF8(s string) *Writer {
 	w.buf = append(w.buf, b...)
 	return w
 }
+
+// StringU8UTF8 reads a [u8 len][bytes] UTF-8 string. The counterpart of the
+// Writer method: the guild family names UTF-8 explicitly (aey_0), so decoding it
+// with the cp1252 reader would mangle any accented clan or rank name.
+func (r *Reader) StringU8UTF8() (string, error) {
+	n, err := r.U8()
+	if err != nil {
+		return "", err
+	}
+	b, err := r.Bytes(int(n))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}

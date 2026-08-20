@@ -86,6 +86,19 @@ BUGS.md B-108.
 | 3159 | UserTradeContent (`/t`) | C2S | ✓ | A (afq_0, arch 3) | — | ✓ **live** |
 | 3168 | TradeContent | S2C | ✓ | A (ayy — byte-identical to 3152) | — | ✓ **live** |
 | 3199 | UserClanContent (`/c`) | C2S | ✓ validated | A (ak, arch 2: msg THEN i64 guildId) | ✓ | — |
+| 509 | GuildCreate (`atM`, arch 3) | C2S | ✓ | A | ✓ | ✓ **live** |
+| 501 | GuildInvite (`uq_2`) | C2S | ✓ | A | ✓ | ✓ |
+| 503 | GuildInviteAnswer (`cg_0`) | C2S | ✓ | A | ✓ | ✓ |
+| 517 | GuildGet (`auZ`) | C2S | ✓ | A | — | ✓ |
+| 519 | GuildMembersGet (`add_2`) | C2S | ✓ | A | — | ✓ **live** |
+| 502 | GuildInvitation (`auf_0`) | S2C | ✓ | A | ✓ | ✓ |
+| 504 | GuildResult (`mD`) | S2C | ✓ | A | ✓ | ✓ **live** |
+| 510 | GuildRecord (`arl_0`/`KI.b`) | S2C | ✓ | A | ✓ | ✓ **live** |
+| 512 | GuildMembers (`kf_1` part 0) | S2C | ✓ | A | ✓ | ✓ **live** |
+| 552 | GuildMembership (`kf_1` part 2) | S2C | ✓ | A | ✓ | ✓ **live** |
+| 556 | GuildMemberGone (`h_0`) | S2C | ✓ | A | — | — |
+| 558 | GuildCreatedFeed (`ahU`) | S2C | ✓ | A | — | — |
+| 560 | GuildMemberFeed (`ry_1`) | S2C | ✓ | A | ✓ | — |
 | 3198 | ClanContent | S2C | ✓ | A (ano_1) | — | — |
 | 3161 | UserGroupContent (`/p`) | C2S | ✓ | A (aux_, arch 3) | — | ✓ **live** |
 | 3170 | GroupContent | S2C | ✓ | A (aik_1) | — | — |
