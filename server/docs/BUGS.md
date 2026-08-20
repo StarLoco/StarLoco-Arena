@@ -239,11 +239,27 @@ the 6-slot SPELL inventory serialised as a flat `[i32 spellId]` list, and
 
 The 6011 handler read them the other way round. Nothing ever failed to parse,
 because a flat list and a slotted list happen to appear in exactly that order -
-so the shapes lined up and only the MEANINGS were transposed: spell ids were
-stored as equipped cards, card ids as spells. That is why every fighter came out
-of the loadout screen with `spells=0 objects=<n>` and could not cast anything;
-the practice-fight dump showed exactly that, and it is why a scripted `cast` was
-refused with "caster does not know this spell".
+so the shapes lined up and only the MEANINGS were transposed: any spell the
+player equipped would have been persisted as equipment, and any equipment as
+spells.
+
+**Correction to the first write-up of this entry.** I originally claimed this was
+"why every fighter came out of the loadout screen with `spells=0 objects=<n>` and
+could not cast anything". That does not hold, and the arithmetic says so:
+
+- the old `decodeLoadoutCards` read blob 1 FLAT and assigned `Slot = len(out)`,
+  so it would have stored whatever was in the SPELL blob - spell ids;
+- the ids actually on those fighters (`122 95 125 121 103 ...`) are all genuine
+  FIGHTER CARDS (types 2-5), not spells;
+- and reading the slotted blob as flat would misalign every read
+  (`[i16 pos][i32 id]` taken as `i32` yields `pos<<16|id_hi`, i.e. garbage),
+  which is not what is stored either.
+
+So the 10-object rosters did **not** come from this bug, and the dev account's
+`spells=0` is simply "no spell was ever equipped" - its spell pool is empty. The
+swap was real, and is proven from `bp_1.encode()` plus the fighter CREATE path
+disagreeing with the update path, but the symptom I hung on it was somebody
+else's. Provenance of those rows is still open (see B-111).
 
 The fighter CREATE path (`fighter_codec.go`) always read the order correctly, so
 the two paths had been contradicting each other.
@@ -263,6 +279,22 @@ same misreading as the code cannot catch it, only the client can.
 
 Verified: unit (blob order, round-trip, caps, slot filtering), rewritten e2e,
 5 mutations, and live - the client's inventory rejections during login went to 0.
+
+**Live proof from the client's own bytes.** Opening a fighter's loadout and
+pressing VALIDER makes the client send a real 6011. For a fighter holding four
+equipment pieces and no spells the server now logs
+
+    fighter loadout updated  fighter=3 cards=4 spells=0 budget=2200
+
+Under the old read the SAME frame would have produced `cards=0 spells=4`, since
+the empty flat spell blob became the cards and the four slotted items became the
+spells. The two counts landing on the correct side is the discriminating result,
+and it needed no fixture - the client supplied the bytes.
+
+The budget is a second, independent check: the client's own loadout header showed
+2200 before VALIDER was pressed, and the server recomputed 2200 from the same four
+cards. Server and client now derive the same fighter value from the same
+equipment.
 ### B-110 - every push/pull NPE'd the client, and no buff icon could ever appear: the 8120 blob was missing two parts
 
 Two independent live bugs with one root cause: `buildRunningEffect` only ever
