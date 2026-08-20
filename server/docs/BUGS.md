@@ -140,6 +140,73 @@ belongs to the coach.
 
 ## Fixed
 
+### B-115 - `TestPhaseClockForceAdvances` was flaky: it polled for a 20ms transient
+
+**Symptom.** The full `internal/game` package run failed intermittently with
+`phase never reached Placement (stuck at Observation)`. It passed every time in
+isolation, on the clean tree as well as the working one, so it was not caused by
+the change being made when it appeared.
+
+**Root cause.** A race in the test, not in the fight. The message is the tell: the
+phase was already *past* the one being waited for. `waitPhase` polls `f.Phase()`
+every 5ms while the test shortens every clock to 20ms, so each intermediate phase
+exists for about four polls - and under the load of the whole package the polling
+goroutine need not be scheduled inside that window at all. The test was asserting
+on states too short-lived to observe reliably.
+
+**Fix.** Wait only for the final phase (`PhaseAction`, 2s budget). Nothing is
+lost: the phases are chained, each transition arming the next one's clock, so
+arriving at Action is only possible by having passed through Placement and
+Observation. Verified by mutation - breaking either intermediate `armClock`, or
+refusing the first transition, still fails the test. 6/6 clean full-package runs
+after the fix.
+
+**Verified.** `unit` (mutation x3, stress x6).
+
+### B-114 - a one-member clan could hold an island against the whole server
+
+**Symptom.** A single coach could found a clan, offer a demon a handful of cards
+and take that demon's island permanently - no one else could ever displace them
+without out-giving them, and 23 of the 24 islands stayed unreachable.
+
+**Root cause.** The activity rule was never implemented, because the client
+mentions it exactly once and enforces nothing. Opening the CLAN tab below five
+members pops `guild.notEnoughGuildMembersToBeActive` - *"Votre clan ne comporte
+pas assez de membres pour etre actif. Recrutez encore [#1] personne{[>1]?s:} !"* -
+computed as `5 - memberCount` in `uk_1.java:52`. That is the whole of the client's
+involvement: a warning label. What "actif" *does* is the server's to decide, and
+the only reading that gives the warning meaning is that an inactive clan does not
+compete.
+
+**Fix.** `GuildActiveMinMembers = 5`, applied as a subquery shared by
+`DemonLadder` and (through it) `IslandOf`, so the ladder and the island allocation
+cannot disagree - an inactive clan ranking first while the island went to the clan
+below it would show a leader who does not hold the prize. Because the rule rides
+in through the ladder, a clan that drops below the threshold loses its island the
+moment the member leaves, with nothing having to watch for the departure. The
+island Zaap card follows automatically (B-116).
+
+**Verified.** `unit` (mutation x5: threshold, filter, HAVING, both packages).
+
+### B-116 - the clan-island Zaap card was never granted to anybody
+
+**Symptom.** The clan-island destination logic was unreachable. No coach could
+ever teleport to a clan island, and no test noticed, because both halves were
+individually correct.
+
+**Root cause.** Card 859 is not in `starterZaapCards` and nothing else granted it,
+while `handleZaapUse` gates every destination on `coachOwnsCard`. The gate could
+therefore never pass.
+
+**Fix.** Reconciled at login next to the existing starter-card grant: granted when
+the coach's clan holds an island, and revoked when it does not. Revoked as well as
+granted because an island changes hands - a card left behind would list a
+destination in the Zaap dialog that silently does nothing when clicked. Being done
+at login makes it idempotent and self-healing for clans that gained or lost an
+island while a member was offline.
+
+**Verified.** `unit` (mutation x5).
+
 ### B-111 - the fighter equipment slot is the item's TYPE, not a free index
 
 The client's fighter item inventory is a fixed 5-slot `ArrayInventory` (`en_1`,

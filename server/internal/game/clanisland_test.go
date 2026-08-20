@@ -39,6 +39,7 @@ func TestClanIslandDestResolvesTheGuildsOwnIsland(t *testing.T) {
 		if err != nil {
 			t.Fatalf("guild: %v", err)
 		}
+		activateClan(t, st, g.ID, guildName)
 		if err := st.Guilds.SetDemon(g.ID, demon); err != nil {
 			t.Fatalf("affiliate: %v", err)
 		}
@@ -175,6 +176,7 @@ func TestClanIslandCardTracksIslandOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guild: %v", err)
 	}
+	activateClan(t, st, g.ID, "carte")
 
 	has := func() bool {
 		for _, card := range c.Inventory {
@@ -214,6 +216,7 @@ func TestClanIslandCardTracksIslandOwnership(t *testing.T) {
 	acc2, _ := st.Accounts.CreateAccount("card_b", "secret", false)
 	c2, _ := st.Coaches.Create(acc2.ID, "Rival", 1, 2, 0)
 	g2, _ := st.Guilds.Create("ClanRival", c2.ID, "Chef", "Membre")
+	activateClan(t, st, g2.ID, "rival")
 	if err := st.Guilds.SetDemon(g2.ID, 4); err != nil {
 		t.Fatalf("affiliate rival: %v", err)
 	}
@@ -223,5 +226,75 @@ func TestClanIslandCardTracksIslandOwnership(t *testing.T) {
 	s.syncClanIslandCard(c, owned())
 	if has() {
 		t.Error("an overtaken clan kept the island zaap - the dialog would offer a dead destination")
+	}
+}
+
+// activateClan recruits filler members until the clan clears the activity
+// threshold. A clan below it is not a contender at all, so without this these
+// tests would assert on a clan that can never hold an island.
+func activateClan(t *testing.T, st *store.Store, guildID uint, tag string) {
+	t.Helper()
+	members, err := st.Guilds.Members(guildID)
+	if err != nil {
+		t.Fatalf("members: %v", err)
+	}
+	for i := len(members); i < store.GuildActiveMinMembers; i++ {
+		suffix := tag + strconv.Itoa(i)
+		acc, err := st.Accounts.CreateAccount("filler_"+suffix, "secret", false)
+		if err != nil {
+			t.Fatalf("filler account: %v", err)
+		}
+		c, err := st.Coaches.Create(acc.ID, "Filler"+suffix, 1, 2, 0)
+		if err != nil {
+			t.Fatalf("filler coach: %v", err)
+		}
+		if err := st.Guilds.AddMember(guildID, c.ID); err != nil {
+			t.Fatalf("filler join: %v", err)
+		}
+	}
+}
+
+// TestInactiveClanGetsNoIslandCard is the player-visible end of the activity
+// rule: founding a clan alone and dumping cards into a demon must not put the
+// island Zaap in your hand, however much reputation it buys.
+func TestInactiveClanGetsNoIslandCard(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "solo.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	s := &Session{deps: &Deps{Store: st, Log: testLogger()}, log: testLogger()}
+
+	acc, _ := st.Accounts.CreateAccount("solo_card", "secret", false)
+	c, _ := st.Coaches.Create(acc.ID, "SoloChef", 1, 2, 0)
+	g, err := st.Guilds.Create("ClanDUnSeul", c.ID, "Chef", "Membre")
+	if err != nil {
+		t.Fatalf("guild: %v", err)
+	}
+	if err := st.Guilds.SetDemon(g.ID, 11); err != nil {
+		t.Fatalf("demon: %v", err)
+	}
+	if _, err := st.Guilds.AddDemonReputation(g.ID, 11, 1_000_000); err != nil {
+		t.Fatalf("reputation: %v", err)
+	}
+
+	s.syncClanIslandCard(c, map[int32]bool{})
+	for _, card := range c.Inventory {
+		if card.TemplateID == clanIslandZaapCard {
+			t.Fatal("a one-member clan bought the island zaap with reputation alone")
+		}
+	}
+
+	// Recruiting to the threshold is what actually earns it.
+	activateClan(t, st, g.ID, "solocard")
+	s.syncClanIslandCard(c, map[int32]bool{})
+	found := false
+	for _, card := range c.Inventory {
+		if card.TemplateID == clanIslandZaapCard {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the clan reached the threshold while leading its demon but got no island zaap")
 	}
 }

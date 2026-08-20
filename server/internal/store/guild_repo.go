@@ -388,15 +388,44 @@ type DemonReputationRow struct {
 	Points  int64
 }
 
-// DemonLadder returns the clans serving a demon, strongest first. Ties break on
-// guild id so the order is stable - the top slot decides who holds an island, and
-// an island that changed hands on every query would be worse than none.
+// GuildActiveMinMembers is how many members a clan needs to count as "active".
+//
+// The client states the threshold but never enforces it: opening the CLAN tab
+// with fewer members pops guild.notEnoughGuildMembersToBeActive - "Votre clan ne
+// comporte pas assez de membres pour etre actif. Recrutez encore [#1]
+// personne{[>1]?s:} !" - computed as `5 - memberCount` in uk_1.java:52. That is
+// the whole of its involvement: a warning label, gating nothing.
+//
+// So what "actif" DOES is the server's to decide, and the only reading that gives
+// the warning any meaning is that an inactive clan does not compete. Otherwise a
+// single coach could found a clan, feed a demon a handful of cards and hold an
+// island against the entire server, which is not "le clan le plus puissant au
+// service de chaque Demon" in any sense.
+const GuildActiveMinMembers = 5
+
+// activeClans is the subquery restricting a ladder to clans that actually field
+// enough members to be active. Written once here because the demon ladder and
+// the island allocation MUST agree: if an inactive clan could rank first while
+// the island went to the clan below it, the ladder would be showing a leader who
+// does not hold the prize.
+func (r *GuildRepo) activeClans() *gorm.DB {
+	return r.db.Table("guild_members").
+		Select("guild_id").
+		Group("guild_id").
+		Having("COUNT(*) >= ?", GuildActiveMinMembers)
+}
+
+// DemonLadder returns the ACTIVE clans serving a demon, strongest first. Ties
+// break on guild id so the order is stable - the top slot decides who holds an
+// island, and an island that changed hands on every query would be worse than
+// none.
 func (r *GuildRepo) DemonLadder(demonID int16, limit int) ([]DemonReputationRow, error) {
 	var out []DemonReputationRow
 	q := r.db.Table("guild_demon_reputations AS rep").
 		Select("rep.guild_id AS guild_id, g.name AS name, rep.points AS points").
 		Joins("JOIN guilds g ON g.id = rep.guild_id").
 		Where("rep.demon_id = ? AND g.demon_id = ?", demonID, demonID).
+		Where("rep.guild_id IN (?)", r.activeClans()).
 		Order("rep.points DESC, rep.guild_id ASC")
 	if limit > 0 {
 		q = q.Limit(limit)
@@ -407,9 +436,13 @@ func (r *GuildRepo) DemonLadder(demonID int16, limit int) ([]DemonReputationRow,
 // IslandOf resolves the island a clan currently holds, if any.
 //
 // Derived, never stored: a clan holds its demon's island only while it is that
-// demon's top-ranked servant. Storing the allocation would let a clan keep an
-// island after being overtaken, which is precisely the thing the mechanic is
+// demon's top-ranked ACTIVE servant. Storing the allocation would let a clan keep
+// an island after being overtaken, which is precisely the thing the mechanic is
 // about.
+//
+// The activity requirement rides in through DemonLadder, so a clan that drops
+// below GuildActiveMinMembers loses its island the moment the member leaves,
+// without anything having to notice the departure.
 func (r *GuildRepo) IslandOf(guildID uint) (int16, bool, error) {
 	g, err := r.ByID(guildID)
 	if err != nil || g == nil || g.DemonID == 0 {

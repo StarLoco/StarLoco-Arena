@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 )
 
@@ -227,6 +228,10 @@ func TestIslandBelongsToTheDemonsTopClan(t *testing.T) {
 	b := guildTestCoach(t, s, "ChefB")
 	ga, _ := s.Guilds.Create("ClanA", a, "Chef", "Membre")
 	gb, _ := s.Guilds.Create("ClanB", b, "Chef", "Membre")
+	// Both must be active clans, or neither is a contender at all and this would
+	// pass for the wrong reason.
+	activateClan(t, s, ga.ID, "A")
+	activateClan(t, s, gb.ID, "B")
 
 	// Both serve demon 3, so both are competing for world 88.
 	if err := s.Guilds.SetDemon(ga.ID, 3); err != nil {
@@ -318,5 +323,74 @@ func TestAffiliationIsOneWay(t *testing.T) {
 	}
 	if err := s.Guilds.SetDemon(g.ID, 99); err == nil {
 		t.Error("a nonexistent demon was accepted")
+	}
+}
+
+// activateClan recruits filler members until the clan clears
+// GuildActiveMinMembers. Named for what it means rather than what it does,
+// because "a clan with 5 members" is not incidental setup: below the threshold
+// the clan is inactive and holds no island at all.
+func activateClan(t *testing.T, st *Store, guildID uint, tag string) {
+	t.Helper()
+	members, err := st.Guilds.Members(guildID)
+	if err != nil {
+		t.Fatalf("members: %v", err)
+	}
+	for i := len(members); i < GuildActiveMinMembers; i++ {
+		c := guildTestCoach(t, st, "Filler"+tag+strconv.Itoa(i))
+		if err := st.Guilds.AddMember(guildID, c); err != nil {
+			t.Fatalf("filler join: %v", err)
+		}
+	}
+}
+
+// TestInactiveClanHoldsNoIsland: the client warns a clan under 5 members is not
+// "actif" (guild.notEnoughGuildMembersToBeActive) but enforces nothing, so
+// without this a single coach could found a clan, feed a demon a few cards and
+// hold an island against the whole server.
+func TestInactiveClanHoldsNoIsland(t *testing.T) {
+	st := newTestStore(t)
+
+	c := guildTestCoach(t, st, "Solo")
+	g, err := st.Guilds.Create("ClanSolo", c, "Chef", "Membre")
+	if err != nil {
+		t.Fatalf("guild: %v", err)
+	}
+	if err := st.Guilds.SetDemon(g.ID, 7); err != nil {
+		t.Fatalf("demon: %v", err)
+	}
+	if _, err := st.Guilds.AddDemonReputation(g.ID, 7, 9999); err != nil {
+		t.Fatalf("reputation: %v", err)
+	}
+
+	// Unbeatable reputation, but only one member.
+	if _, ok, _ := st.Guilds.IslandOf(g.ID); ok {
+		t.Error("a one-member clan holds an island - the activity rule is not applied")
+	}
+	if rows, _ := st.Guilds.DemonLadder(7, 10); len(rows) != 0 {
+		t.Errorf("an inactive clan ranks on the demon ladder: %d rows", len(rows))
+	}
+
+	// Recruit to the threshold: it becomes a real contender.
+	activateClan(t, st, g.ID, "solo")
+	world, ok, err := st.Guilds.IslandOf(g.ID)
+	if err != nil {
+		t.Fatalf("island: %v", err)
+	}
+	if !ok {
+		t.Fatal("a clan that reached the member threshold still holds no island")
+	}
+	if want, _ := IslandWorldForDemon(7); world != want {
+		t.Errorf("island world = %d, want %d", world, want)
+	}
+
+	// Lose a member and the island goes with them, with nothing watching for it.
+	members, _ := st.Guilds.Members(g.ID)
+	last := members[len(members)-1]
+	if _, err := st.Guilds.RemoveMember(g.ID, last.CoachID); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if _, ok, _ := st.Guilds.IslandOf(g.ID); ok {
+		t.Error("a clan that fell below the threshold kept its island")
 	}
 }
