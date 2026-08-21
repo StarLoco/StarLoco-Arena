@@ -232,6 +232,13 @@ func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 	spells := decodeLoadoutSpells(spellsBlob)
 	cards := s.canonicalEquipSlots(decodeLoadoutCards(cardsBlob))
 
+	// An evolution fighter may only wear what its Sphere Board nodes unlocked.
+	// Resolved from the stored fighter, never from the request.
+	if fr, ferr := s.deps.Store.Fighters.Get(uint(fighterID)); ferr == nil && fr != nil &&
+		fr.CoachID == s.Coach.ID {
+		cards = s.entitledEquip(fr, cards)
+	}
+
 	// Recompute budget from the new loadout (breed base + card values).
 	budget := s.computeLoadoutBudget(cards)
 

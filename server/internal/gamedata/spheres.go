@@ -489,3 +489,8 @@ func (c *SphereBoards) Reachable(boardID int32, from, to *Sphere) bool {
 	}
 	return false
 }
+
+// sortInt32Slice sorts ascending in place.
+func sortInt32Slice(v []int32) {
+	sort.Slice(v, func(i, j int) bool { return v[i] < v[j] })
+}

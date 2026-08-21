@@ -124,7 +124,7 @@ value checked so far turned out wrong in 2.70.
 | 1100 | 30 | Fusion-laboratory definitions | ✅ decoded (B-089) — altars, not recipes |
 | 1600 | 29 | Per-map metadata (music/background) | Cosmetic |
 | 1000/1001 | 22/4 | Tournament definitions + level list | We hand-build 3 tournaments |
-| 251 | 11 | Equipment pools from Sphere Board nodes | Referenced: a node's pool id is decoded and served to the client in the evolution tail (item 29). The pool RECORDS are still not decoded server-side - the client resolves them itself |
+| 251 | 11 | Equipment pools from Sphere Board nodes | ✅ decoded (item 29); enforced - an evolution fighter may only wear what its bought nodes unlocked |
 | 700 | 7 | Calendar events (7 subtypes) | We hand-build the calendar |
 | 1400 | 2 | Pro League definitions | Served empty |
 | 1 | 1 | Standard fight parameters (singleton) | Unknown impact |
@@ -1575,8 +1575,17 @@ is a signing certificate or SignPath); no published Docker image.
     and resolves them through the SPELL and EQUIPMENT-POOL tables, so they are
     the sphere-unlocked spells and type-251 pools. Sent empty, a Spell sphere
     bought in one session ceased to exist in the next.
+    Also done: type **251** (equipment pools, `alf_2`) decodes, and the
+    entitlement it exists for is enforced. An evolution fighter may wear only
+    what its bought Item nodes unlocked; a classic "Elite" fighter is NOT
+    restricted, because its picker is every card of the slot''s type
+    (`aca_0.b`) while an evolution fighter''s is built from its unlocked pools
+    (`ee_2` walking `aRF`). The client cannot offer an unearned card, so this
+    only ever stops a crafted 6011 - which is a bare list of card ids.
     Live: the client shows "Esquive 61%" for a fighter that bought Esquive +1%
-    after a full relog, and a fight starts clean with it.
+    after a full relog, a fight starts clean with it, and that same fighter -
+    which has bought no Item node - is offered an entirely EMPTY equipment
+    picker, exactly as the server''s rule would have it.
 30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
     2-team array to become a slice, the ready gate to count teams, per-team
     session lists, and the 8000 coach loop generalised.

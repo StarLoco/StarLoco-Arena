@@ -280,3 +280,99 @@ func TestSphereSpellMergeDoesNotAliasTheStoredFighter(t *testing.T) {
 		t.Error("the first fighter gained a spell from a later merge")
 	}
 }
+
+// --- Equipment entitlement ---------------------------------------------------
+
+func entitlementDeps(t *testing.T) *Deps {
+	t.Helper()
+	return &Deps{
+		Log: testLogger(),
+		SphereBoards: gamedata.NewSphereBoards(
+			[]*gamedata.SphereBoard{{ID: 21, Season: 1, Breed: 8, RootX: 1, RootY: 1}},
+			[]*gamedata.Sphere{
+				{ID: 104, BoardID: 21, X: 1, Y: 1, EquipmentPoolID: 9},
+				{ID: 106, BoardID: 21, X: 2, Y: 1, EquipmentPoolID: 4},
+			},
+		),
+		EquipmentPools: gamedata.NewEquipmentPools(
+			&gamedata.EquipmentPool{ID: 9, CardIDs: []int32{500, 501}},
+			&gamedata.EquipmentPool{ID: 4, CardIDs: []int32{600}},
+			&gamedata.EquipmentPool{ID: 7, CardIDs: []int32{999}}, // never unlocked
+		),
+	}
+}
+
+func equipReq(ids ...int32) []domain.FighterObject {
+	out := make([]domain.FighterObject, 0, len(ids))
+	for i, id := range ids {
+		out = append(out, domain.FighterObject{Slot: int16(i), TemplateID: id})
+	}
+	return out
+}
+
+func equipIDs(objs []domain.FighterObject) []int32 {
+	out := make([]int32, 0, len(objs))
+	for _, o := range objs {
+		out = append(out, o.TemplateID)
+	}
+	return out
+}
+
+// TestEvolutionFighterMayOnlyWearUnlockedEquipment: the client cannot offer a card
+// the fighter has not unlocked, so the only way one arrives is a crafted 6011 -
+// which would otherwise dress a fighter in anything in the game.
+func TestEvolutionFighterMayOnlyWearUnlockedEquipment(t *testing.T) {
+	d := entitlementDeps(t)
+	s := &Session{deps: d, log: testLogger()}
+
+	fr := &domain.Fighter{ID: 1, BreedID: 8, Evolution: true,
+		Spheres: []domain.FighterSphere{{SphereID: 104}}} // unlocks pool 9 => 500, 501
+
+	got := equipIDs(s.entitledEquip(fr, equipReq(500, 999, 501, 600)))
+	if len(got) != 2 || got[0] != 500 || got[1] != 501 {
+		t.Errorf("kept %v, want [500 501] - only pool 9 is unlocked", got)
+	}
+
+	// Buying the other Item node widens what it may wear.
+	fr.Spheres = append(fr.Spheres, domain.FighterSphere{SphereID: 106})
+	got = equipIDs(s.entitledEquip(fr, equipReq(500, 600, 999)))
+	if len(got) != 2 || got[0] != 500 || got[1] != 600 {
+		t.Errorf("kept %v, want [500 600] after unlocking pool 4", got)
+	}
+}
+
+// A fighter that has bought no Item node has unlocked nothing, and the client
+// offers it nothing either.
+func TestEvolutionFighterWithNoItemSpheresWearsNothing(t *testing.T) {
+	d := entitlementDeps(t)
+	s := &Session{deps: d, log: testLogger()}
+	fr := &domain.Fighter{ID: 1, BreedID: 8, Evolution: true}
+
+	if got := equipIDs(s.entitledEquip(fr, equipReq(500, 600))); len(got) != 0 {
+		t.Errorf("kept %v, want nothing", got)
+	}
+}
+
+// The restriction is the CLIENT'S and applies to evolution fighters alone: an
+// Elite fighter's picker is every card of the slot's type, so filtering one would
+// take away equipment the client is still offering.
+func TestEliteFighterEquipmentIsNotRestricted(t *testing.T) {
+	d := entitlementDeps(t)
+	s := &Session{deps: d, log: testLogger()}
+	fr := &domain.Fighter{ID: 1, BreedID: 8} // not evolution
+
+	got := equipIDs(s.entitledEquip(fr, equipReq(500, 999, 600)))
+	if len(got) != 3 {
+		t.Errorf("kept %v, want all three - Elite fighters are not pool-restricted", got)
+	}
+}
+
+// With no game data loaded, enforcing would strip every fighter bare. The rest of
+// the server degrades this way too.
+func TestEntitlementIsInertWithoutData(t *testing.T) {
+	s := &Session{deps: &Deps{Log: testLogger()}, log: testLogger()}
+	fr := &domain.Fighter{ID: 1, BreedID: 8, Evolution: true}
+	if got := equipIDs(s.entitledEquip(fr, equipReq(500, 999))); len(got) != 2 {
+		t.Errorf("kept %v, want both - entitlement must be inert without data", got)
+	}
+}

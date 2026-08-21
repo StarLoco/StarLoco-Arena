@@ -154,3 +154,46 @@ func fighterWithSphereSpells(f *domain.Fighter, boards *gamedata.SphereBoards) *
 	}
 	return &out
 }
+
+// --- Equipment entitlement ---------------------------------------------------
+
+// entitledEquip filters a proposed loadout down to what the fighter may actually
+// wear.
+//
+// Only EVOLUTION fighters are restricted, and that asymmetry is the client's, not
+// a choice made here: an evolution fighter's picker is built from the equipment
+// pools its bought nodes unlocked (`ee_2.getFieldValue` walking `aRF`), while a
+// classic "Elite" fighter's is built from every card of the slot's type
+// (`aca_0.b(type)`, via hu_2). Restricting Elite fighters would take away
+// equipment the client is still offering them.
+//
+// Because the client cannot OFFER an unearned card, a legitimate 6011 never
+// contains one. What this stops is a crafted one - the packet is a list of card
+// ids and would otherwise dress a fighter in anything in the game.
+//
+// Cards are dropped rather than the whole request refused: the client has already
+// closed its dialog by the time this arrives, and rejecting the lot would lose the
+// legitimate part of the loadout as well.
+func (s *Session) entitledEquip(fr *domain.Fighter, cards []domain.FighterObject) []domain.FighterObject {
+	if fr == nil || !fr.IsEvolution() {
+		return cards
+	}
+	pools := s.deps.EquipmentPools
+	if pools == nil || s.deps.SphereBoards == nil {
+		// No data loaded: enforcing would strip every fighter bare, which is worse
+		// than not enforcing. Matches how the rest of the server treats absent
+		// game data.
+		return cards
+	}
+	unlocked := sphereEquipmentPools(fr, s.deps.SphereBoards)
+	out := cards[:0]
+	for _, c := range cards {
+		if !pools.Grants(unlocked, c.TemplateID) {
+			s.log.Debug("equip refused: card not unlocked by any bought sphere",
+				"fighter", fr.ID, "card", c.TemplateID)
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}

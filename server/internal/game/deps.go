@@ -19,13 +19,14 @@ type Deps struct {
 	// TournamentDefs is the type-1000/1001 tournament table. Read-only reference
 	// data: the standing tournaments the server actually runs are built in
 	// tournaments.go and validated against this.
-	TournamentDefs *gamedata.Tournaments   // nil if data files absent
-	Conditions     *gamedata.Conditions    // persistent fighter conditions/wounds (type 902); nil if data files absent
-	Spells         *gamedata.Spells        // nil if data files absent
-	SphereBoards   *gamedata.SphereBoards  // Kanodo boards/nodes (types 900/901); nil if data files absent
-	FighterCards   *gamedata.FighterCards  // nil if data files absent
-	Summonings     *gamedata.Summonings    // summon-creature templates; nil if data files absent
-	StaticEffects  *gamedata.StaticEffects // trap/glyph (type-210) templates; nil if data files absent
+	TournamentDefs *gamedata.Tournaments    // nil if data files absent
+	Conditions     *gamedata.Conditions     // persistent fighter conditions/wounds (type 902); nil if data files absent
+	Spells         *gamedata.Spells         // nil if data files absent
+	SphereBoards   *gamedata.SphereBoards   // Kanodo boards/nodes (types 900/901); nil if data files absent
+	EquipmentPools *gamedata.EquipmentPools // equipment a Kanodo node unlocks (type 251); nil if data files absent
+	FighterCards   *gamedata.FighterCards   // nil if data files absent
+	Summonings     *gamedata.Summonings     // summon-creature templates; nil if data files absent
+	StaticEffects  *gamedata.StaticEffects  // trap/glyph (type-210) templates; nil if data files absent
 	// ChallengeDefs is the type-400 challenge TABLE (PvE definitions behind the
 	// overworld's DemonChallenge / BreedMaster elements); nil if data files
 	// absent. Not to be confused with Challenges below, which is the live
