@@ -175,11 +175,18 @@ func handleTeamUpRequest(s *Session, f *protocol.C2SFrame) error {
 	inviter := s.Coach
 	invited := uint(invitedID64)
 
-	if !s.deps.teamUpAllowed(inviter.ID, invited) {
+	if why := s.deps.teamUpRefusal(inviter.ID, invited); why != "" {
+		// Log it. A silent refusal is indistinguishable from a packet that never
+		// arrived, which cost two live debugging sessions: the client shows only
+		// "Le coach a refuse la creation, ou est indisponible." for every cause.
+		s.log.Info("2v2 invitation refused", "from", inviter.Name,
+			"invitedRaw", invitedID64, "invited", invited, "why", why)
 		return s.sendEmpty(protocol.OpTeamUpRefused)
 	}
 	target := s.deps.sessionForCoach(invited)
 	if target == nil || target.Coach == nil {
+		s.log.Info("2v2 invitation refused", "from", inviter.Name,
+			"invitedRaw", invitedID64, "invited", invited, "why", "target vanished")
 		return s.sendEmpty(protocol.OpTeamUpRefused)
 	}
 
@@ -199,27 +206,52 @@ func handleTeamUpRequest(s *Session, f *protocol.C2SFrame) error {
 	return target.Send(frame)
 }
 
-// teamUpAllowed re-derives every rule the client applies before offering the
-// invitation, plus the ones it cannot know about.
+// teamUpAllowed reports whether a duo may form.
 func (d *Deps) teamUpAllowed(inviter, invited uint) bool {
-	if invited == 0 || invited == inviter {
-		return false // "Impossible de faire un combat avec soi-meme !"
+	return d.teamUpRefusal(inviter, invited) == ""
+}
+
+// teamUpRefusal re-derives every rule the client applies before offering the
+// invitation, plus the ones it cannot know about, and NAMES the one that fails.
+//
+// It returns a reason rather than a bool because the client renders one message
+// for all of them ("Le coach a refuse la creation, ou est indisponible."), so
+// the server log is the only place the real cause can ever be seen.
+func (d *Deps) teamUpRefusal(inviter, invited uint) string {
+	if invited == 0 {
+		// Usually the friend-list id: an entry for a friend that was offline when
+		// the list was built carries -1, which arrives here as a huge uint.
+		return "invited id is zero"
+	}
+	if invited == inviter {
+		return "self-invitation" // "Impossible de faire un combat avec soi-meme !"
 	}
 	// Neither side may already be committed: to a fight, or to another duo.
-	if d.Fights != nil && (d.Fights.ByCoach(inviter) != nil || d.Fights.ByCoach(invited) != nil) {
-		return false
+	if d.Fights != nil {
+		if d.Fights.ByCoach(inviter) != nil {
+			return "inviter is already fighting"
+		}
+		if d.Fights.ByCoach(invited) != nil {
+			return "invited coach is already fighting"
+		}
 	}
-	if d.TeamUps.PairOf(inviter) != nil || d.TeamUps.PairOf(invited) != nil {
-		return false
+	if d.TeamUps.PairOf(inviter) != nil {
+		return "inviter is already in a duo"
+	}
+	if d.TeamUps.PairOf(invited) != nil {
+		return "invited coach is already in a duo"
 	}
 	// The invited coach must be online, and must not have ignored the inviter -
 	// the same rule the client applies locally (ug_1 checks its ignore map before
 	// even showing the dialog), enforced here because a crafted 6024 never asks.
 	target := d.sessionForCoach(invited)
 	if target == nil || target.Coach == nil {
-		return false
+		return "invited coach is not online (or the id does not exist)"
 	}
-	return !ignoresCoach(target.Coach, inviter)
+	if ignoresCoach(target.Coach, inviter) {
+		return "invited coach ignores the inviter"
+	}
+	return ""
 }
 
 // handleTeamUpAnswer handles 6026 (abB): accept or refuse an invitation.
@@ -317,7 +349,7 @@ func (d *Deps) createDuoPresets(p *teamUpPair) {
 		}
 		team := &domain.Team{
 			CoachID: owner, Name: p.Name,
-			GameMode: gameMode2v2, AllyCoachID: ally,
+			Type: duoTeamType, GameMode: gameMode2v2, AllyCoachID: ally,
 		}
 		if found != nil {
 			team.ID = found.ID
@@ -331,6 +363,20 @@ func (d *Deps) createDuoPresets(p *teamUpPair) {
 // gameMode2v2 is the client's zK.cB() value for a two-coach team. It is what
 // makes the client show "waitingReplyForFight" when the team is launched.
 const gameMode2v2 int16 = 2
+
+// duoTeamType is the preset TYPE a duo carries: the same -6 the client stamps on
+// every team a player creates by hand (hu_2 case 16632).
+//
+// A 2v2 preset is not a different KIND of team. `zK.cG(coachId)` appends to the
+// preset's coach list, and a hand-made team calls it once with its own owner -
+// so an ordinary team is [self] (size 1) and a duo is [ally, self] (size 2).
+// That size is the entire difference: `sw_1.afL()` is `bMK.size() == 2`, and the
+// 2VS2 tab lists exactly the presets where it holds.
+//
+// Type 0 - what these presets used to carry - is not a type the client stamps on
+// anything. It is excluded from the 1v1 bucket (which wants -6) and skips the
+// appearance bytes that only -5/-6/-7 carry, so the row had no icon to draw.
+const duoTeamType int16 = -6
 
 // duoLaunchPartner returns the partner id when a 23103 "Combattre" is a DUO
 // launch, or 0 when it is an ordinary solo one.

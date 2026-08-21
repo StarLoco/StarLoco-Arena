@@ -337,6 +337,16 @@ func TestDuoPresetsCarryTheAlly(t *testing.T) {
 		if duo.Name != "LesDeux" {
 			t.Errorf("coach %d preset name = %q, want the duo's name", c.owner, duo.Name)
 		}
+		// The type must be one the client actually stamps on teams (-6, as
+		// hu_2 case 16632 does). Type 0 belongs to no bucket and carries no
+		// appearance bytes, so the row has nothing to draw.
+		if duo.Type != duoTeamType {
+			t.Errorf("coach %d preset type = %d, want %d - a type the client renders",
+				c.owner, duo.Type, duoTeamType)
+		}
+		if !specialTeamType(duo.Type) {
+			t.Errorf("coach %d preset type %d skips the appearance bytes", c.owner, duo.Type)
+		}
 		// The blob's coach list must hold BOTH coaches, ally first.
 		//
 		// Count: the 2VS2 tab lists presets where sw_1.afL() is true, and afL()
