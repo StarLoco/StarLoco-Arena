@@ -186,3 +186,56 @@ func (r *FighterRepo) SaveLoadout(fighterID, coachID uint, cards []domain.Fighte
 			Update("budget", budget).Error
 	})
 }
+
+// ErrSphereNotAffordable means the fighter no longer had the experience the
+// purchase required - the guard is in the UPDATE's WHERE clause, so this is also
+// what a lost race reports.
+var ErrSphereNotAffordable = errors.New("store: not enough experience")
+
+// BuySphere records a Kanodo purchase atomically: charge the experience, add the
+// node if it is new, and walk the cursor onto it.
+//
+// One transaction because a half-applied purchase is the worst outcome available
+// - charged but not credited, or credited without paying - and the client has
+// already applied its own copy locally by the time this arrives.
+func (r *FighterRepo) BuySphere(fighterID uint, sphereID int32, cost int32, cursorX, cursorY int16) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&domain.Fighter{}).
+			// The xp >= cost guard is in the WHERE clause, not a read-then-write,
+			// so two purchases racing on one fighter cannot both pass the check.
+			Where("id = ? AND xp >= ?", fighterID, cost).
+			Updates(map[string]any{
+				"xp":       gorm.Expr("xp - ?", cost),
+				"sphere_x": cursorX,
+				"sphere_y": cursorY,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrSphereNotAffordable
+		}
+		var n int64
+		if err := tx.Model(&domain.FighterSphere{}).
+			Where("fighter_id = ? AND sphere_id = ?", fighterID, sphereID).
+			Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			// Re-buying an owned node is legal (it costs a tenth) and must not
+			// duplicate the row.
+			return nil
+		}
+		return tx.Create(&domain.FighterSphere{FighterID: fighterID, SphereID: sphereID}).Error
+	})
+}
+
+// SpheresOf returns the node ids a fighter has bought.
+func (r *FighterRepo) SpheresOf(fighterID uint) ([]int32, error) {
+	var out []int32
+	err := r.db.Model(&domain.FighterSphere{}).
+		Where("fighter_id = ?", fighterID).
+		Order("sphere_id ASC").
+		Pluck("sphere_id", &out).Error
+	return out, err
+}

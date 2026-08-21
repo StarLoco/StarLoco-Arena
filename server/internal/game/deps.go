@@ -93,5 +93,6 @@ func RegisterAll(r *Router, d *Deps) {
 	registerZaapHandlers(r, d)
 	registerMailHandlers(r, d)
 	registerEvolutionHandlers(r, d)
+	registerSphereHandlers(r, d)
 	registerTotemHandlers(r, d)
 }

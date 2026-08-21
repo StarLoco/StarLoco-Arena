@@ -1550,10 +1550,21 @@ is a signing certificate or SignPath); no published Docker image.
     Live on the retail client: the Kanodo opens on a real board, the fighter's
     head sits on the root, nodes select, and a node reports its own payload and
     price ("Bonus : +1% dégâts d'eau", "Coût : 218 xp").
-    Remaining: C2S **23009** (`aow_2`, arch 3, `[i64 fighterId][i32 sphereId]
-    [i32 cardTemplateId]`) — validate XP and adjacency, charge the cost (a
-    re-bought node costs a TENTH), consume a barrier card, walk the cursor
-    (portals jump it), persist; then apply node effects to the fighter.
+    Also done: C2S **23009** (`aow_2`, arch 3) — the purchase. Every rule is
+    re-derived server-side rather than trusted, because the client applies its own
+    copy and simply tells us (there is no reply opcode and no rejection path, so a
+    crafted 23009 would otherwise be a free talent tree): fighter ownership, the
+    node being on THIS fighter''s board, the node having a payload, reachability,
+    price (a re-bought node costs a TENTH), and a Barrier''s card being both
+    accepted and actually held. Reachability mirrors `ajM.a` exactly — a route
+    crosses EMPTY cells only, any payload node blocks it, dead ends block
+    absolutely, and a portal reaches its arrival cell in one step.
+    Live end-to-end: the confirm dialog ("dépenser 2 points d''expérience"), the
+    purchase logged server-side, and 150 → 148 xp with the cursor moved,
+    surviving a reconnect. Nodes the rule refuses are silently refused by the
+    client too — the two agree.
+    Remaining: apply node effects to the fighter (stats, spells, the type-251
+    equipment pools) so a bought sphere changes how the fighter fights.
 30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
     2-team array to become a slice, the ready gate to count teams, per-team
     session lists, and the 8000 coach loop generalised.

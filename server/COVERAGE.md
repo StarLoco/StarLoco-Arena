@@ -284,6 +284,7 @@ pieces: the other sub-boards (evolution/team/etc., 27504–27552).
 | 23004 | `amh_0` EvolutionSearchResult | S2C | ✓ | A (`[i16 preset][i8 accepted]`) | — | ✓ **live** |
 | 23006 | `azl_0` EvolutionFightStarting | S2C | ✓ | A (empty) | — | ✓ **live** |
 | 23008 | `KL` EvolutionSearchError | S2C | ✓ | A (`[i8 code]`) | — | ✓ |
+| 23009 | `aow_2` SphereBuy (Kanodo) | C2S | ✓ | A (`[i64 fighterId][i32 sphereId][i32 cardTemplateId]`) | — | ✓ **live** |
 
 **There are THREE parallel copies of this handshake**, one per team-panel tab,
 consumed by three near-identical client frames: `vu_1` (classic/Elite), `wp_0`

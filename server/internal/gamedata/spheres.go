@@ -403,3 +403,89 @@ func decodeSphere(data []byte) *Sphere {
 	s.leftover = len(c.b) - c.pos
 	return s
 }
+
+// HasPayload reports the client's `ajM.azm()`: the node does something. It is the
+// exact disjunction the client uses, and it is load-bearing twice over - it is
+// what makes a node a "real" sphere rather than a segment of path, and a node with
+// a payload BLOCKS a route through it.
+func (s *Sphere) HasPayload() bool {
+	return s != nil && (s.SpellID != 0 || len(s.Effects) > 0 || len(s.BarrierCards) > 0 ||
+		s.EquipmentPoolID != 0 || s.TeleportX != 0 || s.DeadEnd)
+}
+
+// Neighbours returns the nodes orthogonally adjacent to a cell. `ks_2.a` links a
+// node to whichever of (x, y+-1) and (x+-1, y) exist, so the board graph is plain
+// grid 4-adjacency and nothing else.
+func (c *SphereBoards) Neighbours(boardID int32, s *Sphere) []*Sphere {
+	if c == nil || s == nil {
+		return nil
+	}
+	out := make([]*Sphere, 0, 4)
+	for _, d := range [4][2]int16{{0, 1}, {0, -1}, {1, 0}, {-1, 0}} {
+		if n := c.At(boardID, s.X+d[0], s.Y+d[1]); n != nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// Reachable reports whether a fighter standing on `from` may buy `to`.
+//
+// This mirrors `ajM.a(from, true)`, which searches from the TARGET back towards
+// the cursor, in the client's own order because the order is what decides the
+// edge cases:
+//
+//  1. a dead-end node fails immediately - tested BEFORE anything else, so a
+//     dead end can neither be bought nor walked through;
+//  2. arriving at `from` succeeds - tested BEFORE the payload check, so the node
+//     you are standing on does not block the route out of itself;
+//  3. any OTHER node carrying a payload fails - you may only cross empty path
+//     cells, which is what "un chemin direct" means: the next sphere along, never
+//     one behind it;
+//  4. otherwise recurse into the four neighbours.
+//
+// A portal counts as a route too: standing on a teleport node whose arrival cell
+// is the node under test reaches it in one step (`Ei.b`, and the same test again
+// inside the search).
+//
+// Buying the node you already stand on is refused, matching `Ei.b`'s first line.
+func (c *SphereBoards) Reachable(boardID int32, from, to *Sphere) bool {
+	if c == nil || from == nil || to == nil || from.ID == to.ID {
+		return false
+	}
+	reachesFrom := func(n *Sphere) bool {
+		return n.ID == from.ID || (from.TeleportX == n.X && from.TeleportY == n.Y)
+	}
+	if reachesFrom(to) {
+		return true
+	}
+
+	visited := map[int32]bool{to.ID: true}
+	stack := []*Sphere{to}
+	first := true
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n.DeadEnd {
+			continue
+		}
+		if !first && n.HasPayload() {
+			continue
+		}
+		first = false
+		for _, nb := range c.Neighbours(boardID, n) {
+			if visited[nb.ID] {
+				continue
+			}
+			if nb.DeadEnd {
+				continue
+			}
+			if reachesFrom(nb) {
+				return true
+			}
+			visited[nb.ID] = true
+			stack = append(stack, nb)
+		}
+	}
+	return false
+}

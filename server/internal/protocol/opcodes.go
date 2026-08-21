@@ -341,7 +341,11 @@ const (
 	OpEvolutionSearchRequest      = 23003 // C2S (arch 2): [i64 coachId][i16 preset=99] — ajw_0
 	OpEvolutionSearchResult       = 23004 // S2C: [i16 preset][i8 accepted] — amh_0
 	OpEvolutionFightStarting      = 23006 // S2C: empty — azl_0, "Lancement du combat"
-	OpEvolutionSearchError        = 23008 // S2C: [i8 code] — KL
+	// OpSphereBuy has NO reply: the client applies the purchase to its own copy of
+	// the fighter and then tells us (awu_0), so this is the authority on what is
+	// persisted rather than a request the player can see refused.
+	OpSphereBuy            = 23009 // C2S aow_2 (arch 3): [i64 fighterId][i32 sphereId][i32 cardTemplateId], card = the Barrier sacrifice or 0
+	OpEvolutionSearchError = 23008 // S2C: [i8 code] — KL
 
 	// Ladder — the ranking window has SEVEN tabs, one opcode pair each (client
 	// afl_1, dialog ladderInformationDialog.xml). All C2S arch 2; strings are
