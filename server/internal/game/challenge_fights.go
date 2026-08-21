@@ -487,7 +487,7 @@ func pickBreedSpell(spells *gamedata.Spells, breedID uint8) int32 {
 func (d *Deps) buildChallengeTeam(side uint8, cells []Pos, challengeID int32, mirror int) *FightTeam {
 	breeds := challengeOpponentBreeds(challengeID, mirror)
 	coach := &domain.Coach{ID: challengeCoachID, Name: challengeOpponentName(challengeID)}
-	team := &FightTeam{ID: side, Coach: coach}
+	team := &FightTeam{ID: side, Members: []*FightMember{{Coach: coach}}}
 
 	for i, breedID := range breeds {
 		pos := Pos{}

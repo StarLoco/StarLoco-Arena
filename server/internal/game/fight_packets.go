@@ -69,11 +69,15 @@ func buildCreateFight(f *Fight, deckCoach *domain.Coach, spectator bool) ([]byte
 
 	w.I32(0) // axw.aW: fight instance id, unused by the client's own rendering
 
-	// Coach loop.
-	coaches := []*FightTeam{f.Teams[0], f.Teams[1]}
-	w.U8(uint8(len(coaches)))
-	for _, t := range coaches {
-		writeFightCoachBlock(w, t.Coach)
+	// Coach loop. This list is INDEPENDENT of the team list: the client keys it
+	// by coach id (`cp_2`) and later derives each coach's side from the team its
+	// fighters landed in (`axw.a(team, side)`), so a 2v2 writes four entries
+	// here against two teams below. It must therefore carry every MEMBER of
+	// every side, not one coach per side.
+	members := f.members()
+	w.U8(uint8(len(members)))
+	for _, m := range members {
+		writeFightCoachBlock(w, m.Coach)
 		w.U16(0) // stats report length = 0
 	}
 
@@ -434,14 +438,22 @@ func buildActorAppear(entries []actorAppearEntry) ([]byte, error) {
 func buildActorAppearForFight(f *Fight) ([]byte, error) {
 	center := Pos{X: f.Arena().centerX, Y: f.Arena().centerY}
 	var entries []actorAppearEntry
-	for i, t := range f.Teams {
-		if t == nil || t.Coach == nil {
-			continue
+	// Every coach gets a pedestal, not just each side's representative: in a 2v2
+	// all four stand at the arena edge. Pedestals are dealt round-robin from the
+	// arena's coach cells, so a side's second coach takes the next free spot
+	// rather than stacking on its ally.
+	spot := 0
+	for _, t := range f.Teams {
+		for _, mem := range t.Members {
+			if mem.Coach == nil {
+				continue
+			}
+			cell := f.Arena().coachCells[spot%len(f.Arena().coachCells)]
+			spot++
+			entries = append(entries, actorAppearEntry{
+				ID: int64(mem.Coach.ID), X: cell.X, Y: cell.Y, Z: cell.Z, Dir: diagonalFacing(cell, center),
+			})
 		}
-		spot := f.Arena().coachCells[i%len(f.Arena().coachCells)]
-		entries = append(entries, actorAppearEntry{
-			ID: int64(t.Coach.ID), X: spot.X, Y: spot.Y, Z: spot.Z, Dir: diagonalFacing(spot, center),
-		})
 	}
 	for _, ff := range f.allFighters() {
 		entries = append(entries, actorAppearEntry{

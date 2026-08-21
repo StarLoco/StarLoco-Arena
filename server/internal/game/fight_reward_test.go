@@ -24,8 +24,8 @@ func TestFightWinAwardsTokens(t *testing.T) {
 
 	f := buildTestFight()
 	// Rebind the synthetic teams to the persisted coach ids (team 0 wins).
-	f.Teams[0].Coach.ID = winner.ID
-	f.Teams[1].Coach.ID = loser.ID
+	f.Teams[0].Coach().ID = winner.ID
+	f.Teams[1].Coach().ID = loser.ID
 	f.setPhase(PhaseAction)
 
 	d := &Deps{Store: st, Fights: NewFightManager(), World: NewRegistry(150), Log: testLogger()}

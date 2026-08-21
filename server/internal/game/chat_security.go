@@ -178,7 +178,9 @@ func (d *Deps) fightAllies(coachID uint) []*Session {
 	}
 	var out []*Session
 	for _, t := range f.Teams {
-		if t == nil || t.Coach == nil || t.Coach.ID != coachID {
+		// The sender's side is the one it is a MEMBER of - in a 2v2 that is not
+		// necessarily the side's representative coach.
+		if t.MemberFor(coachID) == nil {
 			continue
 		}
 		// This is the sender's team. Everyone else on it is an ally.

@@ -319,7 +319,7 @@ func (s *Session) enterWorld(coach *domain.Coach) error {
 		cid := coach.ID
 		sess := s
 		f.Post(func(f *Fight) {
-			if t := f.teamOfCoach(cid); t != nil && t.Absent {
+			if m := f.memberOfCoach(cid); m != nil && m.Absent {
 				if frame, err := buildReconnectFightQuestion(); err == nil {
 					_ = sess.Send(frame)
 				}

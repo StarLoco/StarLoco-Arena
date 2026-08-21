@@ -14,7 +14,7 @@ func buildTestFight() *Fight {
 		coach := &domain.Coach{ID: coachID, Name: name}
 		fr := &domain.Fighter{ID: coachID * 10, BreedID: 1, Name: name + "F"}
 		return &FightTeam{
-			ID: side, Coach: coach,
+			ID: side, Members: []*FightMember{{Coach: coach}},
 			Fighters: []*FightFighter{{
 				WireID: FighterWireIDBase + int64(coachID), CoachID: coachID,
 				TeamID: side, Fighter: fr, MaxHP: 1000, HP: 1000, AP: 6, MP: 3,
@@ -109,7 +109,7 @@ func TestTimelineOrder(t *testing.T) {
 func TestTimelineInitiativeOrder(t *testing.T) {
 	mk := func(coachID uint, breed, side uint8) *FightTeam {
 		return &FightTeam{
-			ID: side, Coach: &domain.Coach{ID: coachID},
+			ID: side, Members: []*FightMember{{Coach: &domain.Coach{ID: coachID}}},
 			Fighters: []*FightFighter{{
 				WireID: FighterWireIDBase + int64(coachID), CoachID: coachID,
 				TeamID: side, Fighter: &domain.Fighter{BreedID: breed},
@@ -142,7 +142,7 @@ func TestIsAIControlled(t *testing.T) {
 	}
 	// Attach a live session to team 0: its fighter is now human-driven, while
 	// team 1 (still session-less) stays AI.
-	f.Teams[0].Session = &Session{}
+	f.Teams[0].Members[0].Session = &Session{}
 	if human := f.Teams[0].Fighters[0]; f.isAIControlled(human) {
 		t.Error("fighter on a team with a live session must not be AI-controlled")
 	}

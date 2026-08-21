@@ -109,140 +109,146 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 	}
 
 	for _, t := range f.Teams {
-		if t == nil || t.Coach == nil || isSyntheticCoach(t.Coach.ID) {
-			continue
-		}
 		won := t.ID == winnerTeam
-		sess := t.Session
+		// Per MEMBER, not per side. Set bonuses come from a coach's OWN equipped
+		// cards, so in a 2v2 each coach's bonuses must reach only the fighters it
+		// owns - otherwise an ally's gear would silently buff fighters belonging
+		// to someone else. `ownFighters` below is what enforces that.
+		for _, mem := range t.Members {
+			if mem.Coach == nil || isSyntheticCoach(mem.Coach.ID) {
+				continue
+			}
+			sess := mem.Session
 
-		// Set bonuses are per-COACH, so resolve them once per team rather than
-		// per fighter.
-		xpPct := sessionSetBonus(sess, aiXPPercent)
-		xpFlat := sessionSetBonus(sess, aiXPFlat)
-		moraleMod := sessionSetBonus(sess, aiMorale)
-		tirednessMod := sessionSetBonus(sess, aiTiredness)
-		repMod := sessionSetBonus(sess, aiReputation)
-		woundMod := sessionSetBonus(sess, aiWound)
-		deathMod := sessionSetBonus(sess, aiDeath)
-		cancelWound := sessionSetBonus(sess, aiCancelWound)
-		// The opponent-facing variants are applied to the OTHER side.
-		xpPct += opposingSetBonus(f, t.ID, aiXPPercentEnemy)
-		xpFlat += opposingSetBonus(f, t.ID, aiXPFlatEnemy)
-		moraleMod += opposingSetBonus(f, t.ID, aiMoraleEnemy)
-		tirednessMod += opposingSetBonus(f, t.ID, aiTirednessEnemy)
-		woundMod += opposingSetBonus(f, t.ID, aiWoundEnemy)
-		deathMod += opposingSetBonus(f, t.ID, aiDeathEnemy)
+			// Set bonuses are per-COACH, so resolve them once per team rather than
+			// per fighter.
+			xpPct := sessionSetBonus(sess, aiXPPercent)
+			xpFlat := sessionSetBonus(sess, aiXPFlat)
+			moraleMod := sessionSetBonus(sess, aiMorale)
+			tirednessMod := sessionSetBonus(sess, aiTiredness)
+			repMod := sessionSetBonus(sess, aiReputation)
+			woundMod := sessionSetBonus(sess, aiWound)
+			deathMod := sessionSetBonus(sess, aiDeath)
+			cancelWound := sessionSetBonus(sess, aiCancelWound)
+			// The opponent-facing variants are applied to the OTHER side.
+			xpPct += opposingSetBonus(f, t.ID, aiXPPercentEnemy)
+			xpFlat += opposingSetBonus(f, t.ID, aiXPFlatEnemy)
+			moraleMod += opposingSetBonus(f, t.ID, aiMoraleEnemy)
+			tirednessMod += opposingSetBonus(f, t.ID, aiTirednessEnemy)
+			woundMod += opposingSetBonus(f, t.ID, aiWoundEnemy)
+			deathMod += opposingSetBonus(f, t.ID, aiDeathEnemy)
 
-		var teamStanding int32
-		for _, ff := range t.Fighters {
-			if ff == nil || ff.Fighter == nil || ff.Fighter.ID == 0 {
-				continue // summons and synthetic fighters have no persistent row
-			}
-			fr := ff.Fighter
-			rep := &postFightReport{won: won}
-			hours := hoursSince(fr.LastFightAt, now)
-
-			// 1. XP: base, scaled by morale, then the rest bonus.
-			rep.applyXP(baseXPPerFight, hours, int8(clampInt32(int32(fr.Morale), 0, maxMorale)))
-			// 2. Gear/set XP modifiers stack onto the final figure only. A HEAD
-			//    WOUND lives here too: it is a meta effect (AI 1, -10%/-20% XP),
-			//    which is why the fighter's own conditions are summed in.
-			xpPctTotal := xpPct + conditionMetaBonus(d.Conditions, fr, aiXPPercent)
-			if xpPctTotal != 0 {
-				rep.addXP(rep.xpBeforeGear * xpPctTotal / 100)
-			}
-			if xpFlat != 0 {
-				rep.addXP(xpFlat)
-			}
-			// 3. Reputation set bonus is converted into XP at the client's rate
-			//    (ga_0: cnv += x * nr_0.Po) AND earns the coach standing.
-			if repMod != 0 {
-				rep.addXP(repMod * standingXPScale)
-				teamStanding += repMod
-			}
-			// 4. Morale drifts with the result, then set bonuses and the
-			//    fighter's own conditions shift it (a serious "other" wound is
-			//    AI 9, -1 morale).
-			rep.applyMoraleDrift(int8(clampInt32(int32(fr.Morale), 0, maxMorale)), won, rng)
-			moraleTotal := moraleMod + conditionMetaBonus(d.Conditions, fr, aiMorale)
-			if moraleTotal != 0 {
-				rep.addMorale(int8(moraleTotal))
-			}
-			// 5. Fatigue: recover elapsed time, add this fight's cost, then
-			//    apply set bonuses (usually negative — rest gear).
-			rep.applyTiredness(fr.Tiredness, hours, true, rng)
-			if tirednessMod != 0 {
-				rep.addTiredness(int8(tirednessMod))
-				rep.finaliseTiredness()
-			}
-			// 6. Wounds and death. Every fielded fighter takes the SAME roll,
-			//    whether it finished the fight standing or at 0 HP: falling in
-			//    the fight is a KO, not a death. See the block comment above
-			//    `deathIsRolledNotDealt` for why.
-			if d.Conditions != nil {
-				rep.rollInjuryChances(fr.TotalXP, rng)
-				// Card/set modifiers shift the chances, guarded exactly as the
-				// client guards them: `jT` only applies once the roll happened,
-				// and `jU` refuses to raise the death chance of a fighter whose
-				// lifetime XP is still under a tenth of the scale — i.e. rookies
-				// are protected from death-chance stacking.
-				if woundMod != 0 && rep.injuryRolled {
-					rep.injuryChance += woundMod
+			var teamStanding int32
+			for _, ff := range ownFighters(t, mem) {
+				if ff == nil || ff.Fighter == nil || ff.Fighter.ID == 0 {
+					continue // summons and synthetic fighters have no persistent row
 				}
-				if deathMod != 0 && rep.injuryRolled && fr.TotalXP*10 < deathXPScale {
-					rep.deathChance += deathMod
+				fr := ff.Fighter
+				rep := &postFightReport{won: won}
+				hours := hoursSince(fr.LastFightAt, now)
+
+				// 1. XP: base, scaled by morale, then the rest bonus.
+				rep.applyXP(baseXPPerFight, hours, int8(clampInt32(int32(fr.Morale), 0, maxMorale)))
+				// 2. Gear/set XP modifiers stack onto the final figure only. A HEAD
+				//    WOUND lives here too: it is a meta effect (AI 1, -10%/-20% XP),
+				//    which is why the fighter's own conditions are summed in.
+				xpPctTotal := xpPct + conditionMetaBonus(d.Conditions, fr, aiXPPercent)
+				if xpPctTotal != 0 {
+					rep.addXP(rep.xpBeforeGear * xpPctTotal / 100)
 				}
-				if cancelWound > 0 && int32(rng.Intn(100)) < cancelWound {
-					rep.injuryCancel = true
+				if xpFlat != 0 {
+					rep.addXP(xpFlat)
 				}
-				d.applyWoundAndDeathRolls(rep, fr, rng)
-			}
-			if rep.dead {
-				killed++
-				diedByCoach[t.Coach.ID] = append(diedByCoach[t.Coach.ID], fr.Name)
-			}
-			if rep.woundID != 0 {
-				injured++
+				// 3. Reputation set bonus is converted into XP at the client's rate
+				//    (ga_0: cnv += x * nr_0.Po) AND earns the coach standing.
+				if repMod != 0 {
+					rep.addXP(repMod * standingXPScale)
+					teamStanding += repMod
+				}
+				// 4. Morale drifts with the result, then set bonuses and the
+				//    fighter's own conditions shift it (a serious "other" wound is
+				//    AI 9, -1 morale).
+				rep.applyMoraleDrift(int8(clampInt32(int32(fr.Morale), 0, maxMorale)), won, rng)
+				moraleTotal := moraleMod + conditionMetaBonus(d.Conditions, fr, aiMorale)
+				if moraleTotal != 0 {
+					rep.addMorale(int8(moraleTotal))
+				}
+				// 5. Fatigue: recover elapsed time, add this fight's cost, then
+				//    apply set bonuses (usually negative — rest gear).
+				rep.applyTiredness(fr.Tiredness, hours, true, rng)
+				if tirednessMod != 0 {
+					rep.addTiredness(int8(tirednessMod))
+					rep.finaliseTiredness()
+				}
+				// 6. Wounds and death. Every fielded fighter takes the SAME roll,
+				//    whether it finished the fight standing or at 0 HP: falling in
+				//    the fight is a KO, not a death. See the block comment above
+				//    `deathIsRolledNotDealt` for why.
+				if d.Conditions != nil {
+					rep.rollInjuryChances(fr.TotalXP, rng)
+					// Card/set modifiers shift the chances, guarded exactly as the
+					// client guards them: `jT` only applies once the roll happened,
+					// and `jU` refuses to raise the death chance of a fighter whose
+					// lifetime XP is still under a tenth of the scale — i.e. rookies
+					// are protected from death-chance stacking.
+					if woundMod != 0 && rep.injuryRolled {
+						rep.injuryChance += woundMod
+					}
+					if deathMod != 0 && rep.injuryRolled && fr.TotalXP*10 < deathXPScale {
+						rep.deathChance += deathMod
+					}
+					if cancelWound > 0 && int32(rng.Intn(100)) < cancelWound {
+						rep.injuryCancel = true
+					}
+					d.applyWoundAndDeathRolls(rep, fr, rng)
+				}
+				if rep.dead {
+					killed++
+					diedByCoach[mem.Coach.ID] = append(diedByCoach[mem.Coach.ID], fr.Name)
+				}
+				if rep.woundID != 0 {
+					injured++
+				}
+
+				// 7. Age the fighter's timed conditions by one fight. Done LAST so a
+				//    wound taken this fight is not immediately aged.
+				expireConditions(fr)
+
+				rep.bank(fr, now)
+				if d.Store != nil {
+					_ = d.Store.Fighters.SaveProgress(fr)
+					_ = d.Store.Fighters.SaveConditions(fr.ID, fr.Conditions)
+				}
+				// Keyed by the ROSTER id, and tagged with its owner: the client looks
+				// each one up in its own fighter list, so a wire id - or another
+				// coach's fighter - resolves to nothing and takes the result dialog
+				// down with it (B-096).
+				reports = append(reports, endFightReport{
+					FighterID: int64(fr.ID),
+					CoachID:   mem.Coach.ID,
+					Blob:      rep.encode(),
+				})
 			}
 
-			// 7. Age the fighter's timed conditions by one fight. Done LAST so a
-			//    wound taken this fight is not immediately aged.
-			expireConditions(fr)
-
-			rep.bank(fr, now)
-			if d.Store != nil {
-				_ = d.Store.Fighters.SaveProgress(fr)
-				_ = d.Store.Fighters.SaveConditions(fr.ID, fr.Conditions)
+			// Coach reputation for the fight itself, plus any set bonus.
+			standing := standingForResult(won) + teamStanding
+			if standing < 0 {
+				standing = 0
 			}
-			// Keyed by the ROSTER id, and tagged with its owner: the client looks
-			// each one up in its own fighter list, so a wire id - or another
-			// coach's fighter - resolves to nothing and takes the result dialog
-			// down with it (B-096).
-			reports = append(reports, endFightReport{
-				FighterID: int64(fr.ID),
-				CoachID:   t.Coach.ID,
-				Blob:      rep.encode(),
-			})
-		}
-
-		// Coach reputation for the fight itself, plus any set bonus.
-		standing := standingForResult(won) + teamStanding
-		if standing < 0 {
-			standing = 0
-		}
-		standingByCoach[t.Coach.ID] = standing
-		if standing > 0 {
-			t.Coach.Mu.Lock()
-			before := StandingToLevel(t.Coach.Standing)
-			t.Coach.Standing += standing
-			after := StandingToLevel(t.Coach.Standing)
-			t.Coach.Mu.Unlock()
-			if d.Store != nil {
-				_ = d.Store.Coaches.Save(t.Coach)
-			}
-			if after > before {
-				d.Log.Info("coach evolution level up", "coach", t.Coach.Name,
-					"level", after, "standing", t.Coach.Standing)
+			standingByCoach[mem.Coach.ID] = standing
+			if standing > 0 {
+				mem.Coach.Mu.Lock()
+				before := StandingToLevel(mem.Coach.Standing)
+				mem.Coach.Standing += standing
+				after := StandingToLevel(mem.Coach.Standing)
+				mem.Coach.Mu.Unlock()
+				if d.Store != nil {
+					_ = d.Store.Coaches.Save(mem.Coach)
+				}
+				if after > before {
+					d.Log.Info("coach evolution level up", "coach", mem.Coach.Name,
+						"level", after, "standing", mem.Coach.Standing)
+				}
 			}
 		}
 	}
@@ -298,10 +304,48 @@ func sessionSetBonus(s *Session, action int32) int32 {
 func opposingSetBonus(f *Fight, myTeam uint8, action int32) int32 {
 	var total int32
 	for _, t := range f.Teams {
-		if t == nil || t.ID == myTeam {
+		if t.ID == myTeam {
 			continue
 		}
-		total += sessionSetBonus(t.Session, action)
+		// Every member of the opposing side contributes: in a 2v2 both enemy
+		// coaches' "pour l'adversaire" bonuses land on us, which is what makes
+		// them worth equipping.
+		for _, mem := range t.Members {
+			total += sessionSetBonus(mem.Session, action)
+		}
 	}
 	return total
+}
+
+// ownFighters returns the fighters on side t that belong to member mem.
+//
+// In a 1v1 that is every fighter on the side, so behaviour is unchanged. In a
+// 2v2 it is the split that keeps one coach's set bonuses, wound rolls and XP
+// from being applied to its ally's fighters - they are different people with
+// different gear, and the post-fight maths is per-coach.
+//
+// Fighters carry their owner's id from the moment the team is built, so this is
+// a filter rather than a guess. A fighter whose CoachID matches no member (a
+// summon, or a server-driven fighter) belongs to the side's representative, so
+// it is still processed exactly once.
+func ownFighters(t *FightTeam, mem *FightMember) []*FightFighter {
+	if t == nil || mem == nil || mem.Coach == nil {
+		return nil
+	}
+	out := make([]*FightFighter, 0, len(t.Fighters))
+	for _, ff := range t.Fighters {
+		if ff == nil {
+			continue
+		}
+		if ff.CoachID == mem.Coach.ID {
+			out = append(out, ff)
+			continue
+		}
+		// Unowned: fold it into the representative so it is neither dropped nor
+		// counted twice.
+		if t.MemberFor(ff.CoachID) == nil && len(t.Members) > 0 && t.Members[0] == mem {
+			out = append(out, ff)
+		}
+	}
+	return out
 }

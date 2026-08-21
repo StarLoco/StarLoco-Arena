@@ -70,7 +70,7 @@ func TestChallengeVictoryGrantsRewards(t *testing.T) {
 	}
 
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
+	f.Teams[0].Coach().ID = coachID
 	f.ChallengeID = 33
 	f.Practice = true // challenges are unranked, like the real launch
 	f.setPhase(PhaseAction)
@@ -97,7 +97,7 @@ func TestChallengeDefeatGrantsNothing(t *testing.T) {
 	ch := d.ChallengeDefs.Get(33)
 
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
+	f.Teams[0].Coach().ID = coachID
 	f.ChallengeID = 33
 	f.Practice = true
 	f.setPhase(PhaseAction)
@@ -126,7 +126,7 @@ func TestNonChallengeFightGrantsNoCards(t *testing.T) {
 	ch := d.ChallengeDefs.Get(33)
 
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
+	f.Teams[0].Coach().ID = coachID
 	f.ChallengeID = 0
 	f.Practice = true
 	f.setPhase(PhaseAction)
@@ -150,8 +150,8 @@ func TestNonChallengeFightGrantsNoCards(t *testing.T) {
 func winChallenge(t *testing.T, d *Deps, coachID uint, challengeID int32) {
 	t.Helper()
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
-	f.Teams[1].Coach.ID = challengeCoachID
+	f.Teams[0].Coach().ID = coachID
+	f.Teams[1].Coach().ID = challengeCoachID
 	f.ChallengeID = challengeID
 	f.Practice = true
 	f.setPhase(PhaseAction)
@@ -276,8 +276,8 @@ func TestDisconnectedWinnerStillGetsRewards(t *testing.T) {
 	ch := d.ChallengeDefs.Get(33)
 
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
-	f.Teams[0].Session = nil // dropped mid-fight
+	f.Teams[0].Coach().ID = coachID
+	f.Teams[0].Members[0].Session = nil // dropped mid-fight
 	f.ChallengeID = 33
 	f.Practice = true
 	f.setPhase(PhaseAction)
@@ -303,8 +303,8 @@ func TestSyntheticOpponentNeverGetsRewards(t *testing.T) {
 	d, coachID := challengeRewardDeps(t)
 
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
-	f.Teams[1].Coach.ID = challengeCoachID // the demon side
+	f.Teams[0].Coach().ID = coachID
+	f.Teams[1].Coach().ID = challengeCoachID // the demon side
 	f.ChallengeID = 33
 	f.Practice = true
 	f.setPhase(PhaseAction)
@@ -342,7 +342,7 @@ func TestDanglingRewardCardIsNotGranted(t *testing.T) {
 	}
 
 	f := buildTestFight()
-	f.Teams[0].Coach.ID = coachID
+	f.Teams[0].Coach().ID = coachID
 	f.ChallengeID = 37
 	f.Practice = true
 	f.setPhase(PhaseAction)

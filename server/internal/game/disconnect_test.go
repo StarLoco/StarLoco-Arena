@@ -22,16 +22,16 @@ func TestDisconnectGracePassesTurnAndForfeits(t *testing.T) {
 	setTurnToTeam(f, 0) // it is the leaver's (team A) turn
 	d := &Deps{Fights: NewFightManager(), World: NewRegistry(150), Log: testLogger()}
 	d.Fights.Create(f)
-	coachA := f.Teams[0].Coach.ID
+	coachA := f.Teams[0].Coach().ID
 
 	d.coachLeftFightOnActor(f, coachA)
 
 	if f.Phase() == PhaseEnded {
 		t.Fatal("fight must stay alive during the reconnect grace, not end")
 	}
-	if !f.Teams[0].Absent || f.Teams[0].Session != nil {
+	if !f.Teams[0].Absent() || f.Teams[0].Session() != nil {
 		t.Fatalf("team A should be absent+detached: absent=%v session!=nil=%v",
-			f.Teams[0].Absent, f.Teams[0].Session != nil)
+			f.Teams[0].Absent(), f.Teams[0].Session() != nil)
 	}
 	if !f.teamAbsent(f.Teams[0].Fighters[0]) {
 		t.Error("teamAbsent should report true for the absent team's fighter")
@@ -46,11 +46,11 @@ func TestDisconnectGracePassesTurnAndForfeits(t *testing.T) {
 	if f.Phase() != PhaseEnded {
 		t.Fatal("forfeit should end the fight")
 	}
-	if f.Teams[1].Coach.StatWins != 1 {
-		t.Errorf("opponent StatWins = %d, want 1", f.Teams[1].Coach.StatWins)
+	if f.Teams[1].Coach().StatWins != 1 {
+		t.Errorf("opponent StatWins = %d, want 1", f.Teams[1].Coach().StatWins)
 	}
-	if f.Teams[0].Coach.StatLosses != 1 {
-		t.Errorf("leaver StatLosses = %d, want 1", f.Teams[0].Coach.StatLosses)
+	if f.Teams[0].Coach().StatLosses != 1 {
+		t.Errorf("leaver StatLosses = %d, want 1", f.Teams[0].Coach().StatLosses)
 	}
 }
 
@@ -63,11 +63,11 @@ func TestDisconnectBothLeaveTearsDown(t *testing.T) {
 	d := &Deps{Fights: NewFightManager(), World: NewRegistry(150), Log: testLogger()}
 	d.Fights.Create(f)
 
-	d.coachLeftFightOnActor(f, f.Teams[0].Coach.ID)
+	d.coachLeftFightOnActor(f, f.Teams[0].Coach().ID)
 	if f.Phase() == PhaseEnded {
 		t.Fatal("a single leaver should not end the fight")
 	}
-	d.coachLeftFightOnActor(f, f.Teams[1].Coach.ID)
+	d.coachLeftFightOnActor(f, f.Teams[1].Coach().ID)
 	if f.Phase() != PhaseEnded {
 		t.Error("both leavers should tear the fight down")
 	}
@@ -83,7 +83,7 @@ func TestDisconnectPracticeTearsDown(t *testing.T) {
 	d := &Deps{Fights: NewFightManager(), World: NewRegistry(150), Log: testLogger()}
 	d.Fights.Create(f)
 
-	d.coachLeftFightOnActor(f, f.Teams[0].Coach.ID)
+	d.coachLeftFightOnActor(f, f.Teams[0].Coach().ID)
 	if f.Phase() != PhaseEnded {
 		t.Error("a practice fight should tear down on disconnect")
 	}

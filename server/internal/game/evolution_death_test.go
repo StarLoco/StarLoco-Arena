@@ -39,7 +39,7 @@ func evoDeathHarness(t *testing.T) (*Deps, uint, *domain.Fighter, *domain.Fighte
 // the progression mode. The RNG is seeded so the rolls are reproducible.
 func buildEvoFight(d *Deps, coachID uint, downed, survivor *domain.Fighter, evolution bool) *Fight {
 	teamA := &FightTeam{
-		ID: 0, Coach: &domain.Coach{ID: coachID, Name: "Evo"},
+		ID: 0, Members: []*FightMember{{Coach: &domain.Coach{ID: coachID, Name: "Evo"}}},
 		Fighters: []*FightFighter{
 			{WireID: FighterWireIDBase + int64(downed.ID)*16, CoachID: coachID, TeamID: 0, Fighter: downed, MaxHP: 100, HP: 0},
 			{WireID: FighterWireIDBase + int64(survivor.ID)*16 + 1, CoachID: coachID, TeamID: 0, Fighter: survivor, MaxHP: 100, HP: 80},

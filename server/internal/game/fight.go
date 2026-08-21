@@ -130,16 +130,98 @@ type activePoison struct {
 	turnsLeft int32 // infiniteStateTurns for an infinite DoT
 }
 
-// FightTeam is one side of a fight.
-type FightTeam struct {
-	ID      uint8
+// FightMember is one coach fighting on a side. A 1v1 team has exactly one; a
+// 2v2 team has two.
+//
+// The client models it the same way and always has: CREATE_FIGHT carries a
+// variable-length COACH list that is independent of the (hard-coded, exactly
+// two) team list, every fighter blob is followed by the id of the coach that
+// owns it, and `axw.a(team, side)` then derives each coach's side from the team
+// its fighters landed in. So a side is a set of coaches, not one coach.
+type FightMember struct {
 	Coach   *domain.Coach
 	Session *Session
-	// Absent is set when the team's (real) coach dropped its connection mid-fight:
-	// the fight is kept alive (reconnect-ready) but the team's fighters auto-pass
-	// their turns and a grace timer forfeits them if the coach doesn't return.
-	Absent   bool
+	// Absent is set when this coach dropped its connection mid-fight: the fight
+	// is kept alive (reconnect-ready) but the coach's fighters auto-pass their
+	// turns and a grace timer forfeits them if it does not return.
+	Absent bool
+}
+
+// FightTeam is one side of a fight.
+type FightTeam struct {
+	ID uint8
+	// Members are the coaches on this side, in join order. Never empty for a
+	// real team; server-driven sides (sparring dummies, challenge demons) carry
+	// a single member whose Session is nil.
+	//
+	// Fighters name their own owner through FightFighter.CoachID, so nothing
+	// has to infer which member a fighter belongs to.
+	Members  []*FightMember
 	Fighters []*FightFighter
+}
+
+// Coach is the side's representative coach - the first to join. Use it only
+// where a side genuinely has ONE answer (its name on the wire, the ladder row
+// it settles against). Anything that talks to players must walk Members
+// instead, or it will silently ignore an ally.
+func (t *FightTeam) Coach() *domain.Coach {
+	if t == nil || len(t.Members) == 0 {
+		return nil
+	}
+	return t.Members[0].Coach
+}
+
+// Session is the representative coach's session; see Coach for the caveat.
+func (t *FightTeam) Session() *Session {
+	if t == nil || len(t.Members) == 0 {
+		return nil
+	}
+	return t.Members[0].Session
+}
+
+// Absent reports whether EVERY member of the side has dropped. A 2v2 side with
+// one coach still connected is not absent: its remaining coach keeps playing,
+// and only the absent coach's own fighters auto-pass.
+func (t *FightTeam) Absent() bool {
+	if t == nil || len(t.Members) == 0 {
+		return false
+	}
+	for _, m := range t.Members {
+		if !m.Absent {
+			return false
+		}
+	}
+	return true
+}
+
+// MemberFor returns the side's member for a coach id, or nil.
+func (t *FightTeam) MemberFor(coachID uint) *FightMember {
+	if t == nil {
+		return nil
+	}
+	for _, m := range t.Members {
+		if m.Coach != nil && m.Coach.ID == coachID {
+			return m
+		}
+	}
+	return nil
+}
+
+// Sessions returns every live session on the side, skipping members that are
+// server-driven (nil session) or currently disconnected.
+func (t *FightTeam) Sessions() []*Session {
+	if t == nil {
+		return nil
+	}
+	//nolint:gocritic // explicit nil-team guard above is deliberate: fights are
+	// built side-by-side and tests construct half-populated ones.
+	out := make([]*Session, 0, len(t.Members))
+	for _, m := range t.Members {
+		if m.Session != nil {
+			out = append(out, m.Session)
+		}
+	}
+	return out
 }
 
 // Phase/turn clock durations (force-advance if a coach never signals). Kept as
@@ -325,13 +407,12 @@ func (f *Fight) allFighters() []*FightFighter {
 	return out
 }
 
-// sessions returns both coaches' sessions.
+// sessions returns every participating coach's session - both sides, and every
+// member of each side.
 func (f *Fight) sessions() []*Session {
 	var out []*Session
 	for _, t := range f.Teams {
-		if t != nil && t.Session != nil {
-			out = append(out, t.Session)
-		}
+		out = append(out, t.Sessions()...)
 	}
 	return out
 }
@@ -418,14 +499,42 @@ func (f *Fight) applyDirectionChange(coachID uint, wireID int64, dir uint8) *Fig
 	return ff
 }
 
-// teamOfCoach returns the team owned by coachID (nil if none).
+// teamOfCoach returns the side coachID fights on (nil if none). It matches ANY
+// member, not just the representative, so an ally in a 2v2 resolves to its side
+// rather than to nothing.
 func (f *Fight) teamOfCoach(coachID uint) *FightTeam {
 	for _, t := range f.Teams {
-		if t != nil && t.Coach != nil && t.Coach.ID == coachID {
+		if t.MemberFor(coachID) != nil {
 			return t
 		}
 	}
 	return nil
+}
+
+// memberOfCoach returns coachID's own membership record, whichever side it is
+// on. Use this rather than teamOfCoach wherever the question is about the one
+// coach ("has THIS coach dropped?") instead of the side.
+func (f *Fight) memberOfCoach(coachID uint) *FightMember {
+	for _, t := range f.Teams {
+		if m := t.MemberFor(coachID); m != nil {
+			return m
+		}
+	}
+	return nil
+}
+
+// members returns every coach in the fight, side 0 first. The order is the
+// order CREATE_FIGHT's coach list is written in, and the client keys that list
+// by coach id, so it only has to be stable, not meaningful.
+func (f *Fight) members() []*FightMember {
+	var out []*FightMember
+	for _, t := range f.Teams {
+		if t == nil {
+			continue // a half-built fight (tests, and the challenge path pre-pairing)
+		}
+		out = append(out, t.Members...)
+	}
+	return out
 }
 
 // teamByID returns the team with the given side id (nil if none).
@@ -438,10 +547,23 @@ func (f *Fight) teamByID(id uint8) *FightTeam {
 	return nil
 }
 
-// teamAbsent reports whether ff's team belongs to a coach that has disconnected.
+// teamAbsent reports whether the coach that OWNS ff has disconnected.
+//
+// Deliberately per-fighter rather than per-side: in a 2v2 one coach can drop
+// while its ally plays on, and only the dropped coach's own fighters should
+// auto-pass. For a 1v1 side - one member owning every fighter - this is exactly
+// the old behaviour.
 func (f *Fight) teamAbsent(ff *FightFighter) bool {
 	t := f.teamOf(ff)
-	return t != nil && t.Absent
+	if t == nil {
+		return false
+	}
+	if m := t.MemberFor(ff.CoachID); m != nil {
+		return m.Absent
+	}
+	// No member owns it (a summon, or a server-driven fighter): fall back to the
+	// side as a whole, which is absent only if every member has dropped.
+	return t.Absent()
 }
 
 // allTeamsAbsent reports whether every real (coached) team has disconnected — the
@@ -449,11 +571,11 @@ func (f *Fight) teamAbsent(ff *FightFighter) bool {
 func (f *Fight) allTeamsAbsent() bool {
 	real, absent := 0, 0
 	for _, t := range f.Teams {
-		if t == nil || t.Coach == nil {
+		if t.Coach() == nil {
 			continue
 		}
 		real++
-		if t.Absent {
+		if t.Absent() {
 			absent++
 		}
 	}
@@ -485,7 +607,20 @@ func (f *Fight) isAIControlled(ff *FightFighter) bool {
 		return true
 	}
 	t := f.teamOf(ff)
-	return t == nil || t.Session == nil
+	if t == nil {
+		return true
+	}
+	// Per OWNER, not per side. A 2v2 side can pair a human with a server-driven
+	// coach, and only the latter's fighters should be AI-played; asking whether
+	// the SIDE has a session would hand a human's fighters to the AI (or, worse,
+	// leave a synthetic coach's fighters waiting forever for input that never
+	// comes).
+	if m := t.MemberFor(ff.CoachID); m != nil {
+		return m.Session == nil
+	}
+	// No member owns it (a summon whose owner already left, or a fighter built
+	// without an owner): fall back to the side having nobody connected at all.
+	return len(t.Sessions()) == 0
 }
 
 // FightManager tracks active fights by id and by coach.
@@ -518,9 +653,9 @@ func (m *FightManager) Create(f *Fight) {
 	f.ID = m.nextID
 	m.nextID++
 	m.byID[f.ID] = f
-	for _, t := range f.Teams {
-		if t != nil && t.Coach != nil {
-			m.byCoach[t.Coach.ID] = f
+	for _, mem := range f.members() {
+		if mem.Coach != nil {
+			m.byCoach[mem.Coach.ID] = f
 		}
 	}
 }
@@ -622,9 +757,9 @@ func (m *FightManager) Remove(f *Fight) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.byID, f.ID)
-	for _, t := range f.Teams {
-		if t != nil && t.Coach != nil {
-			delete(m.byCoach, t.Coach.ID)
+	for _, mem := range f.members() {
+		if mem.Coach != nil {
+			delete(m.byCoach, mem.Coach.ID)
 		}
 	}
 }

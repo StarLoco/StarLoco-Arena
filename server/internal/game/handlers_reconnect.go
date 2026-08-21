@@ -41,17 +41,17 @@ func handleReconnectFightAnswer(s *Session, frame *protocol.C2SFrame) error {
 	deps := s.deps
 	sess := s
 	f.Post(func(f *Fight) {
-		t := f.teamOfCoach(cid)
-		if t == nil || !t.Absent {
+		m := f.memberOfCoach(cid)
+		if m == nil || !m.Absent {
 			return // not resumable (already re-attached, or never absent)
 		}
 		if !accept {
 			deps.forfeitCoach(f, cid)
 			return
 		}
-		// Re-attach the returning coach to its team and cancel the reconnect grace.
-		t.Session = sess
-		t.Absent = false
+		// Re-attach the returning coach to its side and cancel the reconnect grace.
+		m.Session = sess
+		m.Absent = false
 		f.stopGrace()
 		// Remove the coach from the overworld again (enterWorld re-added it on
 		// reconnect) and despawn it from anyone who saw it in the lobby.

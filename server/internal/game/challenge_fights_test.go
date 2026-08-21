@@ -295,23 +295,23 @@ func TestBuildChallengeTeamIsAIReady(t *testing.T) {
 	d := &Deps{Spells: spells}
 	team := d.buildChallengeTeam(1, practiceArena.startCells(1), 33, 2)
 
-	if team.Session != nil {
+	if team.Session() != nil {
 		t.Error("challenge team must have no Session (else it never readies and gets no AI)")
 	}
-	if team.Coach == nil || team.Coach.ID != challengeCoachID {
-		t.Errorf("challenge team coach = %+v, want synthetic id %d", team.Coach, challengeCoachID)
+	if team.Coach() == nil || team.Coach().ID != challengeCoachID {
+		t.Errorf("challenge team coach = %+v, want synthetic id %d", team.Coach(), challengeCoachID)
 	}
 	// The opponent coach carries the demon's own name; each fighter is named by
 	// its breed so the fight is legible.
-	if team.Coach.Name != "Démon de la 12ème minute" {
-		t.Errorf("challenge 33 coach name = %q, want the 12th-minute demon's name", team.Coach.Name)
+	if team.Coach().Name != "Démon de la 12ème minute" {
+		t.Errorf("challenge 33 coach name = %q, want the 12th-minute demon's name", team.Coach().Name)
 	}
 	for i, ff := range team.Fighters {
 		if want := fighterBreedName(ff.Fighter.BreedID); ff.Fighter.Name != want {
 			t.Errorf("fighter %d name = %q, want breed name %q", i, ff.Fighter.Name, want)
 		}
 	}
-	if team.Coach.ID == sparringCoachID {
+	if team.Coach().ID == sparringCoachID {
 		t.Error("challenge coach id collides with the sparring coach id")
 	}
 	if len(team.Fighters) != 4 {

@@ -759,52 +759,57 @@ func (d *Deps) checkFightEnd(f *Fight) {
 	var winners, losers []endFightCoach
 	wonCardsByCoach := map[uint][]int32{}
 	for _, t := range f.Teams {
-		if t == nil || t.Coach == nil {
-			continue
-		}
 		won := t.ID == winnerTeam
-		if !f.Practice {
-			t.Coach.Mu.Lock()
-			t.Coach.StatFights++
+		// Every MEMBER of the side is credited, not just its representative: in a
+		// 2v2 both winners take the win, both losers take the loss, and each gets
+		// its own ladder movement and its own reward cards.
+		for _, mem := range t.Members {
+			if mem.Coach == nil {
+				continue
+			}
+			if !f.Practice {
+				mem.Coach.Mu.Lock()
+				mem.Coach.StatFights++
+				if won {
+					mem.Coach.StatWins++
+					mem.Coach.ConsecutiveWins++
+					mem.Coach.ConsecutiveLosses = 0
+				} else {
+					mem.Coach.StatLosses++
+					mem.Coach.ConsecutiveLosses++
+					mem.Coach.ConsecutiveWins = 0
+				}
+				// Ranked ladder: shift the coach's 1v1 Strength (+win / -loss). This
+				// moves its ladder position and drives the Level/Rank the client shows
+				// on the results screen from the 8300 strength map.
+				mem.Coach.Strength = domain.ApplyFightStrength(mem.Coach.Strength, won)
+				mem.Coach.Mu.Unlock()
+				if d.Store != nil {
+					_ = d.Store.Coaches.Save(mem.Coach)
+				}
+				if won { // faucet: award tokens + push the updated wallet (4001)
+					d.awardFightWin(mem.Coach.ID, mem.Session)
+				}
+			}
+			// Challenge (PvE) rewards are granted even though the fight is unranked -
+			// the cards ARE the point of a challenge. Deliberately outside the
+			// !f.Practice guard above, which only governs stats and ladder movement.
+			// Guarded on the coach being real rather than on having a session, so a
+			// coach that wins while disconnected still gets paid (the session is only
+			// needed to push the inventory live), and so a win by the demon side never
+			// writes cards to the synthetic opponent's id.
+			if won && f.ChallengeID != 0 && !isSyntheticCoach(mem.Coach.ID) {
+				// Keep the granted cards: they are what the results panel shows under
+				// "Cartes gagnees". Awarding them without reporting them (as before)
+				// left that panel blank on the very fight that paid out.
+				wonCardsByCoach[mem.Coach.ID] = d.recordChallengeVictory(mem.Coach.ID, mem.Session, f.ChallengeID)
+			}
+			entry := endFightCoach{ID: mem.Coach.ID, Strength: mem.Coach.Strength}
 			if won {
-				t.Coach.StatWins++
-				t.Coach.ConsecutiveWins++
-				t.Coach.ConsecutiveLosses = 0
+				winners = append(winners, entry)
 			} else {
-				t.Coach.StatLosses++
-				t.Coach.ConsecutiveLosses++
-				t.Coach.ConsecutiveWins = 0
+				losers = append(losers, entry)
 			}
-			// Ranked ladder: shift the coach's 1v1 Strength (+win / -loss). This
-			// moves its ladder position and drives the Level/Rank the client shows
-			// on the results screen from the 8300 strength map.
-			t.Coach.Strength = domain.ApplyFightStrength(t.Coach.Strength, won)
-			t.Coach.Mu.Unlock()
-			if d.Store != nil {
-				_ = d.Store.Coaches.Save(t.Coach)
-			}
-			if won { // faucet: award tokens + push the updated wallet (4001)
-				d.awardFightWin(t.Coach.ID, t.Session)
-			}
-		}
-		// Challenge (PvE) rewards are granted even though the fight is unranked —
-		// the cards ARE the point of a challenge. Deliberately outside the
-		// !f.Practice guard above, which only governs stats and ladder movement.
-		// Guarded on the coach being real rather than on having a session, so a
-		// coach that wins while disconnected still gets paid (the session is only
-		// needed to push the inventory live), and so a win by the demon side never
-		// writes cards to the synthetic opponent's id.
-		if won && f.ChallengeID != 0 && !isSyntheticCoach(t.Coach.ID) {
-			// Keep the granted cards: they are what the results panel shows under
-			// "Cartes gagnées". Awarding them without reporting them (as before)
-			// left that panel blank on the very fight that paid out.
-			wonCardsByCoach[t.Coach.ID] = d.recordChallengeVictory(t.Coach.ID, t.Session, f.ChallengeID)
-		}
-		entry := endFightCoach{ID: t.Coach.ID, Strength: t.Coach.Strength}
-		if won {
-			winners = append(winners, entry)
-		} else {
-			losers = append(losers, entry)
 		}
 	}
 	// Coach META pass: XP / morale / fatigue per fighter + coach reputation. It
@@ -815,15 +820,15 @@ func (d *Deps) checkFightEnd(f *Fight) {
 	// own frame when the awards differ (they do: a win pays more than a loss).
 	// One shared frame would credit the loser with the winner's reputation.
 	if len(standingByCoach) > 0 {
-		for _, t := range f.Teams {
-			if t == nil || t.Coach == nil || t.Session == nil {
+		for _, mem := range f.members() {
+			if mem.Coach == nil || mem.Session == nil {
 				continue
 			}
 			end, err := buildEndFightFull(f.nextActionUID(), winners, losers,
-				reportsFor(reports, t.Coach.ID), standingByCoach[t.Coach.ID], killed, injured,
-				wonCardsByCoach[t.Coach.ID])
+				reportsFor(reports, mem.Coach.ID), standingByCoach[mem.Coach.ID], killed, injured,
+				wonCardsByCoach[mem.Coach.ID])
 			if err == nil {
-				_ = t.Session.Send(end)
+				_ = mem.Session.Send(end)
 			}
 		}
 		// Spectators still need the result, without any reputation of their own.
@@ -835,17 +840,17 @@ func (d *Deps) checkFightEnd(f *Fight) {
 	} else if len(wonCardsByCoach) > 0 {
 		// No progression (a challenge fight), but cards WERE won, so each coach
 		// still needs its own frame carrying its own winnings.
-		for _, t := range f.Teams {
-			if t == nil || t.Coach == nil || t.Session == nil {
+		for _, mem := range f.members() {
+			if mem.Coach == nil || mem.Session == nil {
 				continue
 			}
 			// This branch is only reached when progression did NOT run
 			// (fightFeedsProgression is false for practice and challenge fights), so
 			// there are no per-fighter debriefs to send - only the cards won.
 			end, err := buildEndFightFull(f.nextActionUID(), winners, losers,
-				nil, 0, killed, injured, wonCardsByCoach[t.Coach.ID])
+				nil, 0, killed, injured, wonCardsByCoach[mem.Coach.ID])
 			if err == nil {
-				_ = t.Session.Send(end)
+				_ = mem.Session.Send(end)
 			}
 		}
 		if end, err := buildEndFight(f.nextActionUID(), winners, losers); err == nil {
@@ -888,17 +893,17 @@ func (d *Deps) announceDeaths(f *Fight, diedByCoach map[uint][]string) {
 	if f == nil || len(diedByCoach) == 0 {
 		return
 	}
-	for _, t := range f.Teams {
-		if t == nil || t.Coach == nil || isSyntheticCoach(t.Coach.ID) {
+	for _, mem := range f.members() {
+		if mem.Coach == nil || isSyntheticCoach(mem.Coach.ID) {
 			continue
 		}
-		dead := diedByCoach[t.Coach.ID]
+		dead := diedByCoach[mem.Coach.ID]
 		if len(dead) == 0 {
 			continue
 		}
-		d.Log.Info("fight deaths", "coach", t.Coach.Name, "dead", dead)
-		if t.Session != nil {
-			_ = t.Session.pushFighterList() // 6006: the client applies the new states
+		d.Log.Info("fight deaths", "coach", mem.Coach.Name, "dead", dead)
+		if mem.Session != nil {
+			_ = mem.Session.pushFighterList() // 6006: the client applies the new states
 		}
 	}
 }

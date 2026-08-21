@@ -111,7 +111,7 @@ func (s *Session) startPvEChallenge(challengeID int32) error {
 	}
 	teamB := s.deps.buildChallengeTeam(1, fightArena.startCells(1), challengeID, len(teamA.Fighters))
 	s.log.Info("challenge fight", "coach", s.Coach.Name, "challenge", challengeID,
-		"opponents", len(teamB.Fighters), "opponent", teamB.Coach.Name)
+		"opponents", len(teamB.Fighters), "opponent", teamB.Coach().Name)
 	return s.deps.startFightWithTeams(fightArena, teamA, teamB, true, challengeID, false)
 }
 
@@ -293,5 +293,5 @@ func buildSparringTeam(side uint8, anchor Pos) *FightTeam {
 		CritRate: st.CritRate, FumbleRate: st.FumbleRate,
 		Block: st.Block, Dodge: st.Dodge,
 	}
-	return &FightTeam{ID: side, Coach: coach, Fighters: []*FightFighter{ff}}
+	return &FightTeam{ID: side, Members: []*FightMember{{Coach: coach}}, Fighters: []*FightFighter{ff}}
 }

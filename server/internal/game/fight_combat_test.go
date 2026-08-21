@@ -122,18 +122,18 @@ func TestCheckFightEndDeclaresWinner(t *testing.T) {
 		t.Error("fight should be ended")
 	}
 	// Team A coach should have a win recorded.
-	if f.Teams[0].Coach.StatWins != 1 {
-		t.Errorf("winner StatWins = %d, want 1", f.Teams[0].Coach.StatWins)
+	if f.Teams[0].Coach().StatWins != 1 {
+		t.Errorf("winner StatWins = %d, want 1", f.Teams[0].Coach().StatWins)
 	}
-	if f.Teams[1].Coach.StatLosses != 1 {
-		t.Errorf("loser StatLosses = %d, want 1", f.Teams[1].Coach.StatLosses)
+	if f.Teams[1].Coach().StatLosses != 1 {
+		t.Errorf("loser StatLosses = %d, want 1", f.Teams[1].Coach().StatLosses)
 	}
 	// Ranked ladder: an unranked (0) winner seeds to 1000 then +25 = 1025; the
 	// loser seeds to 1000 then -25 = 975 -> clamped to the 1000 floor.
-	if f.Teams[0].Coach.Strength != 1025 {
-		t.Errorf("winner Strength = %d, want 1025", f.Teams[0].Coach.Strength)
+	if f.Teams[0].Coach().Strength != 1025 {
+		t.Errorf("winner Strength = %d, want 1025", f.Teams[0].Coach().Strength)
 	}
-	if f.Teams[1].Coach.Strength != 1000 {
-		t.Errorf("loser Strength = %d, want 1000 (clamped floor)", f.Teams[1].Coach.Strength)
+	if f.Teams[1].Coach().Strength != 1000 {
+		t.Errorf("loser Strength = %d, want 1000 (clamped floor)", f.Teams[1].Coach().Strength)
 	}
 }

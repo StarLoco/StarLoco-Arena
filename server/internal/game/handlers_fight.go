@@ -57,12 +57,14 @@ func (d *Deps) startFightWithTeams(a *arena, teamA, teamB *FightTeam, practice b
 		readyObserve: make(map[uint]bool),
 		readyAction:  make(map[uint]bool),
 	}
-	// A session-less team can never signal ready, so pre-mark it in every gate.
-	for _, t := range f.Teams {
-		if t != nil && t.Session == nil && t.Coach != nil {
-			f.readyPresent[t.Coach.ID] = true
-			f.readyObserve[t.Coach.ID] = true
-			f.readyAction[t.Coach.ID] = true
+	// A session-less coach can never signal ready, so pre-mark it in every gate.
+	// Per MEMBER rather than per side: a 2v2 side pairing a real coach with a
+	// server-driven one must still wait for the real coach's ready.
+	for _, m := range f.members() {
+		if m.Session == nil && m.Coach != nil {
+			f.readyPresent[m.Coach.ID] = true
+			f.readyObserve[m.Coach.ID] = true
+			f.readyAction[m.Coach.ID] = true
 		}
 	}
 	f.Timeline = buildTimeline(f)
@@ -72,13 +74,13 @@ func (d *Deps) startFightWithTeams(a *arena, teamA, teamB *FightTeam, practice b
 	// Entering a fight removes each real coach from the overworld: despawn them
 	// from anyone who currently sees them. Session-less (synthetic) teams are
 	// not in the world, so skip them.
-	for _, t := range f.Teams {
-		if t == nil || t.Session == nil || t.Coach == nil {
+	for _, m := range f.members() {
+		if m.Session == nil || m.Coach == nil {
 			continue
 		}
-		viewers := d.World.SetInFight(t.Coach.ID, true)
+		viewers := d.World.SetInFight(m.Coach.ID, true)
 		if len(viewers) > 0 {
-			if frame, err := buildActorDespawn([]uint{t.Coach.ID}); err == nil {
+			if frame, err := buildActorDespawn([]uint{m.Coach.ID}); err == nil {
 				for _, sess := range viewers {
 					_ = sess.Send(frame)
 				}
@@ -95,21 +97,18 @@ func (d *Deps) startFightWithTeams(a *arena, teamA, teamB *FightTeam, practice b
 		enter, _ := handshake.EncodeEnterInstance(
 			float32(f.Arena().centerX), float32(f.Arena().centerY), 0,
 			int16(f.Arena().worldID), true)
-		for _, t := range f.Teams {
-			if t == nil || t.Session == nil {
-				continue
-			}
-			_ = t.Session.Send(enter)
+		for _, s := range f.sessions() {
+			_ = s.Send(enter)
 		}
 		// CREATE_FIGHT is built PER RECIPIENT: each coach's own equipped action
 		// deck goes in the coach-card blob (the client copies that blob onto both
 		// coaches, so it must carry the receiver's deck, not a shared one).
-		for _, t := range f.Teams {
-			if t == nil || t.Session == nil {
+		for _, m := range f.members() {
+			if m.Session == nil {
 				continue
 			}
-			if createFrame, err := buildCreateFight(f, t.Coach, false); err == nil {
-				_ = t.Session.Send(createFrame)
+			if createFrame, err := buildCreateFight(f, m.Coach, false); err == nil {
+				_ = m.Session.Send(createFrame)
 			}
 		}
 		// ACTOR_APPEAR (4102): insert coach + fighter avatars into the client's
@@ -142,7 +141,7 @@ func (d *Deps) buildFightTeam(a *arena, sr *searcher, side uint8) (*FightTeam, e
 // start (dev convenience).
 func (d *Deps) buildFightTeamFor(sess *Session, side uint8, cells []Pos, rosterIDs []int64) (*FightTeam, error) {
 	coach := sess.Coach
-	team := &FightTeam{ID: side, Coach: coach, Session: sess}
+	team := &FightTeam{ID: side, Members: []*FightMember{{Coach: coach, Session: sess}}}
 
 	fighters, _ := d.Store.Fighters.ListByCoach(coach.ID)
 	byID := make(map[uint]*domain.Fighter)
@@ -639,12 +638,14 @@ func (d *Deps) coachLeftFightOnActor(f *Fight, coachID uint) {
 		d.endFight(f)
 		return
 	}
-	t := f.teamOfCoach(coachID)
-	if t == nil {
+	m := f.memberOfCoach(coachID)
+	if m == nil {
 		return
 	}
-	t.Session = nil
-	t.Absent = true
+	// Mark the ONE coach absent, not its whole side: in a 2v2 its ally is still
+	// playing, and only this coach's own fighters should auto-pass.
+	m.Session = nil
+	m.Absent = true
 	d.Log.Info("coach left fight (grace period)", "id", f.ID, "coach", coachID)
 
 	// Both sides gone → nobody to play or win.
@@ -700,15 +701,15 @@ func (d *Deps) creditFightTime(f *Fight) {
 	if secs <= 0 {
 		return
 	}
-	for _, t := range f.Teams {
-		if t == nil || t.Coach == nil {
+	for _, m := range f.members() {
+		if m.Coach == nil {
 			continue
 		}
-		t.Coach.Mu.Lock()
-		t.Coach.TimeInFightSecs += secs
-		t.Coach.Mu.Unlock()
+		m.Coach.Mu.Lock()
+		m.Coach.TimeInFightSecs += secs
+		m.Coach.Mu.Unlock()
 		if d.Store != nil {
-			_ = d.Store.Coaches.Save(t.Coach)
+			_ = d.Store.Coaches.Save(m.Coach)
 		}
 	}
 }
@@ -726,24 +727,24 @@ func (d *Deps) endFight(f *Fight) {
 	posted := f.Post(func(f *Fight) {
 		f.stopClock()
 		f.stopGrace()
-		for _, t := range f.Teams {
-			if t == nil || t.Coach == nil {
+		for _, m := range f.members() {
+			if m.Coach == nil {
 				continue
 			}
-			d.World.SetInFight(t.Coach.ID, false)
-			if t.Session != nil {
+			d.World.SetInFight(m.Coach.ID, false)
+			if m.Session != nil {
 				enter, _ := handshake.EncodeEnterInstance(
-					float32(t.Coach.PosX), float32(t.Coach.PosY), t.Coach.PosZ, 0, false)
-				_ = t.Session.Send(enter)
+					float32(m.Coach.PosX), float32(m.Coach.PosY), m.Coach.PosZ, 0, false)
+				_ = m.Session.Send(enter)
 			}
 		}
 		f.stopActor()
 	})
 	if !posted {
 		// Actor already stopped: do the world cleanup directly.
-		for _, t := range f.Teams {
-			if t != nil && t.Coach != nil {
-				d.World.SetInFight(t.Coach.ID, false)
+		for _, mem := range f.members() {
+			if mem.Coach != nil {
+				d.World.SetInFight(mem.Coach.ID, false)
 			}
 		}
 	}

@@ -263,7 +263,7 @@ func (s *Session) gmEndFight(args []string) error {
 	// Find the caller's side, then kill the other one (or its own, to lose).
 	var mySide uint8
 	for _, t := range f.Teams {
-		if t != nil && t.Coach != nil && t.Coach.ID == s.Coach.ID {
+		if t.MemberFor(s.Coach.ID) != nil {
 			mySide = t.ID
 		}
 	}

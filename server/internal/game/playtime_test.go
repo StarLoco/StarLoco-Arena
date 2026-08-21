@@ -18,7 +18,7 @@ func TestCreditFightTimeAddsToEveryParticipant(t *testing.T) {
 	a := &domain.Coach{ID: 1, Name: "A"}
 	b := &domain.Coach{ID: 2, Name: "B"}
 	f := &Fight{
-		Teams:     [2]*FightTeam{{ID: 0, Coach: a}, {ID: 1, Coach: b}},
+		Teams:     [2]*FightTeam{{ID: 0, Members: []*FightMember{{Coach: a}}}, {ID: 1, Members: []*FightMember{{Coach: b}}}},
 		startedAt: time.Now().Add(-90 * time.Second),
 	}
 
@@ -38,7 +38,7 @@ func TestCreditFightTimeIsIdempotent(t *testing.T) {
 	d := &Deps{Log: testLogger()}
 	c := &domain.Coach{ID: 1, Name: "A"}
 	f := &Fight{
-		Teams:     [2]*FightTeam{{ID: 0, Coach: c}, nil},
+		Teams:     [2]*FightTeam{{ID: 0, Members: []*FightMember{{Coach: c}}}, nil},
 		startedAt: time.Now().Add(-60 * time.Second),
 	}
 
@@ -64,7 +64,7 @@ func TestCreditFightTimeCountsPracticeFights(t *testing.T) {
 	c := &domain.Coach{ID: 1, Name: "A"}
 	f := &Fight{
 		Practice:  true,
-		Teams:     [2]*FightTeam{{ID: 0, Coach: c}, nil},
+		Teams:     [2]*FightTeam{{ID: 0, Members: []*FightMember{{Coach: c}}}, nil},
 		startedAt: time.Now().Add(-30 * time.Second),
 	}
 
@@ -82,7 +82,7 @@ func TestCreditFightTimeIgnoresSubSecondFights(t *testing.T) {
 	d := &Deps{Log: testLogger()}
 	c := &domain.Coach{ID: 1, Name: "A"}
 	f := &Fight{
-		Teams:     [2]*FightTeam{{ID: 0, Coach: c}, nil},
+		Teams:     [2]*FightTeam{{ID: 0, Members: []*FightMember{{Coach: c}}}, nil},
 		startedAt: time.Now(),
 	}
 
@@ -98,7 +98,7 @@ func TestCreditFightTimeIgnoresSubSecondFights(t *testing.T) {
 func TestCreditFightTimeIgnoresZeroStart(t *testing.T) {
 	d := &Deps{Log: testLogger()}
 	c := &domain.Coach{ID: 1, Name: "A"}
-	f := &Fight{Teams: [2]*FightTeam{{ID: 0, Coach: c}, nil}} // startedAt zero
+	f := &Fight{Teams: [2]*FightTeam{{ID: 0, Members: []*FightMember{{Coach: c}}}, nil}} // startedAt zero
 
 	d.creditFightTime(f)
 

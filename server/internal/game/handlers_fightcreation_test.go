@@ -110,7 +110,7 @@ func TestTeamTestLaunchesPracticeFight(t *testing.T) {
 	}
 	// Team A (side 0) is the real coach with both roster fighters.
 	teamA := f.Teams[0]
-	if teamA == nil || teamA.Coach == nil || teamA.Coach.ID != coach.ID {
+	if teamA == nil || teamA.Coach() == nil || teamA.Coach().ID != coach.ID {
 		t.Fatalf("team A is not the caller: %+v", teamA)
 	}
 	if len(teamA.Fighters) != 2 {
@@ -118,11 +118,11 @@ func TestTeamTestLaunchesPracticeFight(t *testing.T) {
 	}
 	// Team B (side 1) is the session-less sparring opponent.
 	teamB := f.Teams[1]
-	if teamB == nil || teamB.Session != nil {
+	if teamB == nil || teamB.Session() != nil {
 		t.Fatalf("team B should be the session-less sparring team: %+v", teamB)
 	}
-	if teamB.Coach == nil || teamB.Coach.ID != sparringCoachID {
-		t.Errorf("team B coach = %+v, want sparring id %d", teamB.Coach, sparringCoachID)
+	if teamB.Coach() == nil || teamB.Coach().ID != sparringCoachID {
+		t.Errorf("team B coach = %+v, want sparring id %d", teamB.Coach(), sparringCoachID)
 	}
 	if len(teamB.Fighters) != 1 {
 		t.Errorf("sparring fighters = %d, want 1", len(teamB.Fighters))
