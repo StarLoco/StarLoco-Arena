@@ -193,10 +193,24 @@ func (s *Session) pushTeamPresetList() error {
 		return err
 	}
 	fighters, _ := s.deps.Store.Fighters.ListByCoach(s.Coach.ID)
-	// Fighter value map for serializing member budgets.
-	values := make(map[uint]int16, len(fighters))
+	// Fighter -> owning coach. The second i64 of each preset fighter entry is the
+	// OWNER (see encodeTeamPreset), and a 2v2 preset lists the ally's fighters
+	// too, so their owner has to be resolved rather than assumed.
+	ownerOf := make(map[uint]uint, len(fighters))
 	for i := range fighters {
-		values[fighters[i].ID] = fighters[i].Budget
+		ownerOf[fighters[i].ID] = fighters[i].CoachID
+	}
+	for i := range teams {
+		if teams[i].AllyCoachID == 0 {
+			continue
+		}
+		allies, err := s.deps.Store.Fighters.ListByCoach(teams[i].AllyCoachID)
+		if err != nil {
+			continue
+		}
+		for j := range allies {
+			ownerOf[allies[j].ID] = allies[j].CoachID
+		}
 	}
 
 	// Lead the team list with an EMPTY type=-4 team. The client's Evolution
@@ -209,7 +223,7 @@ func (s *Session) pushTeamPresetList() error {
 	w := protocol.NewWriter().U8(uint8(len(teams) + 1))
 	w.Raw(benchTeamPreset())
 	for i := range teams {
-		w.Raw(encodeTeamPreset(&teams[i], values))
+		w.Raw(encodeTeamPreset(&teams[i], ownerOf))
 	}
 	w.U8(0) // coach section (empty)
 

@@ -16,14 +16,18 @@ type TeamPreset struct {
 	Name       string
 	App        [4]uint8
 	FighterIDs []int64
-	CoachIDs   []int64
+	// FighterOwners[i] is the coach that owns FighterIDs[i] - the second i64 of
+	// each entry, which is how the client attributes fighters to coaches
+	// (sw_1.cF), NOT a budget as an earlier revision assumed.
+	FighterOwners []int64
+	CoachIDs      []int64
 }
 
 // decodeTeamPreset parses an sw_1 blob (big-endian):
 //
 //	[i16 type][i16 teamId][i16 gameMode][u8 nameLen][name]
 //	[4×u8 appearance -- only if type in {-5,-6,-7}]
-//	[u8 fighterCount]{i64 fighterId, i64 value}
+//	[u8 fighterCount]{i64 fighterId, i64 owningCoachId}
 //	[u8 coachCount]{i64 coachId}
 func decodeTeamPreset(data []byte) (*TeamPreset, error) {
 	r := protocol.NewReader(data)
@@ -64,10 +68,12 @@ func decodeTeamPreset(data []byte) (*TeamPreset, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := r.I64(); err != nil { // value (recomputed server-side)
+		owner, err := r.I64() // the OWNING COACH, not a budget
+		if err != nil {
 			return nil, err
 		}
 		tp.FighterIDs = append(tp.FighterIDs, id)
+		tp.FighterOwners = append(tp.FighterOwners, owner)
 	}
 	cCount, err := r.U8()
 	if err != nil {
@@ -109,9 +115,24 @@ func benchTeamPreset() []byte {
 		Bytes()
 }
 
-// encodeTeamPreset serializes a persisted Team as an sw_1 blob. Fighter values
-// are looked up from the fighter budget map (0 if unknown).
-func encodeTeamPreset(t *domain.Team, fighterValue map[uint]int16) []byte {
+// encodeTeamPreset serializes a persisted Team as an sw_1 blob.
+//
+// The second i64 of each fighter entry is the fighter's OWNING COACH, not a
+// budget. `sw_1.j(id, v)` stores the pair as `bMJ[id] = v`, and `cF(coachId)`
+// keeps the entries where `bMJ.du(id) == coachId || == -1` - so that long is how
+// the client decides which coach controls which fighter. `afH()` walks the coach
+// list and requires each one's `cF()` to be non-empty, which is what raises
+// "Un des coachs ne controle aucun combattant".
+//
+// This used to write the fighter's budget there. A 1v1 never noticed, because
+// afH() only evaluates when the preset has more than one coach - but a 2v2 could
+// never be launched, since a budget (2200) matches neither coach id nor -1 and
+// both sides therefore counted zero fighters.
+//
+// Note cF() reads the preset's OWN map and never consults the client's roster,
+// so an ally's fighter validates here without the client having to know anything
+// else about it.
+func encodeTeamPreset(t *domain.Team, ownerOf map[uint]uint) []byte {
 	w := protocol.NewWriter().
 		U16(uint16(t.Type)).
 		U16(uint16(t.ID)).
@@ -132,8 +153,14 @@ func encodeTeamPreset(t *domain.Team, fighterValue map[uint]int16) []byte {
 	}
 	w.U8(uint8(len(members)))
 	for _, m := range members {
+		// Default to the preset's own coach: on a solo team every fighter is its
+		// owner's, and on a duo the map supplies the ally's fighters.
+		owner := t.CoachID
+		if o, ok := ownerOf[m.FighterID]; ok && o != 0 {
+			owner = o
+		}
 		w.I64(int64(m.FighterID))
-		w.I64(int64(fighterValue[m.FighterID]))
+		w.I64(int64(owner))
 	}
 	// The trailing COACH list, and its LENGTH is load-bearing: the 2VS2 tab is
 	// populated from `teamManagement.teamPreset2vs2List`, which selects presets

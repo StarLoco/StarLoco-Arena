@@ -377,6 +377,93 @@ func TestDuoPresetsCarryTheAlly(t *testing.T) {
 	}
 }
 
+// TestDuoPresetSatisfiesAfH reproduces the client's own launch gate.
+//
+// sw_1.afH(): when the preset has more than one coach, EVERY coach in its coach
+// list must control at least one fighter in the team - and cF(coachId) decides
+// that from the SECOND i64 of each fighter entry (`bMJ.du(id) == coachId || ==
+// -1`). It reads the preset alone and never consults the client's roster, so
+// this is fully checkable here.
+//
+// Getting either half wrong makes the client refuse with "Un des coachs ne
+// controle aucun combattant", which is exactly what it did while that i64
+// carried the fighter's BUDGET.
+func TestDuoPresetSatisfiesAfH(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "afh.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	d := &Deps{Store: st, TeamUps: newTeamUps(), Log: testLogger()}
+
+	// One titular fighter each, plus a benched one that must NOT be chosen.
+	//
+	// The benched fighter is created FIRST so it also has the lowest id: listed
+	// in id order it is what a "just take the first" implementation would pick.
+	// With the titular one first the bench check was unfalsifiable - a mutation
+	// removing it passed.
+	for _, f := range []domain.Fighter{
+		{CoachID: 1, BreedID: 1, Name: "A2", State: domain.FighterStateBench},
+		{CoachID: 1, BreedID: 1, Name: "A1", State: domain.FighterStateTitular},
+		{CoachID: 2, BreedID: 2, Name: "B1", State: domain.FighterStateTitular},
+	} {
+		if err := st.DB().Create(&f).Error; err != nil {
+			t.Fatalf("create fighter: %v", err)
+		}
+	}
+
+	d.createDuoPresets(&teamUpPair{Name: "Duo", InviterID: 1, InvitedID: 2})
+
+	teams, _ := st.Teams.ListByCoach(1)
+	var duo *domain.Team
+	for i := range teams {
+		if teams[i].GameMode == gameMode2v2 {
+			duo = &teams[i]
+		}
+	}
+	if duo == nil {
+		t.Fatal("no duo preset")
+	}
+	ownerOf := map[uint]uint{}
+	for _, coach := range []uint{1, 2} {
+		fs, _ := st.Fighters.ListByCoach(coach)
+		for i := range fs {
+			ownerOf[fs[i].ID] = fs[i].CoachID
+		}
+	}
+	tp, err := decodeTeamPreset(encodeTeamPreset(duo, ownerOf))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// afH(), transcribed.
+	if len(tp.CoachIDs) <= 1 {
+		t.Fatalf("coach list = %v, want two entries or afH never runs", tp.CoachIDs)
+	}
+	for _, coach := range tp.CoachIDs {
+		controlled := 0
+		for i := range tp.FighterIDs {
+			if tp.FighterOwners[i] == coach || tp.FighterOwners[i] == -1 {
+				controlled++
+			}
+		}
+		if controlled == 0 {
+			t.Errorf("coach %d controls no fighter in the preset (owners=%v) - the client "+
+				"refuses this team with \"Un des coachs ne controle aucun combattant\"",
+				coach, tp.FighterOwners)
+		}
+	}
+	// The benched fighter must not have been picked.
+	for i := range tp.FighterIDs {
+		var f domain.Fighter
+		if err := st.DB().First(&f, tp.FighterIDs[i]).Error; err == nil {
+			if f.State != domain.FighterStateTitular {
+				t.Errorf("preset fields benched fighter %q", f.Name)
+			}
+		}
+	}
+}
+
 func i64Bytes(v int64) []byte {
 	b := make([]byte, 8)
 	for i := 7; i >= 0; i-- {

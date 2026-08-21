@@ -354,10 +354,41 @@ func (d *Deps) createDuoPresets(p *teamUpPair) {
 		if found != nil {
 			team.ID = found.ID
 		}
+		// The team must field at least one fighter FROM EACH coach: sw_1.afH()
+		// walks the preset's coach list and requires every one of them to control
+		// a fighter in it. Seed one titular fighter per side; the players re-pick
+		// from there in the panel.
+		team.Members = duoStartingMembers(d, owner, ally)
 		if err := d.Store.Teams.Upsert(team); err != nil {
 			d.Log.Warn("2v2 preset save failed", "coach", owner, "err", err)
 		}
 	}
+}
+
+// duoStartingMembers picks one titular fighter from each coach so a fresh duo
+// preset is immediately valid.
+//
+// A 2v2 preset that lists only its owner's fighters can never be launched:
+// sw_1.afH() requires EVERY coach in the preset's coach list to control at least
+// one fighter in it, and the client decides ownership from the second i64 of
+// each fighter entry - which encodeTeamPreset now fills with the real owner.
+// Benched fighters are skipped: the panel will not field them.
+func duoStartingMembers(d *Deps, owner, ally uint) []domain.TeamFighter {
+	var out []domain.TeamFighter
+	for _, coach := range []uint{owner, ally} {
+		fighters, err := d.Store.Fighters.ListByCoach(coach)
+		if err != nil {
+			continue
+		}
+		for i := range fighters {
+			if fighters[i].State != domain.FighterStateTitular {
+				continue
+			}
+			out = append(out, domain.TeamFighter{FighterID: fighters[i].ID})
+			break
+		}
+	}
+	return out
 }
 
 // gameMode2v2 is the client's zK.cB() value for a two-coach team. It is what
