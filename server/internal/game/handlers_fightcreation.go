@@ -64,10 +64,21 @@ func handleTeamTest(s *Session, f *protocol.C2SFrame) error {
 		return nil // already in a fight
 	}
 	roster := s.deps.resolveTeamRoster(s.Coach.ID, uint(teamID))
-	fightArena := pickArena()
+	// A coach with a formed duo brings its ally into the sparring bout too. This
+	// is the only 2v2-shaped fight reachable with two players rather than four,
+	// which makes it the practical way to exercise a two-coach side.
+	seats := 1
+	if s.deps.TeamUps != nil && s.deps.TeamUps.Partner(s.Coach.ID) != 0 {
+		seats = 2
+	}
+	fightArena := pickArenaSeating(seats)
 	teamA, err := s.deps.buildFightTeamFor(s, 0, fightArena.team0, roster)
 	if err != nil {
 		return err
+	}
+	if s.deps.joinDuoPartner(teamA, s.Coach.ID, fightArena.startCells(0)) {
+		s.log.Info("2v2 test fight", "coach", s.Coach.Name,
+			"coaches", len(teamA.Members), "fighters", len(teamA.Fighters))
 	}
 	teamB := buildSparringTeam(1, fightArena.team1[0])
 	s.log.Info("team test fight", "coach", s.Coach.Name, "team", teamID, "fighters", len(roster))
@@ -151,7 +162,18 @@ func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 		return nil
 	}
 	r := protocol.NewReader(f.Payload)
-	if _, err := r.I64(); err != nil { // team-owner coach id (trust the session)
+	// That i64 is NOT "the team owner, trust the session", which is what this
+	// used to assume before discarding it. `hu_2.a(zK)` fills it from
+	// `zK3.afG()` - the preset's stored ALLY - and only falls back to the local
+	// coach when afG is -1. On a 2v2 preset (`zK.cB() == 2`, which is also what
+	// makes the client show "waitingReplyForFight") it is the partner's coach id,
+	// so throwing it away threw away the entire second half of the fight.
+	//
+	// It is still not trusted: it only selects between "this is a duo launch" and
+	// "this is a solo launch", and the partner itself is re-derived from the duo
+	// the server formed.
+	claimedAlly, err := r.I64()
+	if err != nil {
 		return err
 	}
 	teamID, err := r.U16()
@@ -160,6 +182,23 @@ func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 	}
 	if s.deps.Fights.ByCoach(s.Coach.ID) != nil {
 		return classicSearchFamily.sendError(s, searchErrCannotStart)
+	}
+	// A duo launch: both partners must press Combattre before the pair enters the
+	// queue, which is exactly what the client's own "waitingReplyForFight" dialog
+	// tells the first one to expect. Queueing on the first press would drag the
+	// ally into a fight it never agreed to start.
+	if partner := s.deps.duoLaunchPartner(s.Coach.ID, claimedAlly); partner != 0 {
+		ready, both := s.deps.TeamUps.markLaunchReady(s.Coach.ID, partner)
+		if err := classicSearchFamily.sendResult(s, teamID, true); err != nil {
+			return err
+		}
+		if !both {
+			s.log.Info("2v2 combattre: waiting for ally", "coach", s.Coach.Name, "ally", partner)
+			return nil
+		}
+		s.log.Info("2v2 combattre: both ready", "coach", s.Coach.Name, "ally", partner, "ready", ready)
+		// Fall through: the duo queues ONCE, under this coach. joinDuoPartner
+		// merges the ally in when the fight is built.
 	}
 	roster := s.deps.resolveTeamRoster(s.Coach.ID, uint(teamID))
 

@@ -122,11 +122,16 @@ type Team struct {
 	Name     string `gorm:"size:32;not null"`
 	Type     int16  `gorm:"not null;default:0"`
 	GameMode int16  `gorm:"not null;default:0"`
-	App1     uint8
-	App2     uint8
-	App3     uint8
-	App4     uint8
-	Members  []TeamFighter `gorm:"foreignKey:TeamID;constraint:OnDelete:CASCADE"`
+	// AllyCoachID is the 2v2 partner this preset fights alongside (0 = solo).
+	// It rides the sw_1 blob's trailing COACH list, which the client exposes as
+	// zK.afG() - the id it sends back in 23103 "Combattre". A preset with an ally
+	// and GameMode 2 is what makes the 2VS2 tab show a team at all.
+	AllyCoachID uint `gorm:"not null;default:0"`
+	App1        uint8
+	App2        uint8
+	App3        uint8
+	App4        uint8
+	Members     []TeamFighter `gorm:"foreignKey:TeamID;constraint:OnDelete:CASCADE"`
 }
 
 // TeamFighter links a fighter into a team preset.

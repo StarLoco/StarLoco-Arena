@@ -185,6 +185,9 @@ func (s *Session) ownedFighterSet() map[uint]bool {
 // pushTeamPresetList sends TeamPresetList(6030):
 // [u8 presetCount]{sw_1 blob} then [u8 coachCount]{...}.
 func (s *Session) pushTeamPresetList() error {
+	if s.Coach == nil || s.deps == nil || s.deps.Store == nil {
+		return nil // no persistence wired (unit harness); nothing to list
+	}
 	teams, err := s.deps.Store.Teams.ListByCoach(s.Coach.ID)
 	if err != nil {
 		return err

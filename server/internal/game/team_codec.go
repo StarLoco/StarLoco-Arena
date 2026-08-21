@@ -135,6 +135,21 @@ func encodeTeamPreset(t *domain.Team, fighterValue map[uint]int16) []byte {
 		w.I64(int64(m.FighterID))
 		w.I64(int64(fighterValue[m.FighterID]))
 	}
-	w.U8(0) // coach count (0 for solo presets)
+	// The trailing COACH list, and its LENGTH is load-bearing: the 2VS2 tab is
+	// populated from `teamManagement.teamPreset2vs2List`, which selects presets
+	// where `sw_1.afL()` is true - and afL() is exactly `bMK.size() == 2`. A
+	// one-entry list is not "a 2v2 with the ally named", it is invisible.
+	//
+	// Order matters too: `afG()` returns bMK.get(0), and that is the i64 the
+	// client sends back in 23103 "Combattre" as the ally. So the PARTNER goes
+	// first and the owner second.
+	//
+	// A solo preset writes none; afG() then returns -1, which the client's own
+	// launch path reads as "no ally, use my own coach id".
+	if t.AllyCoachID != 0 {
+		w.U8(2).I64(int64(t.AllyCoachID)).I64(int64(t.CoachID))
+	} else {
+		w.U8(0)
+	}
 	return w.Bytes()
 }

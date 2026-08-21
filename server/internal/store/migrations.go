@@ -141,6 +141,23 @@ var migrations = []migration{
 			return tx.AutoMigrate(&domain.Fighter{}, &domain.FighterSphere{})
 		},
 	},
+	{
+		// 2v2: a team preset remembers the ally it fights alongside. The id rides
+		// the sw_1 blob's trailing coach list, which the client reads back as
+		// zK.afG() and sends in 23103 "Combattre".
+		//
+		// Additive, so the baseline AutoMigrate would carry it on a FRESH
+		// database - but an existing one is already recorded at its current
+		// version and never re-runs step 1, so without a numbered step here the
+		// column simply never appears. That is not hypothetical: it was found by
+		// the live server logging "table teams has no column named ally_coach_id"
+		// while every test passed against freshly-created databases.
+		Version: 6,
+		Name:    "team_preset_ally",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.Team{})
+		},
+	},
 }
 
 // runMigrations applies every step the database has not recorded yet, in order.

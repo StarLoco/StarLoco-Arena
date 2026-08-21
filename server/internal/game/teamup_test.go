@@ -1,10 +1,12 @@
 package game
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
 // The 2v2 handshake is the only way a fight can ever have two coaches on a side,
@@ -296,6 +298,82 @@ func TestTeamUpAnswerRevalidatesOnAccept(t *testing.T) {
 	if got := drain(t, b); len(got) != 1 || got[0] != protocol.OpTeamUpRefused {
 		t.Errorf("accepter got %v, want 6027 so its picker does not open alone", got)
 	}
+}
+
+// TestDuoPresetsCarryTheAlly is what makes a formed duo visible and launchable.
+//
+// The 2VS2 tab lists team PRESETS, and "Combattre" (23103) sends back
+// zK.afG() - the first entry of the preset's trailing coach list. So a duo with
+// no preset is invisible in the panel, and a preset with an empty coach list
+// launches as a solo fight. Both must hold, for BOTH members.
+func TestDuoPresetsCarryTheAlly(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "duo.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	d := &Deps{Store: st, TeamUps: newTeamUps(), Log: testLogger()}
+
+	pair := &teamUpPair{Name: "LesDeux", InviterID: 1, InvitedID: 2}
+	d.createDuoPresets(pair)
+
+	for _, c := range []struct{ owner, ally uint }{{1, 2}, {2, 1}} {
+		teams, err := st.Teams.ListByCoach(c.owner)
+		if err != nil {
+			t.Fatalf("list teams for %d: %v", c.owner, err)
+		}
+		var duo *domain.Team
+		for i := range teams {
+			if teams[i].GameMode == gameMode2v2 {
+				duo = &teams[i]
+			}
+		}
+		if duo == nil {
+			t.Fatalf("coach %d has no 2v2 preset - its 2VS2 tab would be empty", c.owner)
+		}
+		if duo.AllyCoachID != c.ally {
+			t.Errorf("coach %d preset ally = %d, want %d", c.owner, duo.AllyCoachID, c.ally)
+		}
+		if duo.Name != "LesDeux" {
+			t.Errorf("coach %d preset name = %q, want the duo's name", c.owner, duo.Name)
+		}
+		// The blob's coach list must hold BOTH coaches, ally first.
+		//
+		// Count: the 2VS2 tab lists presets where sw_1.afL() is true, and afL()
+		// is `bMK.size() == 2`. A one-entry list makes the team invisible - which
+		// is exactly what happened live before this was checked.
+		// Order: afG() returns bMK.get(0) and that is the id 23103 sends back as
+		// the ally, so the partner must be first.
+		blob := encodeTeamPreset(duo, nil)
+		want := append([]byte{2}, append(i64Bytes(int64(c.ally)), i64Bytes(int64(c.owner))...)...)
+		if !frameContains(blob, want) {
+			t.Errorf("coach %d preset coach list is not [2][ally=%d][self=%d] - the "+
+				"2VS2 tab would not list it (afL needs exactly 2) or Combattre would "+
+				"name the wrong ally", c.owner, c.ally, c.owner)
+		}
+	}
+
+	// Accepting twice must not litter the panel with duplicates.
+	d.createDuoPresets(pair)
+	teams, _ := st.Teams.ListByCoach(1)
+	n := 0
+	for i := range teams {
+		if teams[i].GameMode == gameMode2v2 {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("coach 1 has %d 2v2 presets after two accepts, want 1", n)
+	}
+}
+
+func i64Bytes(v int64) []byte {
+	b := make([]byte, 8)
+	for i := 7; i >= 0; i-- {
+		b[i] = byte(v)
+		v >>= 8
+	}
+	return b
 }
 
 // TestTeamUpNameIsSanitised: the name is echoed into a dialog the client renders
