@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
@@ -81,7 +82,7 @@ func handleFighterCreate(s *Session, f *protocol.C2SFrame) error {
 		U8(0).
 		I64(int64(s.Coach.ID)).
 		I64(int64(fighter.ID))
-	fbBlob := encodeFighterBlob(fighter)
+	fbBlob := encodeFighterBlob(fighter, s.deps.SphereBoards)
 	w.U16(uint16(len(fbBlob)))
 	w.Raw(fbBlob)
 	w.U8(flag).U16(slot)
@@ -157,11 +158,11 @@ func handleFighterDelete(s *Session, f *protocol.C2SFrame) error {
 // form and prevented the roster from rendering on a panel reopen (the create
 // result 6000 does NOT apply this fatigue, which is why fighters showed on first
 // create but vanished after close/reopen).
-func buildFighterList(coachID uint, fighters []domain.Fighter) ([]byte, error) {
+func buildFighterList(coachID uint, fighters []domain.Fighter, boards *gamedata.SphereBoards) ([]byte, error) {
 	nowSecs := time.Now().Unix()
 	w := protocol.NewWriter().I64(nowSecs).U8(uint8(len(fighters)))
 	for i := range fighters {
-		blob := encodeFighterBlob(&fighters[i])
+		blob := encodeFighterBlob(&fighters[i], boards)
 		w.I64(int64(fighters[i].ID))
 		w.U16(uint16(len(blob)))
 		w.Raw(blob)
@@ -175,7 +176,7 @@ func (s *Session) pushFighterList() error {
 	if err != nil {
 		return err
 	}
-	frame, err := buildFighterList(s.Coach.ID, fighters)
+	frame, err := buildFighterList(s.Coach.ID, fighters, s.deps.SphereBoards)
 	if err != nil {
 		return err
 	}

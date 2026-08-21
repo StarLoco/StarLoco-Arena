@@ -22,7 +22,7 @@ func TestFighterBlobTypeFollowsState(t *testing.T) {
 		{domain.FighterStateLegendary, 2, "legendary"},
 	} {
 		f := &domain.Fighter{BreedID: 1, Name: "X", State: tc.state}
-		blob := encodeFighterBlob(f)
+		blob := encodeFighterBlob(f, nil)
 		if blob[0] != tc.wantType {
 			t.Errorf("%s: blob type = %d, want %d", tc.name, blob[0], tc.wantType)
 		}
@@ -36,7 +36,7 @@ func TestEvolutionTailCarriesState(t *testing.T) {
 		BreedID: 1, Name: "Ghost", State: domain.FighterStateGraveyard,
 		XP: 1234, TotalXP: 5678, Tiredness: 7, Morale: 9,
 	}
-	blob := encodeFighterBlob(f)
+	blob := encodeFighterBlob(f, nil)
 
 	// Walk the type-1 body to find where the tail starts:
 	// [u8 type][u16 budget][u8 breed][u8 nameLen][name][u8 sex][u8 ey]

@@ -28,7 +28,7 @@ func TestFighterBlobRoundTrip(t *testing.T) {
 		},
 	}
 
-	blob := encodeFighterBlob(f)
+	blob := encodeFighterBlob(f, nil)
 	got, err := decodeFighterBlob(blob)
 	if err != nil {
 		t.Fatalf("decode: %v", err)

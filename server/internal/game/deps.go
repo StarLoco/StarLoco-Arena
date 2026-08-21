@@ -22,6 +22,7 @@ type Deps struct {
 	TournamentDefs *gamedata.Tournaments   // nil if data files absent
 	Conditions     *gamedata.Conditions    // persistent fighter conditions/wounds (type 902); nil if data files absent
 	Spells         *gamedata.Spells        // nil if data files absent
+	SphereBoards   *gamedata.SphereBoards  // Kanodo boards/nodes (types 900/901); nil if data files absent
 	FighterCards   *gamedata.FighterCards  // nil if data files absent
 	Summonings     *gamedata.Summonings    // summon-creature templates; nil if data files absent
 	StaticEffects  *gamedata.StaticEffects // trap/glyph (type-210) templates; nil if data files absent

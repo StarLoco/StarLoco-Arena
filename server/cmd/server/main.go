@@ -305,6 +305,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		cardSets      *gamedata.CardSets
 		fusionLabs    *gamedata.FusionLabs
 		tournDefs     *gamedata.Tournaments
+		sphereBoards  *gamedata.SphereBoards
 		conditions    *gamedata.Conditions
 	)
 
@@ -368,11 +369,15 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		if tournDefs, err = gdStore.LoadTournaments(); err != nil {
 			log.Warn("tournament-definition load failed", "err", err)
 		}
+		if sphereBoards, err = gdStore.LoadSphereBoards(); err != nil {
+			log.Warn("sphere-board load failed", "err", err)
+		}
 		log.Debug("game data loaded", "cards", cardsLen(cards), "spells", spellsLen(spells),
 			"fighterCards", fighterCardsLen(fighterCards), "summonings", summoningsLen(summonings),
 			"staticEffects", staticEffectsLen(staticEffects), "challenges", challengeDefs.Len(),
 			"eventCards", events.Len(), "cardSets", cardSets.Len(), "achievements", achievements.Len(),
-			"conditions", conditions.Len(), "fusionLabs", fusionLabs.Len(), "tournamentDefs", tournDefs.Len())
+			"conditions", conditions.Len(), "fusionLabs", fusionLabs.Len(), "tournamentDefs", tournDefs.Len(),
+			"sphereBoards", sphereBoards.BoardCount(), "spheres", sphereBoards.Len())
 	}
 
 	// Fair pairing: coaches are matched within a strength band that widens the
@@ -425,6 +430,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		CardSets:       cardSets,
 		FusionLabs:     fusionLabs,
 		TournamentDefs: tournDefs,
+		SphereBoards:   sphereBoards,
 		Conditions:     conditions,
 		StaticEffects:  staticEffects,
 		Matchmaker:     mm,

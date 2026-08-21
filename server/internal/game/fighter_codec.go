@@ -2,6 +2,7 @@ package game
 
 import (
 	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
@@ -138,7 +139,7 @@ func decodeFighterBlob(data []byte) (*FighterBlob, error) {
 // (domain.Fighter.IsEvolution) is type 2 and carries the evolution tail written by
 // writeEvolutionTail — that type byte is what makes the client file it into the
 // evolution roster, and hence into the graveyard when its state says so.
-func encodeFighterBlob(f *domain.Fighter) []byte {
+func encodeFighterBlob(f *domain.Fighter, boards *gamedata.SphereBoards) []byte {
 	w := protocol.NewWriter()
 	blobType := fighterBlobTypeClassic
 	if f.IsEvolution() {
@@ -175,7 +176,7 @@ func encodeFighterBlob(f *domain.Fighter) []byte {
 	w.Raw(cb)
 
 	if blobType == 2 {
-		writeEvolutionTail(w, f)
+		writeEvolutionTail(w, f, boards)
 	}
 	return w.Bytes()
 }
@@ -197,20 +198,34 @@ func encodeFighterBlob(f *domain.Fighter) []byte {
 // it just makes the fighter vanish from the evolution roster. Keep every count
 // present even when zero.
 //
-// Sphere boards and passives are not modelled yet; they are emitted as empty
-// lists. CONDITIONS are real (gamedata type 902) — the client keys them into
+// Passives are not modelled yet and are emitted as empty lists. The SPHERE BOARD
+// is real: see SphereCursor for how the board id and cursor are resolved, and
+// note the client will NPE on a board id it cannot find, so a fighter whose breed
+// has no board must be sent 0 with a 0/0 cursor rather than a wrong id.
+// CONDITIONS are real too (gamedata type 902) — the client keys them into
 // `et_2.uk` (a conditionId → duration map) and shows wounds on the fighter's
 // portrait, so this list is what makes an injury visible to the player.
-func writeEvolutionTail(w *protocol.Writer, f *domain.Fighter) {
-	w.I32(0) // sphereBoardId
+func writeEvolutionTail(w *protocol.Writer, f *domain.Fighter, boards *gamedata.SphereBoards) {
+	board, cx, cy := SphereCursor(f, boards)
+	w.I32(board)
 	w.I32(f.XP)
 	w.I32(f.TotalXP)
 	w.U8(f.Tiredness)
 	w.U8(f.Morale)
 	w.U8(f.State)
-	w.U16(0) // sphereX
-	w.U16(0) // sphereY
-	w.U16(0) // sphere count
+	w.U16(uint16(cx))
+	w.U16(uint16(cy))
+
+	// The count is an i16 and the client allocates from it, so cap rather than let
+	// a runaway row wrap the length and desync everything after it.
+	owned := f.Spheres
+	if len(owned) > 0x7FFF {
+		owned = owned[:0x7FFF]
+	}
+	w.U16(uint16(len(owned)))
+	for _, s := range owned {
+		w.I32(s.SphereID)
+	}
 
 	// The count is a single BYTE, so cap it. A fighter can never legitimately
 	// hold this many (one per mutual-exclusion type, plus stacking type 21), but

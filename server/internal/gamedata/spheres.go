@@ -54,19 +54,24 @@ type SphereBoard struct {
 	// Breed is the class this board belongs to, resolved by the client through the
 	// breed name table (content type 5).
 	Breed uint8
-	// The remaining four fields are decoded for completeness and are read by
-	// NOTHING. `ks_2` exposes them as Xp(), cx(), cy() and Xo(); a case-sensitive
-	// search of the whole client finds no caller of any of them - `dq_1` passes
-	// them into Ei's constructor and they are never looked at again.
+	// RootX and RootY are the ROOT sphere's grid position - where a fighter's
+	// cursor begins. `ks_2.Xm()` is literally `X(fs, ft)`, and `Ei.MQ()` calls it
+	// to build the board's graph outward from that node.
 	//
-	// They are kept as raw values rather than given invented meanings, because the
-	// obvious guesses are all refuted by the shipped data: the i16 pair is not the
-	// grid extent (board 30 carries 83x1 while its nodes reach 84x78), the i32 is
-	// 5 on every breed board and 0 on the three others, and the id list holds three
-	// small numbers that resolve to no node on any board.
+	// They are reached as fields rather than through the cx()/cy() accessors, which
+	// is why searching for callers of those accessors finds none and makes the pair
+	// look inert. They are not: without them the server has nowhere to start a
+	// fighter, and no other record in the data says where that is.
+	RootX int16
+	RootY int16
+
+	// The remaining two fields are decoded for completeness and read by nothing.
+	// `ks_2` exposes them as Xp() and Xo() and a case-sensitive search finds no
+	// caller of either, nor any internal use like Xm()'s. Every plausible meaning
+	// is refuted by the data: the i32 is 5 on every breed board and 0 on the three
+	// others, and the id list holds three small numbers that resolve to no node on
+	// any board. Kept raw rather than given invented meanings.
 	UnreadInt int32
-	UnreadA   int16
-	UnreadB   int16
 	UnreadIDs []int32
 	leftover  int
 }
@@ -276,6 +281,36 @@ func (c *SphereBoards) At(boardID int32, x, y int16) *Sphere {
 	return c.byBoardCell[boardCell{boardID, x, y}]
 }
 
+// Root returns the board's root sphere - where a fighter starts. nil when the
+// board names a cell no node occupies, which is true only of the unfinished
+// breed-127 boards.
+func (c *SphereBoards) Root(boardID int32) *Sphere {
+	b := c.Board(boardID)
+	if b == nil {
+		return nil
+	}
+	return c.At(b.ID, b.RootX, b.RootY)
+}
+
+// BoardForBreed returns the single board a breed plays on, or nil.
+//
+// Every playable breed (1..12) has exactly one, which is what makes "the board
+// for this fighter" a well-defined lookup; the three breed-127 boards are a
+// sentinel rather than a class and are never returned here.
+func (c *SphereBoards) BoardForBreed(breed uint8) *SphereBoard {
+	if c == nil || breed == sentinelBreed {
+		return nil
+	}
+	list := c.boardByBreed[breed]
+	if len(list) != 1 {
+		return nil
+	}
+	return list[0]
+}
+
+// sentinelBreed marks the three unfinished boards that belong to no class.
+const sentinelBreed = 127
+
 // BoardsForBreed returns the boards defined for a breed (one per season).
 func (c *SphereBoards) BoardsForBreed(breed uint8) []*SphereBoard {
 	if c == nil {
@@ -310,7 +345,7 @@ func (c *SphereBoards) BoardCount() int {
 
 // decodeSphereBoard parses a `bg_0` record from its own deserializer:
 //
-//	[i32 id][i32 season][u8 breed][i32 ?][i16 ?][i16 ?][u8 n]{n x i32 ?}
+//	[i32 id][i32 season][u8 breed][i32 ?][i16 rootX][i16 rootY][u8 n]{n x i32 ?}
 //
 // Every byte is accounted for (Leftover() == 0 on all 15 shipped boards); the
 // trailing four fields are simply never read by the client.
@@ -321,8 +356,8 @@ func decodeSphereBoard(data []byte) *SphereBoard {
 	b.Season = c.i32()
 	b.Breed = c.u8()
 	b.UnreadInt = c.i32()
-	b.UnreadA = c.i16()
-	b.UnreadB = c.i16()
+	b.RootX = c.i16()
+	b.RootY = c.i16()
 
 	n := int(c.u8())
 	for i := 0; i < n && c.ok(); i++ {

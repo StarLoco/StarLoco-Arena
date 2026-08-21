@@ -116,7 +116,7 @@ func TestPlayerStatisticsReportFields(t *testing.T) {
 // each fighter's form as (now - lead)/3600 hours, so a small value (like a
 // coach id) corrupts the roster and it fails to render on reopen.
 func TestFighterListLeadIsTimestamp(t *testing.T) {
-	frame, err := buildFighterList(2, []domain.Fighter{{ID: 1, Name: "F", BreedID: 3, Budget: 400}})
+	frame, err := buildFighterList(2, []domain.Fighter{{ID: 1, Name: "F", BreedID: 3, Budget: 400}}, nil)
 	if err != nil {
 		t.Fatalf("buildFighterList: %v", err)
 	}

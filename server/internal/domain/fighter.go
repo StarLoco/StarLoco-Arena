@@ -42,8 +42,19 @@ type Fighter struct {
 	State     uint8 `gorm:"not null;default:0"`
 	XP        int32 `gorm:"not null;default:0"`
 	TotalXP   int32 `gorm:"not null;default:0"`
-	Tiredness uint8 `gorm:"not null;default:0"`
-	Morale    uint8 `gorm:"not null;default:0"`
+
+	// --- Sphere Board (Kanodo) -------------------------------------------------
+	// SphereX and SphereY are the progression cursor: the 1-BASED grid position of
+	// the node the fighter currently sits on. The client feeds them straight to
+	// `Ei.X(x, y)` after `fi(x-1)/fj(y-1)`, so they are the node's own coordinates
+	// and not an offset. Zero means "not placed yet" and is repaired on first use
+	// from the board's root (gamedata.SphereBoards.Root).
+	SphereX int16 `gorm:"not null;default:0"`
+	SphereY int16 `gorm:"not null;default:0"`
+	// Spheres are the nodes this fighter has bought - the client's `ee_2.NE()`.
+	Spheres   []FighterSphere `gorm:"foreignKey:FighterID;constraint:OnDelete:CASCADE"`
+	Tiredness uint8           `gorm:"not null;default:0"`
+	Morale    uint8           `gorm:"not null;default:0"`
 
 	// LastFightAt is the unix time (seconds) this fighter last finished a fight.
 	// It drives BOTH post-fight formulas that depend on elapsed time: fatigue
@@ -159,3 +170,14 @@ func (f *Fighter) HasCondition(id int16) bool {
 	}
 	return false
 }
+
+// FighterSphere is one Sphere Board node a fighter has bought. The board itself
+// is client-side data (gamedata types 900/901); only which nodes were purchased,
+// and where the cursor stands, are the server's to keep.
+type FighterSphere struct {
+	ID        uint  `gorm:"primaryKey"`
+	FighterID uint  `gorm:"index;not null"`
+	SphereID  int32 `gorm:"not null"`
+}
+
+func (FighterSphere) TableName() string { return "fighter_spheres" }

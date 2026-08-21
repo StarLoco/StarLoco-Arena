@@ -58,8 +58,8 @@ func TestIsEvolutionBackCompat(t *testing.T) {
 // TestEvolutionFighterCarriesTail: the flag must reach the wire, because the
 // type-2 tail is what files the fighter into the client's evolution roster.
 func TestEvolutionFighterCarriesTail(t *testing.T) {
-	classic := encodeFighterBlob(&domain.Fighter{ID: 1, BreedID: 8, Name: "A"})
-	evo := encodeFighterBlob(&domain.Fighter{ID: 2, BreedID: 8, Name: "A", Evolution: true})
+	classic := encodeFighterBlob(&domain.Fighter{ID: 1, BreedID: 8, Name: "A"}, nil)
+	evo := encodeFighterBlob(&domain.Fighter{ID: 2, BreedID: 8, Name: "A", Evolution: true}, nil)
 	if classic[0] != fighterBlobTypeClassic {
 		t.Errorf("classic blob type = %d, want %d", classic[0], fighterBlobTypeClassic)
 	}

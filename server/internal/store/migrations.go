@@ -74,6 +74,7 @@ func baselineModels() []any {
 		&domain.FighterSpell{},
 		&domain.FighterObject{},
 		&domain.FighterCondition{},
+		&domain.FighterSphere{},
 		&domain.Team{},
 		&domain.TeamFighter{},
 		&domain.Mail{},
@@ -128,6 +129,16 @@ var migrations = []migration{
 		Name:    "guild_demon_reputation",
 		Up: func(tx *gorm.DB) error {
 			return tx.AutoMigrate(&domain.GuildDemonReputation{})
+		},
+	},
+	{
+		// Sphere Board (Kanodo) progress: the fighter's cursor columns and the
+		// nodes it has bought. The board GRAPH is client-side data (gamedata
+		// types 900/901) - only the progress is ours to keep.
+		Version: 5,
+		Name:    "fighter_sphere_progress",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.Fighter{}, &domain.FighterSphere{})
 		},
 	},
 }

@@ -55,7 +55,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | PvE challenges | 🟡 | 39/39 records decoded; win conditions + fight-start rules now enforced; opponent rosters are invented |
 | Tournaments | 🟡 | Registration + calendar + list; no brackets, no matches |
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
-| Sphere Board | ⬜ | 17 542 records, zero code — the largest unimplemented system |
+| Sphere Board | 🟡 | Types 900/901 decode byte-exactly; board id + cursor + owned nodes served, and the Kanodo opens on the retail client and prices its nodes. The buy path (23009) and effect application remain |
 | Achievements | ✅ | 332/5/13 decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced, tome grow-only (B-106). 47 are structurally blocked on 2v2/tournaments; the rest need their statistic to start moving |
 | Guilds / clans | ✅ | **Complete** (item 31), and never structurally blocked — the client's clan feature is fully wired; the server was writing an empty 0x20 blob, which every entry point gates on. Create/invite/accept, ranks + rights, kick/quit/destroy, clan chat, clan tag + clan ladder, demon affiliation, and clan islands on the retail rule (one island per demon, held by its top clan). Live-verified |
 | 2v2 | ⬜ | Deferred by the maintainer (item 30) |
@@ -117,7 +117,7 @@ value checked so far turned out wrong in 2.70.
 
 | Type | Records | What | Why it matters |
 |---:|---:|---|---|
-| **901 / 900** | **17 527 / 15** | Sphere Board nodes + headers | The largest unimplemented system in the game |
+| **901 / 900** | **17 527 / 15** | Sphere Board nodes + headers | ✅ decoded byte-exactly (item 29); the board graph stays client-side, the server serves the fighter's progress |
 | 800/801/802 | 332/5/13 | Achievements + categories | **Decoded** (B-106) |
 | 1500 | 148 | NPC dialog replies | **Client-side only** - the client loads these itself (`xs_0`); the server never needs them |
 | 360 | 42 | Interactive-element rendering | We hand-author elements instead |
@@ -1535,8 +1535,25 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 3 — large systems
 
-29. **Sphere Board** — types 900/901, 17 542 records. The largest unimplemented
-    system in the game.
+29. 🟡 **Sphere Board (Kanodo)** — **decode + board state DONE and live-verified;
+    the buy path is what remains.** The premise needed correcting: "17 542
+    records" reads as an enormous wire job, but the board GRAPH is client-side
+    data (`vj_2`/`dq_1` load types 900/901 out of the client's own files into
+    `akp_1`), so the server never sends it. What the server owes is the fighter's
+    PROGRESS, and the fighter blob already reserved room for it.
+    Done: types 900 (15 boards) and 901 (17 527 nodes) decode byte-exactly —
+    every record consumed to the byte, portal arrivals resolving to real cells,
+    spell nodes resolving in the spell catalogue; the board's `cx`/`cy` identified
+    as the ROOT sphere via `ks_2.Xm() = X(fs, ft)`; per-breed board selection,
+    the stored 1-based cursor with root fallback and dangling-cell repair, the
+    owned-node list, and schema v5 (`fighter_spheres` + cursor columns).
+    Live on the retail client: the Kanodo opens on a real board, the fighter's
+    head sits on the root, nodes select, and a node reports its own payload and
+    price ("Bonus : +1% dégâts d'eau", "Coût : 218 xp").
+    Remaining: C2S **23009** (`aow_2`, arch 3, `[i64 fighterId][i32 sphereId]
+    [i32 cardTemplateId]`) — validate XP and adjacency, charge the cost (a
+    re-bought node costs a TENTH), consume a barrier card, walk the cursor
+    (portals jump it), persist; then apply node effects to the fighter.
 30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
     2-team array to become a slice, the ready gate to count teams, per-team
     session lists, and the 8000 coach loop generalised.

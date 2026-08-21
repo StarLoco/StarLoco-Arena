@@ -294,3 +294,32 @@ func TestSphereSpellIDsResolve(t *testing.T) {
 		t.Errorf("%d of %d spell spheres name a spell that does not exist", missing, checked)
 	}
 }
+
+// TestBoardRootCoordinatesResolve proves what ks_2.Xm() says: a board's i16 pair
+// is the ROOT sphere's grid position - Xm() is literally X(fs, ft), and Ei.MQ()
+// calls it to build the graph outward from that node.
+func TestBoardRootCoordinatesResolve(t *testing.T) {
+	sb := realSphereBoards(t)
+	const sentinelBreed = 127
+
+	checked := 0
+	for _, id := range sb.BoardIDs() {
+		b := sb.Board(id)
+		if b.Breed == sentinelBreed {
+			continue
+		}
+		checked++
+		root := sb.At(b.ID, b.RootX, b.RootY)
+		if root == nil {
+			t.Errorf("board %d (breed %d): root (%d,%d) is not a node",
+				b.ID, b.Breed, b.RootX, b.RootY)
+			continue
+		}
+		if got := sb.Root(b.ID); got == nil || got.ID != root.ID {
+			t.Errorf("board %d: Root() disagrees with At(RootX,RootY)", b.ID)
+		}
+	}
+	if checked != 12 {
+		t.Fatalf("checked %d playable boards, want 12", checked)
+	}
+}
