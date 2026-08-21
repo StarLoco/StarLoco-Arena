@@ -278,6 +278,43 @@ func handleTeamUpAnswer(s *Session, f *protocol.C2SFrame) error {
 	return s.sendEmpty(protocol.OpTeamUpAccepted)
 }
 
+// joinDuoPartner adds the coach's 2v2 partner to a side that has already been
+// built for the coach itself, so one fight carries both allies.
+//
+// The partner's fighters are placed on the start cells the first coach did not
+// use. A side has 8 start cells on most arenas (34 of 47), so two six-fighter
+// rosters cannot both fit whole - the partner takes what is left, which is the
+// same clamp the single-coach path already applies.
+//
+// Returns true if a partner was actually added. It is deliberately quiet when
+// there is no duo, no online partner, or no room: a 2v2 that cannot be seated
+// degrades to the 1v1 that was already valid rather than failing the fight.
+func (d *Deps) joinDuoPartner(team *FightTeam, ownerID uint, cells []Pos) bool {
+	if team == nil || d.TeamUps == nil {
+		return false
+	}
+	partnerID := d.TeamUps.Partner(ownerID)
+	if partnerID == 0 {
+		return false
+	}
+	ps := d.sessionForCoach(partnerID)
+	if ps == nil || ps.Coach == nil {
+		return false
+	}
+	free := len(cells) - len(team.Fighters)
+	if free <= 0 {
+		return false
+	}
+	spare := cells[len(team.Fighters):]
+	partner, err := d.buildFightTeamFor(ps, team.ID, spare, nil)
+	if err != nil || partner == nil || len(partner.Members) == 0 {
+		return false
+	}
+	team.Members = append(team.Members, partner.Members...)
+	team.Fighters = append(team.Fighters, partner.Fighters...)
+	return true
+}
+
 // sendEmpty sends a payload-less S2C frame.
 func (s *Session) sendEmpty(opcode uint16) error {
 	frame, err := protocol.EncodeS2C(opcode, nil)

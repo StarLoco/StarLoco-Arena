@@ -27,7 +27,19 @@ func registerFightHandlers(r *Router, d *Deps) {
 // startFight builds a Fight from a mutually-accepted match and drives the
 // clients into the presentation phase.
 func (d *Deps) startFight(pm *pendingMatch) error {
-	a := pickArena()
+	// If either matched coach has a formed 2v2 duo, the fight needs an arena that
+	// actually seats two coaches a side - 15 of the 47 shipped arenas define no
+	// pedestals at all and a few define only some.
+	seats := 1
+	if d.TeamUps != nil {
+		for _, sc := range []*searcher{pm.a, pm.b} {
+			if sc != nil && sc.session != nil && sc.session.Coach != nil &&
+				d.TeamUps.Partner(sc.session.Coach.ID) != 0 {
+				seats = 2
+			}
+		}
+	}
+	a := pickArenaSeating(seats)
 	teamA, err := d.buildFightTeam(a, pm.a, 0)
 	if err != nil {
 		return err
@@ -35,6 +47,20 @@ func (d *Deps) startFight(pm *pendingMatch) error {
 	teamB, err := d.buildFightTeam(a, pm.b, 1)
 	if err != nil {
 		return err
+	}
+	// Each side pulls in its ally, if it has one. Done after both sides exist so
+	// the partner's fighters land on the start cells its own side has left.
+	for _, pair := range []struct {
+		team *FightTeam
+		sc   *searcher
+	}{{teamA, pm.a}, {teamB, pm.b}} {
+		if pair.sc == nil || pair.sc.session == nil || pair.sc.session.Coach == nil {
+			continue
+		}
+		if d.joinDuoPartner(pair.team, pair.sc.session.Coach.ID, a.startCells(pair.team.ID)) {
+			d.Log.Info("2v2 side formed", "side", pair.team.ID,
+				"coaches", len(pair.team.Members), "fighters", len(pair.team.Fighters))
+		}
 	}
 	return d.startFightWithTeams(a, teamA, teamB, false, 0, false)
 }

@@ -1,6 +1,10 @@
 package game
 
-import "github.com/StarLoco/arena-2.70/internal/gamedata"
+import (
+	"sort"
+
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
+)
 
 // arena is a dedicated fight map — a maps.jar "world" that ships an .fmd
 // start-point definition (contents/maps/fight/<world>.jar!/<world>.fmd) and a
@@ -77,7 +81,18 @@ func newArenaFromMap(m *gamedata.FightMap) *arena {
 		}
 		return out
 	}
-	a.team0, a.team1, a.coachCells = conv(m.Team0), conv(m.Team1), conv(m.CoachCells)
+	a.team0, a.team1 = conv(m.Team0), conv(m.Team1)
+	// The .fmd always stores SIX pedestal slots, but only 28 of the 47 shipped
+	// arenas populate them all: 15 populate none and 4 populate some. An empty
+	// slot decodes to the unpacked-zero sentinel (-2047, -2047, -127), which we
+	// used to keep and hand out like a real cell - so on a pedestal-less arena a
+	// coach was placed 2047 tiles off the map.
+	for _, p := range m.CoachCells {
+		if p.X == emptyPedestalXY && p.Y == emptyPedestalXY {
+			continue
+		}
+		a.coachCells = append(a.coachCells, Pos{X: p.X, Y: p.Y, Z: p.Z})
+	}
 	for _, s := range m.Specials {
 		a.specials = append(a.specials, specialCell{
 			Pos: Pos{X: s.X, Y: s.Y, Z: s.Z}, Template: int64(s.Template),
@@ -110,6 +125,63 @@ func (a *arena) startCells(side uint8) []Pos {
 		return a.team1
 	}
 	return a.team0
+}
+
+// emptyPedestalXY is the x and y an unused .fmd pedestal slot decodes to: the
+// packed value 0 unpacks to (0-2047, 0-2047, 0-127).
+const emptyPedestalXY = -2047
+
+// pedestalsFor returns the coach pedestals that belong to a side, nearest-first.
+//
+// The .fmd does not label them, so the side is derived geometrically: a pedestal
+// belongs to whichever side owns the start cell it sits closest to. Index parity
+// very nearly works (22 of the 28 six-pedestal arenas alternate 0,1,0,1,0,1) but
+// not quite, and the exceptions are the lopsided maps where getting it wrong is
+// most visible - so geometry wins over the pattern.
+//
+// 24 of those 28 arenas split their six pedestals exactly 3/3, which is the real
+// shape of the feature: up to THREE coaches a side. 2v2 therefore needs no new
+// map format, only an arena that actually populates the slots.
+func (a *arena) pedestalsFor(side uint8) []Pos {
+	type scored struct {
+		p Pos
+		d int32
+	}
+	var out []scored
+	for _, p := range a.coachCells {
+		mine, theirs := a.nearestStart(p, side), a.nearestStart(p, 1-side)
+		if mine <= theirs {
+			out = append(out, scored{p, mine})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].d < out[j].d })
+	ps := make([]Pos, 0, len(out))
+	for _, s := range out {
+		ps = append(ps, s.p)
+	}
+	return ps
+}
+
+// nearestStart is the squared distance from p to the closest start cell of side.
+func (a *arena) nearestStart(p Pos, side uint8) int32 {
+	best := int32(1) << 30
+	for _, c := range a.startCells(side) {
+		dx, dy := p.X-c.X, p.Y-c.Y
+		if d := dx*dx + dy*dy; d < best {
+			best = d
+		}
+	}
+	return best
+}
+
+// coachCapacity is the smaller of the two sides' pedestal counts - i.e. how many
+// coaches per side this arena can seat. A 2v2 needs at least 2.
+func (a *arena) coachCapacity() int {
+	n0, n1 := len(a.pedestalsFor(0)), len(a.pedestalsFor(1))
+	if n0 < n1 {
+		return n0
+	}
+	return n1
 }
 
 // cellFlag returns the fight-grid short (cLr) for cell (x,y). The client's

@@ -439,17 +439,23 @@ func buildActorAppearForFight(f *Fight) ([]byte, error) {
 	center := Pos{X: f.Arena().centerX, Y: f.Arena().centerY}
 	var entries []actorAppearEntry
 	// Every coach gets a pedestal, not just each side's representative: in a 2v2
-	// all four stand at the arena edge. Pedestals are dealt round-robin from the
-	// arena's coach cells, so a side's second coach takes the next free spot
-	// rather than stacking on its ally.
-	spot := 0
+	// all four stand at the arena edge. Pedestals are taken from the coach's OWN
+	// side (pedestalsFor), so allies stand together and nobody is seated behind
+	// the enemy line.
+	//
+	// An arena may populate no pedestals at all (15 of the 47 shipped ones do
+	// not). Those coaches simply get no avatar rather than one flung to the
+	// sentinel cell 2047 tiles off the map, which is what used to happen.
 	for _, t := range f.Teams {
-		for _, mem := range t.Members {
-			if mem.Coach == nil {
+		if t == nil {
+			continue
+		}
+		spots := f.Arena().pedestalsFor(t.ID)
+		for i, mem := range t.Members {
+			if mem.Coach == nil || i >= len(spots) {
 				continue
 			}
-			cell := f.Arena().coachCells[spot%len(f.Arena().coachCells)]
-			spot++
+			cell := spots[i]
 			entries = append(entries, actorAppearEntry{
 				ID: int64(mem.Coach.ID), X: cell.X, Y: cell.Y, Z: cell.Z, Dir: diagonalFacing(cell, center),
 			})

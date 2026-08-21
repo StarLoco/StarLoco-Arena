@@ -55,11 +55,32 @@ func arenaByID(id uint16) *arena {
 
 // pickArena chooses an arena for a new fight. With map data loaded this rotates
 // over every shipped arena, so fights are not all played on world 5.
-func pickArena() *arena {
+func pickArena() *arena { return pickArenaSeating(1) }
+
+// pickArenaSeating chooses an arena that can seat at least n coaches PER SIDE.
+//
+// It matters because the .fmd's six pedestal slots are not populated everywhere:
+// 15 of the 47 shipped arenas define none at all and a few define only some, so
+// a 2v2 dropped on one of those would have nowhere to stand its second coach.
+// 25 arenas can seat two a side. If none qualifies the choice is widened rather
+// than failed - a fight on a pedestal-less map still plays correctly, the
+// coaches simply have no avatar (buildActorAppearForFight skips them).
+func pickArenaSeating(n int) *arena {
 	arenaMu.RLock()
 	defer arenaMu.RUnlock()
 	if len(arenaIDs) == 0 {
 		return &practiceArena
+	}
+	if n > 1 {
+		eligible := make([]*arena, 0, len(arenaIDs))
+		for _, id := range arenaIDs {
+			if a := arenaCache[id]; a != nil && a.coachCapacity() >= n {
+				eligible = append(eligible, a)
+			}
+		}
+		if len(eligible) > 0 {
+			return eligible[rand.Intn(len(eligible))]
+		}
 	}
 	return arenaCache[arenaIDs[rand.Intn(len(arenaIDs))]]
 }
