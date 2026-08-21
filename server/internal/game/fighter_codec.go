@@ -240,6 +240,21 @@ func writeEvolutionTail(w *protocol.Writer, f *domain.Fighter, boards *gamedata.
 		w.U8(uint8(c.Remaining))
 	}
 
-	w.U16(0) // passive count
-	w.U16(0) // passive-set count
+	// These two are NOT "passives" despite the slot names: `ee_2` assigns them
+	// straight from the blob as `aRE = NI()` and `aRF = NJ()`, then resolves aRE
+	// through the SPELL table and aRF through the EQUIPMENT-POOL table (type 251).
+	// They are the spells and equipment pools a fighter's bought Sphere Board nodes
+	// unlocked. The client adds each one locally at the moment of purchase and
+	// never re-derives it, so sending them empty - as this did - made a Spell
+	// sphere bought in one session cease to exist in the next.
+	spells := sphereSpellIDs(f, boards)
+	w.U16(uint16(len(spells)))
+	for _, id := range spells {
+		w.I32(id)
+	}
+	pools := sphereEquipmentPools(f, boards)
+	w.U16(uint16(len(pools)))
+	for _, id := range pools {
+		w.I32(id)
+	}
 }

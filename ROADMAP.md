@@ -55,7 +55,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | PvE challenges | 🟡 | 39/39 records decoded; win conditions + fight-start rules now enforced; opponent rosters are invented |
 | Tournaments | 🟡 | Registration + calendar + list; no brackets, no matches |
 | Ladder / ranking (7 tabs) | 🟡 | Only the 1v1 board carries data; six render as valid-but-empty |
-| Sphere Board | 🟡 | Types 900/901 decode byte-exactly; board id + cursor + owned nodes served, and the Kanodo opens on the retail client and prices its nodes. The buy path (23009) and effect application remain |
+| Sphere Board | ✅ | Types 900/901 decode byte-exactly; board/cursor/owned nodes served, buying (23009) validated server-side, and bought nodes apply their stats and spells in fight. Live-verified end to end |
 | Achievements | ✅ | 332/5/13 decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced, tome grow-only (B-106). 47 are structurally blocked on 2v2/tournaments; the rest need their statistic to start moving |
 | Guilds / clans | ✅ | **Complete** (item 31), and never structurally blocked — the client's clan feature is fully wired; the server was writing an empty 0x20 blob, which every entry point gates on. Create/invite/accept, ranks + rights, kick/quit/destroy, clan chat, clan tag + clan ladder, demon affiliation, and clan islands on the retail rule (one island per demon, held by its top clan). Live-verified |
 | 2v2 | ⬜ | Deferred by the maintainer (item 30) |
@@ -124,7 +124,7 @@ value checked so far turned out wrong in 2.70.
 | 1100 | 30 | Fusion-laboratory definitions | ✅ decoded (B-089) — altars, not recipes |
 | 1600 | 29 | Per-map metadata (music/background) | Cosmetic |
 | 1000/1001 | 22/4 | Tournament definitions + level list | We hand-build 3 tournaments |
-| 251 | 11 | Equipment pools from Sphere Board nodes | Blocked on 901 |
+| 251 | 11 | Equipment pools from Sphere Board nodes | Referenced: a node's pool id is decoded and served to the client in the evolution tail (item 29). The pool RECORDS are still not decoded server-side - the client resolves them itself |
 | 700 | 7 | Calendar events (7 subtypes) | We hand-build the calendar |
 | 1400 | 2 | Pro League definitions | Served empty |
 | 1 | 1 | Standard fight parameters (singleton) | Unknown impact |
@@ -1563,8 +1563,20 @@ is a signing certificate or SignPath); no published Docker image.
     purchase logged server-side, and 150 → 148 xp with the cursor moved,
     surviving a reconnect. Nodes the rule refuses are silently refused by the
     client too — the two agree.
-    Remaining: apply node effects to the fighter (stats, spells, the type-251
-    equipment pools) so a bought sphere changes how the fighter fights.
+    Also done: bought nodes now change the fighter. Their effect rows are `Ht`
+    rows like every other passive, so they feed the same accumulator equipped
+    cards and wounds use, applied after equipment and BEFORE conditions (growth
+    of the fighter, then penalties on the finished article) - malus nodes
+    included, since the board sells penalties on purpose. Sphere spells are
+    merged into the fighter the fight is built from, so the cast validator and
+    the AI repertoire both see them, on a COPY so nothing is written back.
+    The evolution tail''s two "passive" lists turned out not to be passives at
+    all (B-118): `ee_2` assigns them from the blob as `aRE = NI()` / `aRF = NJ()`
+    and resolves them through the SPELL and EQUIPMENT-POOL tables, so they are
+    the sphere-unlocked spells and type-251 pools. Sent empty, a Spell sphere
+    bought in one session ceased to exist in the next.
+    Live: the client shows "Esquive 61%" for a fighter that bought Esquive +1%
+    after a full relog, and a fight starts clean with it.
 30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
     2-team array to become a slice, the ready gate to count teams, per-team
     session lists, and the 8000 coach loop generalised.

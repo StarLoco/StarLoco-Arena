@@ -116,7 +116,7 @@ func (r *FighterRepo) SaveConditions(fighterID uint, conds []domain.FighterCondi
 // ListByCoach returns all fighters of a coach with spells + objects preloaded.
 func (r *FighterRepo) ListByCoach(coachID uint) ([]domain.Fighter, error) {
 	var fighters []domain.Fighter
-	err := r.db.Preload("Spells").Preload("Objects").Preload("Conditions").
+	err := r.db.Preload("Spells").Preload("Objects").Preload("Conditions").Preload("Spheres").
 		Where("coach_id = ?", coachID).Find(&fighters).Error
 	for i := range fighters {
 		r.normalizeEquipment(&fighters[i])
@@ -127,7 +127,7 @@ func (r *FighterRepo) ListByCoach(coachID uint) ([]domain.Fighter, error) {
 // Get loads one fighter (spells + objects) by id.
 func (r *FighterRepo) Get(id uint) (*domain.Fighter, error) {
 	var f domain.Fighter
-	err := r.db.Preload("Spells").Preload("Objects").Preload("Conditions").First(&f, id).Error
+	err := r.db.Preload("Spells").Preload("Objects").Preload("Conditions").Preload("Spheres").First(&f, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}

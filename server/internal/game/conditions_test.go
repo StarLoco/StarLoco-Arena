@@ -193,7 +193,7 @@ func TestConditionsAffectFighterStats(t *testing.T) {
 	defs := woundCatalogue()
 	iop := &domain.Fighter{ID: 1, BreedID: 8} // Iop: 75 HP, 6 AP, 3 MP, block 40, dodge 100
 
-	base := computeFighterStatsWithConditions(iop, nil, defs)
+	base := computeFighterStatsWithConditions(iop, nil, defs, nil)
 	if base.MaxAP != 6 || base.MaxMP != 3 || base.Block != 40 || base.Dodge != 100 {
 		t.Fatalf("unwounded Iop = %+v, want AP 6 / MP 3 / block 40 / dodge 100", base)
 	}
@@ -203,7 +203,7 @@ func TestConditionsAffectFighterStats(t *testing.T) {
 		{ConditionID: 3, Remaining: -1}, // serious leg: -1 MP
 		{ConditionID: 5, Remaining: -1}, // serious arm: -1 AP
 	}
-	hurt := computeFighterStatsWithConditions(iop, nil, defs)
+	hurt := computeFighterStatsWithConditions(iop, nil, defs, nil)
 	if hurt.MaxAP != 5 || hurt.MaxMP != 2 {
 		t.Errorf("wounded Iop AP/MP = %d/%d, want 5/2", hurt.MaxAP, hurt.MaxMP)
 	}
@@ -214,7 +214,7 @@ func TestConditionsAffectFighterStats(t *testing.T) {
 		{ConditionID: 1, Remaining: -1}, // light leg: -20% dodge
 		{ConditionID: 4, Remaining: -1}, // light arm: -20% block
 	}
-	tackled := computeFighterStatsWithConditions(iop, nil, defs)
+	tackled := computeFighterStatsWithConditions(iop, nil, defs, nil)
 	if tackled.Dodge != 80 {
 		t.Errorf("dodge with a light leg wound = %d, want 80", tackled.Dodge)
 	}
@@ -229,7 +229,7 @@ func TestConditionsAffectFighterStats(t *testing.T) {
 		{ConditionID: 55, Remaining: 5}, // -40% dodge
 		{ConditionID: 72, Remaining: 3}, // -20 max HP
 	}
-	crippled := computeFighterStatsWithConditions(iop, nil, defs)
+	crippled := computeFighterStatsWithConditions(iop, nil, defs, nil)
 	if crippled.MaxHP < 1 || crippled.MaxAP < 0 || crippled.MaxMP < 0 ||
 		crippled.Dodge < 0 || crippled.Block < 0 {
 		t.Errorf("penalties drove a stat negative: %+v", crippled)

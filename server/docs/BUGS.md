@@ -140,6 +140,34 @@ belongs to the coach.
 
 ## Fixed
 
+### B-118 - the evolution tail's two "passive" lists are the Sphere Board's spells and equipment pools
+
+**Symptom.** A Spell sphere bought in one session stopped existing in the next: the
+fighter could cast it until it logged out, and then could not.
+
+**Root cause.** The last two lists of the evolution tail were being written as
+empty and documented as "passives, not modelled yet". They are not passives.
+`ee_2` fills its own three lists straight from the blob -
+`aRD = et_2.NE()` (the bought nodes), `aRE = et_2.NI()` and `aRF = et_2.NJ()` -
+and then resolves `aRE` through the SPELL table (`je_1.Wa().el`) and `aRF` through
+the equipment-pool table (`aca_0.aOq().F`, record type 251). They are the spells
+and equipment pools a fighter's bought Sphere Board nodes unlocked.
+
+The client adds each one locally at the instant of purchase (`ee_2.a`) and never
+re-derives them, which is exactly why the bug survived a session: everything
+worked until the fighter was next loaded from the wire.
+
+**Fix.** Both lists are derived from the fighter's bought nodes and sent. The
+node's effect ROWS are a separate matter - nothing carries a fighter's
+characteristics on the wire, because the server is authoritative in a fight - so
+those are re-derived at fight time through the same passive accumulator equipped
+cards and wounds already use, after equipment and before conditions.
+
+**Verified.** `live` (a fighter that bought "Esquive +1%" still shows Esquive 61%
+after a full relog, and a fight starts clean with it) + `unit` (13 mutations,
+including one that proved the fight path itself was untested and another that
+caught the merged spell slice aliasing the persisted fighter).
+
 ### B-117 - the 24 clan islands served no elements, so no one could land on one
 
 **Symptom.** With the island held, the card granted (B-116) and the destination

@@ -158,8 +158,16 @@ type fighterStats struct {
 // breed and equipment, because they are penalties on the finished fighter — a
 // broken leg takes a movement point off whatever the gear provided.
 func computeFighterStatsWithConditions(fr *domain.Fighter, cat *gamedata.FighterCards,
-	conds *gamedata.Conditions) fighterStats {
+	conds *gamedata.Conditions, boards *gamedata.SphereBoards) fighterStats {
 	st := computeFighterStats(fr, cat)
+	// Sphere Board nodes come after equipment and BEFORE conditions: a bought
+	// sphere is permanent growth of the fighter itself, so it belongs with what
+	// the fighter is, while a wound is a penalty on the finished article. The
+	// client applies each node's rows through the same accumulator when the node
+	// is bought (`ee_2.a` -> `xj_0.a`), so these must be the same rows.
+	for _, ef := range sphereFightEffects(fr, boards) {
+		st.applyPassiveEffect(ef)
+	}
 	for _, ef := range conditionFightEffects(conds, fr) {
 		st.applyPassiveEffect(ef)
 	}

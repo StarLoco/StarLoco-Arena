@@ -169,7 +169,10 @@ func (d *Deps) buildFightTeamFor(sess *Session, side uint8, cells []Pos, rosterI
 		if len(cells) > 0 {
 			pos = cells[i%len(cells)]
 		}
-		st := computeFighterStatsWithConditions(fr, d.FighterCards, d.Conditions)
+		st := computeFighterStatsWithConditions(fr, d.FighterCards, d.Conditions, d.SphereBoards)
+		// The fighter that FIGHTS knows its sphere spells as well as its own; both
+		// the cast validator and the AI read this one list.
+		fr = fighterWithSphereSpells(fr, d.SphereBoards)
 		ff := &FightFighter{
 			WireID:  FighterWireIDBase + int64(fr.ID)*16 + int64(side)*8 + int64(i),
 			CoachID: coach.ID,
