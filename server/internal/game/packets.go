@@ -110,39 +110,60 @@ func buildPlayerStatisticsReport(c *domain.Coach) ([]byte, error) {
 
 // buildFriendList builds FriendList (3144).
 //
-// Payload: [u8 count] then per friend { i16 elemLen, blob }, blob =
+// Payload: [u8 count] then per friend { i16 elemLen, blob }, blob = the client's
+// `qm.b` layout:
 //
-//	[u8 nameLen][name][u8 len][statusText][u8 len][extra][i8 online]
-//	[i64 lastSeen][i16 a][i8 b][i16 c]
+//	[u8 len][name][u8 len][adM][u8 len][adN][i8 adO][i64 adP][i16 adQ][i8 adR][i16 adS]
 //
-// We emit a minimal per-friend record: name + empty text fields + online flag.
+// The last two fields are NOT what an earlier revision of this function assumed
+// ("[i8 online][i64 lastSeen]"), and getting them wrong broke more than cosmetics.
+// `om_0` case 3144 constructs each entry as:
+//
+//	new axa_0(qm.adM, qm.name, qm.adP != -1L, qm.adP, qm.adO)
+//
+// so **adP is the friend's COACH ID, and it doubles as the online flag: -1 means
+// offline**. adO is the per-friend NOTIFY toggle (`axa_0.aJM()` gates the
+// "X vient de se connecter" toast), not presence.
+//
+// Writing the online bool into adO and a constant 0 into adP therefore gave every
+// friend the id 0 AND made them all read as online (0 != -1). The id matters
+// because the client hands it straight back: the 2v2 teammate picker sends
+// `axa_0.getId()` as the invited coach in 6024, so a whole feature refused with
+// "Le coach a refuse la creation, ou est indisponible." until this was fixed.
 //
 // CRITICAL: the count MUST equal the number of blobs actually written. Rows
 // with a nil joined coach (e.g. a friend whose account was deleted) are skipped,
 // so we count the filtered set first — otherwise the client's fixed-count loop
 // reads past the buffer (BufferUnderflowException) and the login chain aborts.
 func buildFriendList(c *domain.Coach, world *Registry) ([]byte, error) {
-	friends := make([]*domain.Coach, 0, len(c.Friends))
+	friends := make([]domain.CoachFriend, 0, len(c.Friends))
 	for _, fr := range c.Friends {
 		if fr.Friend != nil {
-			friends = append(friends, fr.Friend)
+			friends = append(friends, fr)
 		}
 	}
 	w := protocol.NewWriter().U8(uint8(len(friends)))
-	for _, fr := range friends {
+	for _, row := range friends {
+		fr := row.Friend
 		blob := protocol.NewWriter().
 			StringU8(fr.Name).
-			StringU8(""). // adM
+			StringU8(""). // adM (character name; the client falls back to name)
 			StringU8("")  // adN
-		online := uint8(0)
-		if world.IsOnline(fr.ID) {
-			online = 1
+		notify := uint8(0)
+		if row.Notify {
+			notify = 1
 		}
-		blob.U8(online). // adO bool
-					I64(0). // adP last-seen
-					U16(0). // adQ
-					U8(0).  // adR
-					U16(0)  // adS
+		// Offline friends are sent as -1: that is the client's own presence test,
+		// and it means an offline friend deliberately has no usable id.
+		id := int64(-1)
+		if world.IsOnline(fr.ID) {
+			id = int64(fr.ID)
+		}
+		blob.U8(notify). // adO: notify-on-login toggle
+					I64(id). // adP: coach id, or -1 when offline
+					U16(0).  // adQ
+					U8(0).   // adR
+					U16(0)   // adS
 		b := blob.Bytes()
 		w.U16(uint16(len(b)))
 		w.Raw(b)

@@ -140,6 +140,47 @@ belongs to the coach.
 
 ## Fixed
 
+### B-120 - every friend had coach id 0 and read as permanently online
+
+**Symptom.** Creating a 2v2 team always failed with *"Le coach a refusé la création, ou
+est indisponible."* even though the chosen teammate was online, unignored, not fighting
+and not already paired. Found by driving two retail clients at once: ExBot picked Chrono
+from its friend list, pressed CRÉER, and the server refused.
+
+**Root cause.** Not in the 2v2 code at all - in the **friend list (3144)**, which had been
+wrong since it was written. `buildFriendList` labelled its last two fields
+`[i8 online][i64 lastSeen]` and wrote the presence flag into the first and a constant `0`
+into the second. The client's `om_0` case 3144 says otherwise:
+
+    new axa_0(qm.adM, qm.name, qm.adP != -1L, qm.adP, qm.adO)
+
+- **`adP` is the friend's COACH ID**, and it doubles as presence: `-1` means offline.
+- **`adO` is the per-friend NOTIFY toggle** (`axa_0.aJM()` gates the "X vient de se
+  connecter" toast), not presence.
+
+So every friend arrived with **id 0**, and because `0 != -1`, every friend also read as
+**online** regardless of the flag we sent. The id is not cosmetic: the 2v2 teammate picker
+hands `axa_0.getId()` straight back as the invited coach in 6024, so the server received
+`invited = 0` and refused - correctly, for the wrong reason. `coach_friends.Notify` had
+existed in the schema all along with nothing writing it to the wire.
+
+**Fix.** `adO` carries `CoachFriend.Notify`; `adP` carries the coach id when online and
+`-1` when offline. An offline friend deliberately has no usable id, which is the client's
+own rule.
+
+**Verified:** `unit` (`TestFriendListCarriesCoachIdAndNotify`) + `live`. Live, with two
+retail clients running simultaneously: ExBot created team "LesDeux" naming Chrono, the
+server logged `2v2 invitation from=ExBot to=Chrono team=LesDeux`, Chrono's client rendered
+*"ExBot te propose de faire équipe avec lui/elle."*, accepting produced
+`2v2 team formed team=LesDeux inviter=2 invited=1`, and **both** clients opened the 2VS2
+fighter picker on 6028.
+
+3 mutations caught - but only after fixing the test. The first version used
+online+notify-on and offline+notify-off, which **correlated the two fields being
+separated**, so swapping one for the other passed. Decorrelating them (online+notify-OFF,
+offline+notify-ON) made the mutation fail as it should. A test whose data correlates the
+fields it is distinguishing proves nothing.
+
 ### B-119 - OPCODE-INVENTORY.md claimed coverage of two opcodes the client does not have, and called twenty implemented ones "gaps"
 
 **Symptom.** No runtime symptom — which is exactly why it went unnoticed for so long.

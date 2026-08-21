@@ -30,6 +30,82 @@ func TestFriendListCountMatchesBlobsWithNilJoin(t *testing.T) {
 	}
 }
 
+// TestFriendListCarriesCoachIdAndNotify pins the two fields the client reads
+// back out of this blob, because both were wrong and one of them silently broke
+// a whole feature.
+//
+// `om_0` case 3144: new axa_0(qm.adM, qm.name, qm.adP != -1L, qm.adP, qm.adO).
+// So adP is the friend's COACH ID and doubles as presence (-1 = offline), while
+// adO is the NOTIFY toggle. We used to send the online bool in adO and a
+// constant 0 in adP, which gave every friend id 0 and made them all read online.
+// The id is not cosmetic: the 2v2 teammate picker sends axa_0.getId() as the
+// invited coach in 6024.
+func TestFriendListCarriesCoachIdAndNotify(t *testing.T) {
+	// Notify is deliberately the OPPOSITE of presence on both rows. A first
+	// version of this test used online+notify and offline+no-notify, which made
+	// the two fields indistinguishable: swapping one for the other passed. Any
+	// test whose data correlates the fields it is separating proves nothing.
+	online := &domain.Coach{ID: 2, Name: "Online"}
+	offline := &domain.Coach{ID: 3, Name: "Offline"}
+	owner := &domain.Coach{
+		ID: 1, Name: "Owner",
+		Friends: []domain.CoachFriend{
+			{OwnerID: 1, FriendID: 2, Friend: online, Notify: false},
+			{OwnerID: 1, FriendID: 3, Friend: offline, Notify: true},
+		},
+	}
+	world := NewRegistry(75)
+	world.Add(&Online{Coach: online})
+
+	frame, err := buildFriendList(owner, world)
+	if err != nil {
+		t.Fatalf("buildFriendList: %v", err)
+	}
+	// Skip the S2C header [u16 len][u16 opcode], then [u8 count].
+	r := protocol.NewReader(frame[4:])
+	count, err := r.U8()
+	if err != nil || count != 2 {
+		t.Fatalf("count = %d (err %v), want 2", count, err)
+	}
+	type entry struct {
+		name   string
+		notify uint8
+		id     int64
+	}
+	got := make([]entry, 0, 2)
+	for i := 0; i < int(count); i++ {
+		blobLen, err := r.U16()
+		if err != nil {
+			t.Fatalf("blob %d length: %v", i, err)
+		}
+		raw, err := r.Bytes(int(blobLen))
+		if err != nil {
+			t.Fatalf("blob %d: %v", i, err)
+		}
+		b := protocol.NewReader(raw)
+		name, _ := b.StringU8()
+		_, _ = b.StringU8() // adM
+		_, _ = b.StringU8() // adN
+		notify, _ := b.U8()
+		id, err := b.I64()
+		if err != nil {
+			t.Fatalf("blob %d adP: %v", i, err)
+		}
+		got = append(got, entry{name, notify, id})
+	}
+	want := []entry{
+		// online but notify OFF: adP is the real coach id, adO is 0
+		{"Online", 0, 2},
+		// offline but notify ON: adP is -1 (the client's own presence test), adO is 1
+		{"Offline", 1, -1},
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("friend %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 // TestIgnoreListCountMatchesWithNilJoin: same guarantee for the ignore list.
 func TestIgnoreListCountMatchesWithNilJoin(t *testing.T) {
 	real := &domain.Coach{ID: 3, Name: "Bob"}
