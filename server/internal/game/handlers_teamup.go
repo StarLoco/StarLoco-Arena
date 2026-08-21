@@ -386,14 +386,43 @@ const duoTeamType int16 = -6
 // stranger therefore launches a normal solo fight rather than dragging that
 // stranger in.
 func (d *Deps) duoLaunchPartner(self uint, claimed int64) uint {
-	if d.TeamUps == nil || claimed <= 0 || uint(claimed) == self {
+	if claimed <= 0 || uint(claimed) == self {
 		return 0 // afG == -1 (no ally) or the client's own fallback to self
 	}
-	partner := d.TeamUps.Partner(self)
+	partner := d.partnerOf(self)
 	if partner == 0 || partner != uint(claimed) {
 		return 0
 	}
 	return partner
+}
+
+// partnerOf resolves a coach's 2v2 ally: the live invitation registry first, then
+// the persisted preset.
+//
+// The registry only exists to run the invitation handshake and dies with the
+// process. The PRESET is the durable record - it is what the client lists in its
+// 2VS2 tab and what it names when launching - so a duo formed yesterday, or one
+// that outlived a restart, must still be launchable today. Falling back to it
+// also means the pair does not have to be re-invited after every server bounce.
+func (d *Deps) partnerOf(self uint) uint {
+	if d.TeamUps != nil {
+		if p := d.TeamUps.Partner(self); p != 0 {
+			return p
+		}
+	}
+	if d.Store == nil {
+		return 0
+	}
+	teams, err := d.Store.Teams.ListByCoach(self)
+	if err != nil {
+		return 0
+	}
+	for i := range teams {
+		if teams[i].GameMode == gameMode2v2 && teams[i].AllyCoachID != 0 {
+			return teams[i].AllyCoachID
+		}
+	}
+	return 0
 }
 
 // markLaunchReady records that a duo member pressed Combattre, returning how
@@ -403,7 +432,12 @@ func (t *teamUps) markLaunchReady(self, partner uint) (int, bool) {
 	defer t.mu.Unlock()
 	p := t.pairs[self]
 	if p == nil {
-		return 0, false
+		// The duo came from a persisted preset rather than a live invitation
+		// (a restart, or a pair formed in an earlier session). Adopt it so the
+		// two-presses-to-launch gate still works.
+		p = &teamUpPair{InviterID: self, InvitedID: partner}
+		t.pairs[self] = p
+		t.pairs[partner] = p
 	}
 	if p.ready == nil {
 		p.ready = map[uint]bool{}
@@ -428,7 +462,7 @@ func (d *Deps) joinDuoPartner(team *FightTeam, ownerID uint, cells []Pos) bool {
 	if team == nil || d.TeamUps == nil {
 		return false
 	}
-	partnerID := d.TeamUps.Partner(ownerID)
+	partnerID := d.partnerOf(ownerID)
 	if partnerID == 0 {
 		return false
 	}
