@@ -58,11 +58,16 @@ type Deps struct {
 	// Tournaments tracks which coaches registered for which standing tournament
 	// (the tournament totem's list/calendar). In-memory, process-lived.
 	Tournaments *TournamentManager
-	Log         *slog.Logger
+	// TeamUps holds pending 2v2 invitations and the duos they form.
+	TeamUps *teamUps
+	Log     *slog.Logger
 }
 
 // RegisterAll wires every feature handler group onto the router.
 func RegisterAll(r *Router, d *Deps) {
+	if d.TeamUps == nil {
+		d.TeamUps = newTeamUps()
+	}
 	if d.GuildInvites == nil {
 		// Constructed here so every caller - server, tests, harness - gets one
 		// without having to know it exists.
@@ -96,4 +101,5 @@ func RegisterAll(r *Router, d *Deps) {
 	registerEvolutionHandlers(r, d)
 	registerSphereHandlers(r, d)
 	registerTotemHandlers(r, d)
+	registerTeamUpHandlers(r, d)
 }

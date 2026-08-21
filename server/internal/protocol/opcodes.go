@@ -135,7 +135,18 @@ const (
 	OpTeamPresetSave          = 6021 // C2S: [sw_1 blob][u8 pad]
 	OpTeamPresetDelete        = 6023 // C2S: [i16 teamId]
 	OpTeamPresetListRequest   = 6031 // C2S: (empty) request team presets
-	OpTeamPresetList          = 6030 // S2C: [u8 presetCount]{sw_1}[u8 coachCount]{...}
+	// --- 2v2 team formation (60xx) -------------------------------------------
+	// The production path, reachable from the team panel: "Creer une equipe 2VS2"
+	// (hu_2 case 16636) opens team2vs2NameDialog, the teammate is picked from the
+	// coach's own FRIEND LIST (case 16635), and the named pair is sent as 6024.
+	// Not to be confused with the 26313 XvsX request, which exists only as the
+	// `Test` Lua binding XvsXInvitation and has no UI.
+	OpTeamUpRequest    = 6024 // C2S ir_0 (arch 2): [u8 len][teamName][i64 inviterCoachId][i64 invitedCoachId]
+	OpTeamUpInvitation = 6025 // S2C dy_2: [u8 len][teamName][u8 len][inviterName][i64 inviterCoachId][i64 invitedCoachId]
+	OpTeamUpAnswer     = 6026 // C2S abB (arch 2): [i8 accept][u8 len][teamName][i64 inviterCoachId][i64 invitedCoachId][i16 reason]
+	OpTeamUpRefused    = 6027 // S2C lk_0: empty - "Le coach a refuse la creation, ou est indisponible."
+	OpTeamUpAccepted   = 6028 // S2C ahh_2: empty - both clients open the fighter picker (hu_2.li())
+	OpTeamPresetList   = 6030 // S2C: [u8 presetCount]{sw_1}[u8 coachCount]{...}
 
 	// Fight lifecycle
 	OpCreateFight            = 8000 // S2C: the fight-presentation blob

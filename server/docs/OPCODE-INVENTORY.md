@@ -37,8 +37,8 @@ Framing (see `internal/protocol/frame.go`):
 | Bucket | Count |
 |---|---|
 | Client opcodes total (unique, from CSV) | ~330 |
-| **C2S handled (H)** | **105** |
-| **S2C emitted (E)** | **115** |
+| **C2S handled (H)** | **107** |
+| **S2C emitted (E)** | **118** |
 | **S2C defined-but-inactive (I)** | **8** |
 | Client opcodes with **no server code (-)** | 172 (mostly unidentified subsystems) |
 
@@ -279,11 +279,11 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 6021 | C2S | H | SaveTeamPresetRequestMessage (aqH) | `handleTeamPresetSave` |
 | 6022 | S2C | - | DeletionTeamPresetMessage (agH) | Not emitted — server re-pushes 6030 list instead |
 | 6023 | C2S | H | DeleteTeamPresetRequestMessage (aad_1) | `handleTeamPresetDelete` |
-| 6024 | C2S | - | (ir_0) | unidentified (team family) |
-| 6025 | S2C | - | (dy_2) | unidentified (team family) |
-| 6026 | C2S | - | (abB) | unidentified (team family) |
-| 6027 | S2C | - | (lk_0) | unidentified (team family) |
-| 6028 | S2C | - | (ahh_2) | unidentified (team family) |
+| 6024 | C2S | H | TeamUpRequest (ir_0), arch 2 | `handleTeamUpRequest` - **2v2 team formation**. `[u8 teamName][i64 inviterId][i64 invitedId]`. Sent by the team panel (hu_2 case 16636) after `team2vs2NameDialog`; the teammate is picked from the coach's own FRIEND LIST (case 16635). The inviter id is IGNORED server-side in favour of the sender |
+| 6025 | S2C | E | TeamUpInvitation (dy_2) | `[u8 teamName][u8 inviterName][i64 inviterId][i64 invitedId]` - pops *"[name] te propose de faire equipe avec lui/elle"* (ug_1 case 6025) |
+| 6026 | C2S | H | TeamUpAnswer (abB), arch 2 | `handleTeamUpAnswer` - `[i8 accept][u8 teamName][i64 inviterId][i64 invitedId][i16 reason]`. The client auto-refuses with reason=2 when already teamed or the inviter is ignored |
+| 6027 | S2C | E | TeamUpRefused (lk_0) | empty - *"Le coach a refuse la creation, ou est indisponible."* |
+| 6028 | S2C | E | TeamUpAccepted (ahh_2) | empty - BOTH clients open the fighter picker (`hu_2.li()`) |
 | 6029 | S2C | - | (OJ) | unidentified (team family) |
 | 6030 | S2C | E | TeamPresetListMessage (ar_0) | `pushTeamPresetList` |
 | 6031 | C2S | H | TeamPresetListRequestMessage (ys_1) | `handleTeamPresetListRequest` |
