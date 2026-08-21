@@ -183,8 +183,20 @@ func (r *CoachRepo) Create(accountID uint, name string, hair, skin, sex uint8) (
 // comes online or goes offline.
 func (r *CoachRepo) WatchersAsFriend(targetID uint) ([]uint, error) {
 	var ids []uint
+	// Deliberately NOT filtered on `notify`. That flag is a TOAST preference, not
+	// a subscription: the client applies the 3148 notification unconditionally -
+	//
+	//	axa_03.ai(true); axa_03.c(dh_02.no());   // presence + the friend's ID
+	//	if (axa_03.aJM()) { ...show the message... }
+	//
+	// - and only consults its own notify flag (which we send in the friend list)
+	// before showing "X vient de se connecter". Filtering here instead meant a
+	// friend with notify off never learned the other came online AND never
+	// received its id, because the friend list only carries an id for coaches
+	// who were already online when it was built (see B-120). The visible symptom
+	// was that a 2v2 invitation failed depending on who logged in first.
 	err := r.db.Model(&domain.CoachFriend{}).
-		Where("friend_id = ? AND notify = ?", targetID, true).
+		Where("friend_id = ?", targetID).
 		Pluck("owner_id", &ids).Error
 	return ids, err
 }
