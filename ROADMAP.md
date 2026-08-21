@@ -1582,10 +1582,21 @@ is a signing certificate or SignPath); no published Docker image.
     (`aca_0.b`) while an evolution fighter''s is built from its unlocked pools
     (`ee_2` walking `aRF`). The client cannot offer an unearned card, so this
     only ever stops a crafted 6011 - which is a bare list of card ids.
-    Live: the client shows "Esquive 61%" for a fighter that bought Esquive +1%
-    after a full relog, a fight starts clean with it, and that same fighter -
-    which has bought no Item node - is offered an entirely EMPTY equipment
-    picker, exactly as the server''s rule would have it.
+    Also done: the ECONOMY is audited and locked. The board is the only thing
+    that spends fighter experience and the post-fight report the only thing that
+    grants it, and nothing checked the two met. Three invariants now do, against
+    the shipped data-dist so they run in CI: the cheapest node REACHABLE from
+    each board''s root is affordable on one fight (or a new fighter could never
+    start), the dearest node (9 000) sits under the bank ceiling (50 000, else it
+    could never be paid for), and a full board (~130 000 xp, strikingly uniform
+    across all twelve) costs far more than the 40 000 that tops the level ladder -
+    so the Kanodo is a series of choices, "apprendre a parcourir intelligemment",
+    not a checklist.
+    Live, the whole loop: the client shows "Esquive 61%" for a fighter that
+    bought Esquive +1% after a full relog; that same fighter - which bought no
+    Item node - is offered an entirely EMPTY equipment picker, exactly as the
+    server''s rule says; and one won evolution fight moved it 148 -> 298 spendable
+    xp while lifetime went 150 -> 300, the 2 it spent staying spent.
 30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
     2-team array to become a slice, the ready gate to count teams, per-team
     session lists, and the 8000 coach loop generalised.
