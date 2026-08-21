@@ -935,7 +935,12 @@ client only ever reads the result:
   rule turns up: the draw pool is `ObtainableInDraw` weighted by `DropPercent`,
   filtered by `RequiredLevel`, paid out through the (already implemented)
   8300 won-cards blob.
-- **Sphere Board** ⬜ — 17 542 records. Emitted as empty lists on the wire.
+- **Sphere Board** ✅ — implemented (item 29). Types 900/901 decode byte-exactly, the
+  fighter's progress and owned nodes ride the fighter blob, purchases (23009) are
+  re-derived server-side, and bought nodes apply their stats and spells in fight. The
+  "emitted as empty lists on the wire" note this bullet used to carry was itself the
+  bug B-118 fixed: those two lists are the sphere-unlocked spells and equipment pools,
+  so sending them empty made a bought Spell node cease to exist on relog.
 - **Achievements** ✅ — implemented. Types 800/801/802 decoded (332/5/13,
   byte-exact), the tab opens (B-105), and completion is evaluated generically and
   announced via 22000 (B-106). What remains is *statistic coverage*: the records
@@ -1535,8 +1540,8 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 3 — large systems
 
-29. 🟡 **Sphere Board (Kanodo)** — **decode + board state DONE and live-verified;
-    the buy path is what remains.** The premise needed correcting: "17 542
+29. [x] **Sphere Board (Kanodo)** — **DONE, end to end, and live-verified.** The
+    premise needed correcting: "17 542
     records" reads as an enormous wire job, but the board GRAPH is client-side
     data (`vj_2`/`dq_1` load types 900/901 out of the client's own files into
     `akp_1`), so the server never sends it. What the server owes is the fighter's

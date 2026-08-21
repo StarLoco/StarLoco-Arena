@@ -140,6 +140,62 @@ belongs to the coach.
 
 ## Fixed
 
+### B-119 - OPCODE-INVENTORY.md claimed coverage of two opcodes the client does not have, and called twenty implemented ones "gaps"
+
+**Symptom.** No runtime symptom — which is exactly why it went unnoticed for so long.
+This is a defect in the document the project uses to *decide what to build next*, and its
+own header says "anything marked `-` is a gap". `STATUS.md` declared the guarding
+invariant as "the H count must equal the `r.Register(protocol.` count — currently
+82 = 82", to be checked by hand after adding a handler. Nobody did. It had drifted to
+**82 vs 105**.
+
+**Root cause.** Three separate failures, all from the same cause (a hand-maintained
+cross-reference with no test):
+
+1. **Twenty implemented opcodes were still marked `-`** — the whole guild family
+   (501/509/511/517/519/553/555/557/2600), the sphere buy (23009), demon affiliation
+   (5470), the evolution and tournament searches, and the S2C halves of guilds, exchange
+   and achievements. Anyone planning from this document would have re-implemented work
+   that was already done.
+2. **Three registered handlers had no row at all** (503, 505, 515).
+3. **Two rows described opcodes that do not exist.** 5106 and 5108 were marked `H`, with
+   the note *"not in client CSV, server-defined from exchange RE"*. They are not
+   server-defined; they are **not real**. No class in the decompiled client returns
+   either id (`getId()` sweep over the whole `core` tree), and the server registers no
+   handler for them. They appear to have been invented to fill a gap created by failure 4.
+
+4. **The exchange family's directions were wrong.** The rows claimed 5109/5111 were S2C
+   with the parenthetical *"CSV mislabels C2S; it is S2C"*. The CSV was right and the
+   note was wrong. `ahJ` (5109) and `any` (5111) both extend **`so_0`**, whose decode
+   method throws *"ne peut être décodé"* — a send-only message, i.e. C2S by construction.
+   The pairing is settled the same way: `ua_2` (5105) and `wd_0` (5107) both extend
+   **`pv_2`**, which serialises `[i64 exId][i32 cardId][i16 qty]` — the add/remove pair —
+   while 5109/5111 write a bare `[i64 exId]` — the ready/cancel pair. The CSV's
+   human-readable *names* for this family are shifted by one slot; its *directions* and
+   its handler grouping are correct. The Go constants in `opcodes.go` already matched the
+   client exactly, so no code was wrong — only the document.
+
+**Fix.** Corrected all of the above, and then made the invariant machine-checked instead
+of hand-counted: `internal/game/opcode_inventory_test.go` reads the router's real handler
+map (a zero `Deps` is enough — registration only takes function references) and asserts
+every registered opcode is marked `H`; asserts the reverse, that no row claims an `H` we
+do not serve (the direction that hides dropped packets behind documented coverage); and
+scans the `EncodeS2C` call sites in `game` + `handshake` for the S2C side. It fails if the
+table format ever changes such that it would parse zero rows, so it cannot pass
+vacuously. Counts are now **H = 105**, **E = 115**.
+
+**Verified:** `unit` (`TestOpcodeInventoryMarksEveryRegisteredHandler`,
+`TestOpcodeInventoryClaimsNoHandlerWeDoNotHave`, `TestOpcodeInventoryMarksEveryEmittedFrame`)
++ `audit` (the `getId()` sweep proving 5106/5108 do not exist, and the `so_0`/`pv_2`
+inheritance proving the exchange directions). 4 mutations caught: a real handler demoted
+to `-`, a phantom `H` row, an emitted frame demoted to `-`, and the table format
+destroyed.
+
+**Lesson recorded in `STATUS.md`:** *a hand-counted invariant is not an invariant.* The
+project already had the right pattern for this in `internal/config/config_template_test.go`,
+which fails when a config field has no key in the shipped template; the opcode inventory
+simply never got the same treatment.
+
 ### B-118 - the evolution tail's two "passive" lists are the Sphere Board's spells and equipment pools
 
 **Symptom.** A Spell sphere bought in one session stopped existing in the next: the

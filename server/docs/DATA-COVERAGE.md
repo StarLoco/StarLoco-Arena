@@ -39,7 +39,14 @@ objects.
 
 ## 2. Record-type coverage
 
-**8 of 24 populated types are decoded.** Legend: ✅ decoded · ⚠️ partially used · ❌ not read.
+**19 of 24 populated types are decoded.** Legend: ✅ decoded · ⚠️ partially used · ❌ not read.
+
+The 4 still unread are all deliberate, not backlog: **1** is a singleton of standard
+fight parameters we override per-ruleset anyway, **700** is superseded by the real
+tournament records (1000/1001), **1400** Pro League is served empty because the mode
+does not exist in this build, and **1600** is per-map music/background refs — client
+rendering, which the server does none of. **1500** is client-only by design (§NPC
+dialog trees).
 
 | Type | Records | Client record → runtime | What it is | Status | Our decoder |
 |---|---:|---|---|---|---|
@@ -50,7 +57,7 @@ objects.
 | **220** | 203 | `co_1` → `yp_2` | **Spells** | ✅ 23/23 | `spells.go` |
 | **230** | 51 | `ama_1` → `tO` | **Per-round event cards** | ✅ full | `events.go` |
 | **250** | 75 | `uh_0` → `ve_0` | **Fighter equipment / weapons** | ✅ good | `fightercards.go` |
-| 251 | 11 | `alf_2` → — | Equipment pools granted by Sphere Board nodes | ❌ | — |
+| 251 | 11 | `alf_2` → — | Equipment pools granted by Sphere Board nodes | ✅ 3/3 | `equipmentpools.go` |
 | **300** | 53 | `jz_2` → `aJt` | **Summons** | ✅ 17/17 | `summonings.go` |
 | 360 | 42 | `rb_0` → `yn_2` | Element sprite **views** (gfx/colour/height) — decoded; no consumer and none expected, the server renders nothing | ✅ | `elementviews.go` |
 | **400** | 39 | `GE` → `afz_0` | **PvE challenges** | ✅ partial | `challenges.go` |
@@ -58,9 +65,9 @@ objects.
 | 800 | 332 | `ru_1` → `aau_1` | Achievements (+ thresholds, required cards) | ✅ | `achievements.go` |
 | 801 | 5 | `fw_0` → `ajk_1` | Achievement categories | ✅ | `achievements.go` |
 | 802 | 13 | `wr_0` → `li_2` | Achievement subcategories | ✅ | `achievements.go` |
-| 900 | 15 | `bg_0` → `Ei` | Sphere Board headers (per breed/season) | ❌ | — |
-| 901 | **17 527** | `aeI` → `ayr_0` | Sphere Board nodes (xp cost, spell, cards) | ❌ | — |
-| 902 | 111 | `ahm_1` → `aiz_2` | **Fighter conditions** — the persistent wound/blessing layer | ❌ | — |
+| 900 | 15 | `bg_0` → `Ei` | Sphere Board headers (per breed/season) | ✅ | `spheres.go` |
+| 901 | **17 527** | `aeI` → `ayr_0` | Sphere Board nodes (xp cost, spell, cards) | ✅ byte-exact | `spheres.go` |
+| 902 | 111 | `ahm_1` → `aiz_2` | **Fighter conditions** — the persistent wound/blessing layer | ✅ | `conditions.go` |
 | 1000 | 22 | `aub` → — | Tournament definitions (rules, rewards, prizes) | ✅ 12/12 | `LoadTournaments` |
 | 1001 | 4 | `ek_2` → — | Tournament level list | ✅ 1/1 | `Tournaments.Levels()` |
 | 1100 | 30 | `ajd_0` → `abe_1` | Fusion-laboratory definitions | ✅ 4/4 | `LoadFusionLabs` |
@@ -143,22 +150,43 @@ B-097, which stopped an invented `HP <= 0 → dead` rule from pre-empting the ro
 they modify.
 
 ### Biggest gaps, by impact
-1. **902 fighter conditions (111 records)** — `[i16 id][i8 grade][i16 type][u8 n + gfx
-   refs][effects]`. **Correction:** an earlier revision of this document called these "the
-   authoritative definitions of every in-fight state, the real source for
-   `game/states.go`". That was wrong. They are a *separate, persistent* layer: conditions
-   are applied by **coach cards** (effect `AI.aHK` = *"Applique une condition"*, resolved
-   by `vm_2`), surfaced as the fighter's `conditions` field, and named by `content.40.*`
-   — 116 names such as *Blessure légère jambe*, *Ange gardien*, *Champion*, *Fatigué*.
-   They are the **wound / blessing / morale layer** carried between fights, not the mh_2
-   in-fight state actions that `states.go` maps. Conditions of the same `type` are
-   mutually exclusive (`vm_2` replaces same-type, except types 21 and 70). We model
-   none of this: fighters have no conditions at all, so wounds never accrue.
-2. **901/900 Sphere Board (17 542 records)** — an entire unimplemented progression system.
-3. **1000 tournaments (22)** — we serve three hand-built tournaments; the real rules,
-   rewards and prize tables are here.
+
+**All five entries that used to sit here are now closed.** Kept struck through rather
+than deleted, because each one's *correction* is the useful part — three of them were
+mis-described here before they were built, and re-reading the client is what fixed them.
+
+1. ~~**902 fighter conditions (111 records)**~~ — done. `[i16 id][i8 grade][i16 type][u8 n
+   + gfx refs][effects]`. **Correction, and it is why this took two attempts:** an earlier
+   revision of this document called these "the authoritative definitions of every in-fight
+   state, the real source for `game/states.go`". That was wrong. They are a *separate,
+   persistent* layer: conditions are applied by **coach cards** (effect `AI.aHK` =
+   *"Applique une condition"*, resolved by `vm_2`), surfaced as the fighter's `conditions`
+   field, and named by `content.40.*` — 116 names such as *Blessure légère jambe*, *Ange
+   gardien*, *Champion*, *Fatigué*. They are the **wound / blessing / morale layer**
+   carried between fights, not the mh_2 in-fight state actions that `states.go` maps.
+   Conditions of the same `type` are mutually exclusive (`vm_2` replaces same-type, except
+   types 21 and 70). Now modelled: wounds accrue, persist between fights, ride the
+   CREATE_FIGHT blob so they survive a reconnect (item 11), and apply *after* equipment
+   and spheres — growth of the fighter first, then penalties on the finished article.
+2. ~~**901/900 Sphere Board (17 542 records)**~~ — done (item 29). The premise here was
+   the misleading part: "17 542 records" reads as an enormous wire job, but the board
+   graph is **client-side** data. What the server owed was the fighter's progress, the
+   purchase rules re-derived server-side, and the effects of bought nodes.
+3. ~~**1000 tournaments (22)**~~ — done (item 23). Definitions are decoded and the
+   line-up is edited from the web console instead of compiled in. The *match* layer
+   (brackets, scheduling, prizes) is deferred — item 32, not a decode gap.
 4. ~~**101 card sets (138)**~~ — done (B-062); the bonuses are meta, not combat.
-5. **800/801/802 achievements (350)** — an unimplemented subsystem.
+5. ~~**800/801/802 achievements (350)**~~ — done (item 26). What remains is *statistic
+   coverage*, not decoding: 98 counters are referenced and the server moves a handful,
+   each lighting its achievements up for free as its owning system starts counting.
+
+**What is actually left is no longer a data-decoding problem.** The remaining holes are
+the two deferred systems (2v2 → item 30, tournament matches → item 32, which between them
+strand 47 achievements), the fusion success curve (no client code reveals it), and the
+handful of **server-invented constants** that the client receives pre-computed and so
+cannot arbitrate — `baseXPPerFight`, `standingForResult`, the reputation-per-card rate and
+the clan-board score. Those are stated in tests rather than buried, but they are ours, and
+no amount of testing here can make them retail-exact.
 
 ---
 
@@ -284,23 +312,30 @@ pinned field-for-field to `xq`, so drift is caught rather than silent.
 
 ## 5. Recommended order of work
 
-A pattern is now visible and worth stating: **the remaining gaps are mostly MECHANICS, not
-data.** Card sets made it explicit — 78 of its 88 effects are decoded and inert because
-XP, morale, fatigue, drops and wounds simply do not exist server-side yet. Decoding more
-records will not change that. The list is ordered accordingly.
+A pattern was visible here and it turned out to be the right call: **the remaining gaps
+were mostly MECHANICS, not data.** Card sets made it explicit — 78 of its 88 effects were
+decoded and inert because XP, morale, fatigue, drops and wounds did not exist server-side.
+Decoding more records was never going to change that; building the owning systems did.
 
-1. **The coach META layer, slice 2** (wounds / death / drops) — slice 1 shipped (B-065); one
-   subsystem that would activate ~78 already-decoded set effects, most coach-card
-   effects, and the type-902 condition layer at once. This is the biggest *unlock* per
-   unit of work, but it is a feature, not a fix; size it first.
+**This list is now fully worked through** — kept for the ordering rationale, which held.
+
+1. ~~**The coach META layer, slice 2**~~ (wounds / death / drops) — done, and it was
+   indeed the biggest unlock per unit of work: it activated the ~78 set effects, most
+   coach-card effects and the type-902 condition layer at once. *Drops are the deliberate
+   exception* — the pool and base rate are not recoverable from the client, so building
+   them means inventing the mechanic (see "out of scope").
 2. ~~**`np_1[]` element layout**~~ — DONE (B-071). Was: one unknown that unblocks 8 coach-card fields *and*
    parts of the challenge and tournament records. Decode it once, gain three records.
-3. **Spell `TargetMasks` + `MaxActive`** — both decoded, neither evaluated; needs the
-   client's `aLc` evaluator and a live-instance counter respectively. Small payoff (3
-   and 6 spells).
-4. **Type 1000/1001 tournaments** — replaces hand-built definitions with real rules,
-   rewards and prize tables.
-5. **Types 900/901 Sphere Board** — the largest unimplemented system (17 542 records).
+3. ~~**Spell `TargetMasks` + `MaxActive`**~~ — TargetMasks implemented (B-081); MaxActive
+   **deliberately not enforced**, which is a result rather than a skip: its window is one
+   turn, and every shipped MaxActive spell is already capped at least as tightly by a
+   limit we do enforce, so it cannot change an outcome. Pinned by a test that fails the
+   moment that stops being true.
+4. ~~**Type 1000/1001 tournaments**~~ — done (item 23); definitions decoded, line-up
+   editable from the web console.
+5. ~~**Types 900/901 Sphere Board**~~ — done (item 29). The "largest unimplemented
+   system" framing was the misleading part: the graph is client-side, so the record count
+   never was the size of the job.
 
 ## 5b. The `np_1` fight-ruleset types (`ajr_2`)
 

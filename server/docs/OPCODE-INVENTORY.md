@@ -37,8 +37,8 @@ Framing (see `internal/protocol/frame.go`):
 | Bucket | Count |
 |---|---|
 | Client opcodes total (unique, from CSV) | ~330 |
-| **C2S handled (H)** | **82** |
-| **S2C emitted (E)** | **96** |
+| **C2S handled (H)** | **105** |
+| **S2C emitted (E)** | **115** |
 | **S2C defined-but-inactive (I)** | **8** |
 | Client opcodes with **no server code (-)** | 172 (mostly unidentified subsystems) |
 
@@ -86,31 +86,34 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 106 | S2C | - | (lo) | unidentified |
 | 107 | both | H+E | Ping (asg_0) | `handlePing` → `handshake.EncodePingReply` |
 | 108 | S2C | - | (abj_0) | unidentified |
-| 200 | S2C | - | (rz_2) | unidentified |
+| 200 | S2C | E | InteractiveElementSpawn | generated table (`cmd/genelements`); Zaaps, Card Masters, Fusion altars, NPCs, totems |
 | 201 | C2S | H | InteractiveElementAction (bd_2) | `handleInteractiveElementAction` � **every** element click |
 | 202 | S2C | - | (tt_2) | unidentified |
 | 204 | S2C | - | (il_0) | unidentified |
-| 206 | S2C | - | (acc_2) | unidentified |
-| 501 | C2S | - | (uq_2) | unidentified |
-| 502 | S2C | - | (auf_0) | unidentified |
-| 504 | S2C | - | (mD) | unidentified |
-| 509 | C2S | - | (atM) | unidentified |
-| 510 | S2C | - | (arl_0) | unidentified |
-| 511 | C2S | - | (awR) | unidentified |
+| 206 | S2C | E | InteractiveElementDespawn (acc_2) |  |
+| 501 | C2S | H | GuildInvite (uq_2) | `handleGuildInvite` |
+| 502 | S2C | E | GuildInvitation (auf_0) | sent to the invitee |
+| 503 | C2S | H | GuildInviteAnswer (cg_0) | `handleGuildInviteAnswer` - accept/refuse an invitation |
+| 504 | S2C | E | GuildResult (mD) | create/join result code |
+| 505 | C2S | H | GuildLeave / Kick (nP) | `handleGuildLeave` - one opcode for both; kicking re-derives the caller's rank |
+| 509 | C2S | H | GuildCreate (atM), arch 3 | `handleGuildCreate` - live-verified |
+| 510 | S2C | E | GuildRecord (arl_0) | the guild sheet |
+| 511 | C2S | H | GuildDestroy (awR) | `handleGuildDestroy` - leader only, rank re-derived server-side |
 | 512 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
 | 513 | C2S | - | (wt_1) | unidentified |
-| 517 | C2S | - | (auZ) | unidentified |
-| 519 | C2S | - | (add_2) | unidentified |
+| 515 | C2S | H | GuildSetRank (abn_2) | `handleGuildSetRank` - leader-only, validated server-side |
+| 517 | C2S | H | GuildGet (auZ) | `handleGuildGet` |
+| 519 | C2S | H | GuildMembersGet (add_2) | `handleGuildMembers` - live-verified |
 | 539 | C2S | H | MailSend (F) | `handleMailSend` � full mail record |
 | 551 | C2S | - | (mx_1) | unidentified |
 | 552 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
-| 553 | C2S | - | (abo_0) | unidentified |
+| 553 | C2S | H | GuildRankAdd (abo_0) | `handleGuildRankAdd` |
 | 554 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
-| 555 | C2S | - | (Nr) | unidentified |
-| 556 | S2C | - | (h_0) | unidentified |
-| 557 | C2S | - | (Ko) | unidentified |
-| 558 | S2C | - | (ahU) | unidentified |
-| 560 | S2C | - | (ry_1) | unidentified |
+| 555 | C2S | H | GuildRankModify (Nr) | `handleGuildRankModify` |
+| 556 | S2C | E | GuildMemberGone (h_0) | kick / quit notice |
+| 557 | C2S | H | GuildRankDelete (Ko) | `handleGuildRankDelete` |
+| 558 | S2C | E | GuildCreatedFeed (ahU) |  |
+| 560 | S2C | E | GuildMemberFeed (ry_1) |  |
 
 ### 1024 – 2601 — auth, coach creation, spectate query, matchmaking, stats
 
@@ -118,7 +121,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 |---|---|---|---|---|
 | 1024 | S2C | E | ResultMessage / AuthResult (Uk) | `handshake.EncodeAuthResult` |
 | 1025 | C2S | H | ClientAuthenticationMessage (bu_1) | `handleAuthentication` |
-| 1026 | S2C | I | WorldServerUnavailable (fm_1) | encoder ready; **intentionally inactive** � a login-time "game server unreachable" popup, and in a monolithic server the world is always reachable once the client connects (no honest trigger) |
+| 1026 | S2C | E | WorldServerUnavailable | `messages.go` |
 | 2048 | S2C | E | CoachCreationRequestMessage (amz_0) | `handshake.EncodeCoachCreationRequest` |
 | 2049 | C2S | H | CoachCreationMessage (alq_0) | `handleCoachCreation` |
 | 2050 | S2C | E | CoachCreationResultMessage (az_0) | `handshake.EncodeCoachCreationResult` |
@@ -138,8 +141,8 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 2400 | S2C | E | PlayerStatisticsReportMessage (pl_1) | `buildPlayerStatisticsReport` |
 | 2401 | S2C | - | (uf_0) | unidentified (stats family) |
 | 2411 | S2C | - | (HJ) | unidentified (stats family) |
-| 2600 | C2S | - | (mL) | unidentified |
-| 2601 | S2C | - | (kq_2) | unidentified |
+| 2600 | C2S | H | GuildMemberStats (mL) | `handleGuildMemberStats` |
+| 2601 | S2C | E | GuildMemberReport (mL family) | reply to 2600 |
 
 ### 3128 – 3216 — chat & social
 
@@ -168,16 +171,16 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 3155 | C2S | H | UserPrivateContentMessage (Xk) | `handlePrivateMessageRecv` |
 | 3156 | S2C | E | FriendAddedMessage (kz_1) | `sendSocialAck` |
 | 3158 | S2C | E | IgnoreAddedMessage (ft_0) | `sendSocialAck` |
-| 3159 | C2S | ✅ | `afq_0` | **Trade chat send** (`/t`), arch 3: `[u16 len][msg]`. Global |
+| 3159 | C2S | H | `afq_0` | **Trade chat send** (`/t`), arch 3: `[u16 len][msg]`. Global. 30 s cooldown + 5 s anti-repeat, both the client's own limits (B-104) |
 | 3160 | S2C | E | FriendRemovedMessage (adw_1) | `sendSocialAck` |
-| 3161 | C2S | ⛔ | `aux_` | **Group chat send** (`/p`), arch 3: `[i64 allyCoachId][u16 len][msg]`. The ally comes from CREATE_FIGHT's coach list, so it needs 2v2 (item 30) |
+| 3161 | C2S | H | `aux_` | **Group chat send** (`/p`), arch 3: `[i64 allyCoachId][u16 len][msg]`. Served, but has no audience until 2v2 (item 30): the audience is resolved from the sender's own fight, never from the client-supplied coach id, which would otherwise be an unfilterable DM bypassing the ignore list |
 | 3162 | S2C | E | IgnoreRemovedMessage (ahm_0) | `sendSocialAck` |
 | 3164 | S2C | E | NotificationIgnoreOnlineMessage (jH) | presence push |
 | 3166 | S2C | E | NotificationIgnoreOfflineMessage (jf_0) | presence push |
-| 3168 | S2C | ✅ | `ayy` | **Trade chat recv**. Byte-identical to 3152 |
-| 3170 | S2C | ⛔ | `aik_1` | **Group chat recv**. Byte-identical to 3152; blocked with 3161 |
-| 3198 | S2C | ⛔ | `ano_1` | **Clan chat recv**. Byte-identical to 3152; blocked on guilds (item 31) |
-| 3199 | C2S | ⛔ | `ak` | **Clan chat send** (`/c`), arch 2: `[u16 len][msg][i64 guildId]`. The client SELF-GATES on having a guild - confirmed live, `/c` emits no packet at all - so this cannot be exercised until guilds exist |
+| 3168 | S2C | E | `ayy` | **Trade chat recv**. Byte-identical to 3152 |
+| 3170 | S2C | E | `aik_1` | **Group chat recv**. Byte-identical to 3152; no audience until 2v2 (item 30) |
+| 3198 | S2C | E | `ano_1` | **Clan chat recv**. Byte-identical to 3152; live since item 31 |
+| 3199 | C2S | H | `ak` | **Clan chat send** (`/c`), arch 2: `[u16 len][msg][i64 guildId]`. The client SELF-GATES on having a guild - with none it emits no packet at all - which is why this looked dead before item 31. Now live: the supplied guild id is re-validated against the sender's actual guild |
 | 3202 | S2C | I | ChannelNotFound (qv_0) | **unreachable** - it answers 3151, which the retail client cannot send (`ChannelContentCommand` is referenced by nothing). Vestigial with the rest of the channel family |
 | 3204 | S2C | E | UserNotFoundMessage (ve_1) | emitted on PM to unknown name |
 | 3206 | S2C | - | MalformedCommandMessage (amd_1) | error class, unused |
@@ -235,17 +238,15 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 5102 | S2C | E | ItemExchangeInvitationMessage (uo_1) | invitation push |
 | 5103 | C2S | H | ItemExchangeInvitationAnswerMessage (tw_0) | `handleExchangeAnswer` |
 | 5104 | S2C | E | ItemExchangeInvitationConfirmationMessage (Ul) | confirmation push |
-| 5105 | C2S | H | ItemExchangeAddCardMessage (ua_2) | `handleExchangeAddCard` |
-| 5106 | C2S | H | ItemExchangeRemoveCardMessage | `handleExchangeRemoveCard` — **not in client CSV**, server-defined from exchange RE |
-| 5107 | C2S | H | ItemExchangeSetReadyMessage (wd_0) | `handleExchangeSetReady` |
-| 5108 | C2S | H | ItemExchangeCancelMessage | `handleExchangeCancel` — **not in client CSV**, server-defined |
-| 5109 | S2C | E | ItemExchangeCardAddedMessage (ahJ) | (CSV mislabels C2S; it is S2C) |
-| 5110 | S2C | E | ItemExchangeCardRemovedMessage (asH) | |
-| 5111 | S2C | E | ItemExchangeEndMessage (any) | (CSV mislabels C2S; it is S2C) |
-| 5112 | S2C | E | ItemExchangeUserReadyMessage (aaz_1) | |
-| 5113 | S2C | - | (Or) | unidentified (exchange family) |
-| 5114 | S2C | - | (aqX) | unidentified (exchange family) |
-| 5116 | S2C | - | (dl_0) | unidentified (exchange family) |
+| 5105 | C2S | H | ExchangeAddCard (ua_2) | `handleExchangeAddCard` - `[i64 exId][i32 refCardId][i16 qty]` from base `pv_2` |
+| 5107 | C2S | H | ExchangeRemoveCard (wd_0) | `handleExchangeRemoveCard` - same `pv_2` base as 5105, hence the pair |
+| 5109 | C2S | H | ExchangeSetReady (ahJ) | `handleExchangeSetReady` - `[i64 exId]` toggle. Its base `so_0` throws "ne peut etre decode", i.e. send-only, which is what proves the direction is C2S |
+| 5110 | S2C | E | ExchangeCardAdded (asH) | `[i64 exId][i8 userIdx][i32 refCardId][i16 qty]` |
+| 5111 | C2S | H | ExchangeCancel (any) | `handleExchangeCancel` - `[i64 exId]`; same `so_0` base as 5109 |
+| 5112 | S2C | E | ExchangeCardRemoved (aaz_1) | same shape as 5110 |
+| 5113 | S2C | E | ExchangeError (Or) | `sendExchangeError` |
+| 5114 | S2C | E | ExchangeEnd (aqX) | `[i8 reason][i64 exId]` (0=success, 1=cancel) |
+| 5116 | S2C | E | ExchangeUserReady (dl_0) | `[i64 exId][i8 userIdx]` |
 | 5200 | S2C | E | CoachInventoryUpdateMessage (air_2) | `pushInventory` (card inventory) |
 | 5201 | C2S | H | CoachEquipmentUpdateRequestMessage (aEl) | `handleEquipmentRequest` |
 | 5202 | S2C | I | CoachEquipmentUpdate (yz_2) | **intentionally inactive** � a coach's overworld avatar is hair/skin/sex (already sent correct at ActorSpawn); "equipment" is cards/deck (gameplay), delivered per-fight via 8000. Broadcasting it re-skins nothing visible |
@@ -257,7 +258,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 5401 | S2C | E | ShopCatalog (NN) | `buildShopCatalog` |
 | 5403 | S2C | E | ShopResult (mj_1) | purchase result + new balance |
 | 5450 | C2S | H | ShopBuy (mo_2) | `handleShopBuy` (token purchase) |
-| 5470 | C2S | - | (Zu) | unidentified (shop family) |
+| 5470 | C2S | H | DemonAffiliate (Zu), arch 3 | `handleDemonAffiliate` - a card OFFERING with a split-quantity dialog, leader-only and one-way; answered on 5403 |
 | 5490 | C2S | H | FusionRequest (ahg_0) | `handleFusionRequest` |
 | 5491 | S2C | E | FusionResult (agr_2) | fusion outcome |
 
@@ -353,9 +354,9 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 
 | Op | Dir | St | Client class | Notes |
 |---|---|---|---|---|
-| 22000 | S2C | - | (ade_0) | stats/achievement family |
-| 22001 | C2S | - | (anp_0) | stats/achievement family |
-| 22002 | S2C | I | StatisticData (ls_0) | **NEVER EMIT** � the handler opens the tutorial dialog AND wholesale-replaces the coach's criteria (`this.Ir = �`), destroying any not in the message. Deliver criteria via 2052 instead |
+| 22000 | S2C | E | AchievementUnlocked | the client's own "Exploit debloque" toast (B-106) |
+| 22001 | C2S | H | StatisticRequest (anp_0) | `handleStatisticRequest` - the only legitimate trigger for 22002 |
+| 22002 | S2C | E | StatisticData | **reply-only**: emitted solely from `handleStatisticRequest` (22001). Never send it spontaneously - the permanently-registered tutorial handler `asA` would pop the tutorial-guide dialog |
 | 22003 | C2S | H | StatisticUpdate (nq) | `handleStatisticUpdate` � the client self-reports criteria 210/218/221/229/39 here; echoed back via 2052 |
 | 22004 | C2S | - | (axH) | stats/achievement family |
 | 22092 | S2C | - | (axA) | stats/achievement family |
@@ -365,14 +366,14 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 22097 | C2S | - | (OB) | stats/achievement family |
 | 22099 | C2S | H | FighterUseItemOn (bw) | `handleFighterUseItemOn` — resurrection: gated on the card carrying a real resurrection effect (action 13), rolls its decoded % (rand 1..100 <= pct), consumes the card either way, revives only on success |
 | 23000 | C2S | H | FighterSetState (Jc) | `handleFighterSetState` � titular/bench/graveyard/legendary |
-| 23001 | C2S | - | (abn_0) | fight-setup family |
+| 23001 | C2S | H | EvolutionSearchCancel (abn_0) | `handleEvolutionSearchCancel` |
 | 23002 | S2C | - | (wf_2) | fight-setup family |
-| 23003 | C2S | - | (ajw_0) | fight-setup family |
+| 23003 | C2S | H | EvolutionSearchRequest (ajw_0) | `handleEvolutionSearchRequest` |
 | 23004 | S2C | - | (amh_0) | fight-setup family |
 | 23006 | S2C | - | (azl_0) | fight-setup family |
 | 23008 | S2C | - | (KL) | fight-setup family |
-| 23009 | C2S | - | (aow_2) | fight-setup family |
-| 23101 | C2S | - | (bm_1) | fight-setup family |
+| 23009 | C2S | H | SphereBuy / Kanodo (aow_2), arch 3 | `handleSphereBuy` - `[i64 fighterId][i32 sphereId][i32 cardTemplateId]`. No reply and no rejection path, so every rule is re-derived server-side |
+| 23101 | C2S | H | ClassicSearchCancel (bm_1) | `handleClassicSearchCancel` |
 | 23102 | S2C | - | (ada_1) | fight-setup family |
 | 23103 | C2S | H | (atj_0) | `handleClassicReadyForFight` ("Combattre" ready-up) |
 | 23104 | S2C | - | (aLi) | fight-setup family |
@@ -441,12 +442,12 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28606 | S2C | - | (aik) | 28xxx family |
 | 28607 | C2S | - | (ago_0) | 28xxx family |
 | 28608 | S2C | E | TournamentRegisterReply (dy_0) | reply to 4607: [i64 tid][i8 err] (0=accepted) |
-| 28609 | C2S | - | (bt_0) | 28xxx family |
-| 28610 | S2C | - | (de_0) | 28xxx family |
-| 28611 | C2S | - | (ly_1) | 28xxx family |
+| 28609 | C2S | H | TournamentSearchCancel (bt_0) | `handleTournamentSearchCancel` - refuses visibly rather than going silent (B-100) |
+| 28610 | S2C | E | TournamentSearchCancelResult |  |
+| 28611 | C2S | H | TournamentSearchRequest (ly_1) | `handleTournamentSearchRequest` - see 28609 |
 | 28612 | S2C | - | (DR) | 28xxx family |
 | 28614 | S2C | - | (azj_0) | 28xxx family |
-| 28616 | S2C | - | (kw_1) | 28xxx family |
+| 28616 | S2C | E | TournamentSearchError |  |
 | 28617 | C2S | - | (afg_2) | 28xxx family |
 | 28618 | S2C | - | (ahd_0) | 28xxx family |
 | 28620 | S2C | - | (Yq) | 28xxx family |

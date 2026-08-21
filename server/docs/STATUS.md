@@ -3,7 +3,7 @@
 Single entry point for picking the 2.70 server back up cold. Everything else is
 detail; this is state.
 
-**Updated:** 2026-08-10
+**Updated:** 2026-08-21
 
 ---
 
@@ -14,13 +14,22 @@ by bugs found in live play. Current theme: **the client's data files are the sin
 of truth** — no hardcoded values, no values ported from v2.04b (a beta whose numbers were
 re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2.70.
 
-**Tier 0 (correctness/anti-cheat) and Tier 1 (cheap concrete wins) are both COMPLETE**
-(see `ROADMAP.md`). Work has moved to Tier 2 features. A recurring result worth knowing
-before picking up an item: **five Tier 1 entries were resolved by evidence rather than
-code** — initiative re-sort, 5203 destructive ops, buff stacking, the np_1 operand hunt
-and `MaxActive` — because the premise was false or the gap was unreachable in shipped
-data. Two of them would have introduced bugs if built as written. Check the premise
-against the client before implementing (§9).
+**Tiers 0, 1 and 2 are COMPLETE** (see `ROADMAP.md`). Tier 3 is where work is now, and
+most of it is done too: **29 Sphere Board**, **31 guilds/clans**, **34 schema migrations**
+and **35 web admin panel** have all landed. What is left in Tier 3 is almost entirely the
+maintainer's own deferrals — **30 (2v2)**, **32 (tournament match layer)** and **33
+(X-vs-X allies, which needs 2v2)** — so picking up "the next roadmap item" is no longer
+the right default. Ask before starting one of those.
+
+A recurring result worth knowing before picking up an item: **five Tier 1 entries were
+resolved by evidence rather than code** — initiative re-sort, 5203 destructive ops, buff
+stacking, the np_1 operand hunt and `MaxActive` — because the premise was false or the gap
+was unreachable in shipped data. Two of them would have introduced bugs if built as
+written. Tier 2 and 3 repeated it: the coach action deck is empty because *nothing in this
+build populates it*, card staking is vestigial (`<!--plus de pari-->`), NPC dialog trees
+run entirely client-side, and item 29's "17 542 records" was never the size of the job
+because the board graph is client-side data. **Check the premise against the client before
+implementing** (§9).
 
 ## 2. Where to look
 
@@ -37,6 +46,17 @@ against the client before implementing (§9).
 
 | # | What |
 |---|---|
+| DOCS | `OPCODE-INVENTORY.md` had rotted badly and is now **machine-checked** (`opcode_inventory_test.go`): 20 implemented opcodes were still marked `-` "gap", 3 handlers had no row, and **5106/5108 were marked handled but do not exist in the client at all** (no class returns them). Also settled: 5109/5111 are **C2S**, not S2C — their base `so_0` throws *"ne peut être décodé"*, i.e. send-only |
+| ITEM 29 | **Sphere Board (Kanodo) complete**: types 900/901 byte-exact, board/cursor/owned nodes served, 23009 purchases fully re-derived server-side, node effects and sphere spells applied in fight, type 251 equipment entitlement enforced, and the XP economy audited against the post-fight grant |
+| B-118 | The evolution tail's two "passive" lists are not passives — `ee_2` resolves them through the SPELL and EQUIPMENT-POOL tables, so sending them empty made a bought Spell sphere cease to exist on relog |
+| B-117 | Worlds 86–109 (the clan islands) served no interactive elements, so their Zaaps dead-ended; fixed by regenerating `elements_data.go` with those worlds in `policyWorlds` |
+| B-116 | Card 859 (island access) was never granted; now granted **and revoked** at login as island ownership changes |
+| B-115 | `TestPhaseClockForceAdvances` polled for a 20 ms transient; phases are chained, so it now waits for `PhaseAction` |
+| B-114 | Clan islands require an **active** clan (5 members, from `guild.notEnoughGuildMembersToBeActive`); `DemonLadder` and `IslandOf` now share one subquery so they cannot disagree |
+| ITEM 31 | **Guilds/clans complete**: storage, the 0x20 membership blob (the one thing besides 552 that sets `aPY()`), clan chat, full rank/member CRUD, the clan ladder, demon affiliation (5470) and **clan islands** — derived from "top clan serving each demon", never stored, because 24 demon totems map 1:1 onto 24 island worlds |
+| ITEM 26 | **Achievements**: 332/5/13 records decoded, tab opens, unlocks announced via 22000, the "grimoire" folded in from inventory. 47 remain structurally unreachable until 2v2 and the tournament match layer exist |
+| ITEM 24 | **Interactive elements generated from the env jars** (`cmd/genelements`) — reproduced the hand table 139/139 and found a real bug doing it (world 28's Card Master had direction `03` where the jar says `01`) |
+| ITEM 25 | **Channel scoping**: `/t` Trade was being dropped with `unhandled opcode` while the client printed it locally (B-103); chat safety added to match the client's own limits (B-104) |
 | LIVE | Full 5v4 driven to completion: by round 7 the AI had killed two player fighters and taken ZERO damage (no friendly fire, no Killer-tile suicide), fight ended cleanly, client log error-free |
 | B-089 | Fusion consumed the player's CHOSEN card as fuel (5490's last id is the target) + type 1100 decoded: there is no recipe table |
 | B-088 | The 8000 coach-deck blob carried CARD ids in a SPELL-id field (65 of 325 usable cards collide with a real spell) |
@@ -164,8 +184,21 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    refusing visibly instead of leaving the client on a silent screen (B-100).
    Still deferred by the user: brackets, scheduling and rewards, i.e. turning that
    refusal into a real fixture.
-7. **Sphere Board** (types 900/901, 17 542 records) — largest unimplemented system.
-8. **2v2 / multi-coach fights** — deferred by the user.
+7. ~~**Sphere Board**~~ — **DONE** (item 29). The "largest unimplemented system, 17 542
+   records" framing was the misleading part: the board graph is client-side data, so the
+   record count was never the size of the server's job.
+8. **2v2 / multi-coach fights** — deferred by the maintainer. Now the **biggest single
+   unlock left**: it is the blocker for item 33, for `/p` group chat having any audience,
+   and for 22 of the 47 stranded achievements.
+9. **Tournament live-match layer** (brackets, scheduling, prizes) — deferred by the
+   maintainer; blocks the other 25 stranded achievements.
+10. **Fusion success probability** — genuinely unknown; no client code reveals the curve.
+    Everything else about fusion is implemented (item 22).
+11. **Server-invented constants.** `baseXPPerFight = 100`, `standingForResult`, the
+    reputation-per-card rate and the clan-board score are all **ours** — the client
+    receives them pre-computed and so cannot arbitrate them. They are anchored by tests
+    (a wrong value now fails loudly) but they are not retail-exact, and no test here can
+    make them so. Do not let a green suite imply otherwise.
 8. ~~**e2e residual flake**~~ — **fixed** (B-064): the tests assumed "client A == side 0",
    but side 0 is whoever reaches the matchmaker queue first, and the harness fires both
    searches without a happens-before. Full suite now passes repeatedly under load.
@@ -189,9 +222,20 @@ second player, and the client HUD renders fully once *the client* starts the fig
 
 ## 6. Invariants — do not break
 
-- **`OPCODE-INVENTORY.md` H count must equal the `r.Register(protocol.` count in
-  `internal/game`.** Currently **82 = 82**. Check after adding a handler.
-- **Never send opcode 22002.** Criteria reach the client only via the 2052 `0x200` blob.
+- **`OPCODE-INVENTORY.md` must agree with the code.** This used to say "H count must
+  equal the `r.Register` count — currently 82 = 82", to be checked by hand. It was not
+  checked, and it drifted to **82 vs 105**: twenty implemented opcodes still marked `-`
+  ("anything marked `-` is a gap", says the document's own header), three handlers with
+  no row, and two rows — 5106/5108 — claiming coverage of opcodes **the client does not
+  have**. It is now enforced by `internal/game/opcode_inventory_test.go` in both
+  directions, plus the S2C side, so it cannot rot again. Currently **H = 105**,
+  **E = 115**. A hand-counted invariant is not an invariant.
+- **Never send opcode 22002 *spontaneously*.** It is legitimate — and implemented — as
+  the **reply to 22001**; `handleStatisticRequest` is its only emitter. The old wording
+  here was a flat "never send 22002", which is now false and would invite someone to
+  "fix" correct code. What must never happen is an unsolicited 22002: the client's
+  permanently-registered tutorial handler `asA` would pop the tutorial-guide dialog.
+  Criteria otherwise reach the client via the 2052 `0x200` blob.
 - **`gofmt -l internal cmd test` must be EMPTY.** (This used to name five files as
   having untouchable pre-existing drift. Verified 2026-08-10 against a pristine
   `HEAD` checkout: there is none, in those five or anywhere else. The old wording
@@ -235,11 +279,22 @@ second player, and the client HUD renders fully once *the client* starts the fig
 
 ## 8. Test account + dev tooling
 
-- Account **locos975 / azerty**, coach **Loov (id 3)**, fighters **22–29**.
-  Fighter states: 0 titular, 1 bench, 2 dead, 3 graveyard.
-- ⚠ **I modified fighter 22's loadout** during weapon testing: it now carries weapon
-  **85** (melee, 4 AP, range 1-1) alongside its original card 149. Revert via the fighter
-  builder if unwanted.
+- Account **locos975 / azerty**, coach **Chrono (id 1)**. Fighter states: 0 titular,
+  1 bench, 2 dead, 3 graveyard.
+- The dev database has been rebuilt since this section was first written, so the old
+  entry here (coach *Loov* id 3, fighters 22–29, and a warning that fighter 22's loadout
+  had been modified to carry weapon 85) no longer describes anything that exists.
+  Verified 2026-08-21 against `arena.db`:
+  - **8 coaches**: 1 Chrono, 2 ExBot, 3 Sparrer, 4 Peer, 5–8 Recrue1–4. The four
+    *Recrue* coaches exist to make the clan **active** — an island needs 5 members.
+  - **13 fighters** (ids 1–13): Test, Brute, Tanko, Duo, Trio, Quatro, Cinco, **Sexto**,
+    Spar1–3, Elito, Tourno. Sexto is the sphere test subject — it owns node 23802, sits
+    at cursor (15, 76), and its `xp` is deliberately below its `total_xp` because it has
+    spent some.
+  - **1 guild**: "Les Bouftous".
+- Reading the dev DB directly is often faster than driving the GUI for a number: a
+  throwaway `cmd/` program using `store.Open("arena.db")` reads it fine while the server
+  is running (SQLite WAL). Delete it afterwards — do not leave probe commands in `cmd/`.
 - Dev endpoints (loopback, DEV builds only):
   - `curl "http://127.0.0.1:5599/c2s?opcode=&arch=&hex="` — inject a client packet
   - `curl "http://127.0.0.1:5599/fight"` — live fight dump
