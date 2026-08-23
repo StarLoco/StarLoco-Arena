@@ -1,6 +1,7 @@
 package game
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -182,6 +183,25 @@ func (m *TournamentManager) CountFor(tid int64) int {
 		}
 	}
 	return n
+}
+
+// EntrantsFor returns the coach ids registered for a tournament, ordered so the
+// bracket is stable between requests (the client re-asks on every page turn).
+//
+// Registration order is not recoverable - the tracker is a set - so ids are
+// sorted, which at least guarantees the same seeding every time rather than map
+// order shuffling the bracket under the player.
+func (m *TournamentManager) EntrantsFor(tid int64) []uint {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []uint
+	for coachID, set := range m.reg {
+		if set[tid] {
+			out = append(out, coachID)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // buildTournamentCalendar builds TOURNAMENT_CALENDAR (17003 awa_0): the scheduled

@@ -460,8 +460,8 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28644 | S2C | - | (aaj_0) | 28xxx family |
 | 28646 | S2C | - | (aNq) | 28xxx family |
 | 28648 | S2C | - | (df_1) | 28xxx family |
-| 28649 | C2S | H | TournamentTreeReq (alf_0) | `handleTournamentTreeRequest` — bracket request; reply 28650 |
-| 28650 | S2C | E | TournamentTree (IL) | empty tree (treeSize/count/bib all 0) → "tree unavailable" |
+| 28649 | C2S | H | TournamentTreeReq (alf_0) | `handleTournamentTreeRequest` - `[i64 tournamentId][i32 page][i32 len][utf8 highlightName]`. The page is driven by the tree dialog's paging buttons (20069) and the name by its search box (20068) |
+| 28650 | S2C | E | TournamentTree (IL) | `encodeTournamentTree` - `[i32 page][i32 n]{[i32 slot][i32 len][utf8 name]}[i32 unread]`. A 1-indexed binary heap: 1 winner, 2-3 finale, 4-7 semi, 8-15 quarter, 16-31 first round (`ah_1.getFieldValue`). Names are **UTF-8**, not cp1252. Upper rounds stay empty until a match layer decides them |
 
 ---
 

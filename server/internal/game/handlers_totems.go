@@ -9,7 +9,7 @@ import (
 //
 // Both elements open NO UI when clicked: the click only fires a request, and the
 // dialog is opened purely by the server's reply. Without an answer the totem is a
-// completely inert click — it looks broken, though it cannot hang the client.
+// completely inert click Ã¢â‚¬â€ it looks broken, though it cannot hang the client.
 //
 // The demon ladder is answered with a well-formed EMPTY window (no guild/clan
 // reputation is modelled). The tournament totem now serves real data: see
@@ -18,7 +18,7 @@ import (
 // (28649 -> empty 28650) are handled below; the live-match layer stays deferred.
 //
 // Every decoder here reads its trailing fields unconditionally and has no length
-// guards, so the byte counts must be exact — a short buffer is silently dropped
+// guards, so the byte counts must be exact Ã¢â‚¬â€ a short buffer is silently dropped
 // inside the client's frame decoder and the dialog never opens.
 
 func registerTotemHandlers(r *Router, d *Deps) {
@@ -32,8 +32,8 @@ func registerTotemHandlers(r *Router, d *Deps) {
 }
 
 // handleDemonLadderRequest handles DEMON_LADDER_REQUEST (27510):
-// [i16 demonId][i16 flag][i32 startRank] — the per-demon drill-down, sent both by
-// a DemonTotem click and by selecting a row in the ranking window's Démon tab.
+// [i16 demonId][i16 flag][i32 startRank] Ã¢â‚¬â€ the per-demon drill-down, sent both by
+// a DemonTotem click and by selecting a row in the ranking window's DÃƒÂ©mon tab.
 // Replies with an empty ranking for that demon (no guild reputation modelled).
 func handleDemonLadderRequest(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
@@ -52,15 +52,15 @@ func handleDemonLadderRequest(s *Session, f *protocol.C2SFrame) error {
 	return s.Send(frame)
 }
 
-// buildDemonLadder builds DEMON_LADDER (27511 anc_0) — guilds ranked by
+// buildDemonLadder builds DEMON_LADDER (27511 anc_0) Ã¢â‚¬â€ guilds ranked by
 // reputation on one demon:
 //
 //	[i16 demonId][i16 statusFlag][i32 startRank][i32 count]
-//	count × { [i32 nameLen][guildName][i64 quarterly][i64 quarterlyCumul][i64 monthly] }
+//	count Ãƒâ€” { [i32 nameLen][guildName][i64 quarterly][i64 quarterlyCumul][i64 monthly] }
 //	[i64 demonAffiliation]   <- PER-MESSAGE, not per-row
 //
 // The trailing i64 is read unconditionally, so it must be present even with zero
-// rows — omitting it throws inside the client's decoder and the dialog never
+// rows Ã¢â‚¬â€ omitting it throws inside the client's decoder and the dialog never
 // opens. statusFlag MUST be 1 for the client (awj) to (re)fill its rows. Guild
 // reputation is not modelled, so this is always an empty (count 0) window.
 func buildDemonLadder(demonID uint16, rows []store.DemonReputationRow, viewerDemon int16) ([]byte, error) {
@@ -163,39 +163,18 @@ func handleTournamentRegister(s *Session, f *protocol.C2SFrame) error {
 	return s.Send(frame)
 }
 
-// handleTournamentTreeRequest handles TOURNAMENT_TREE_REQUEST (28649 alf_0):
-// [i64 tournamentId][i32 round][i32 nameLen][name]. There is no live match graph
-// yet, so it replies with an EMPTY tree (28650 IL): [i32 treeSize=0][i32 count=0]
-// [i32 bib=0]. The client renders that as "the tournament tree is unavailable" and
-// closes cleanly — the trailing i32 is read unconditionally, so it must be present.
-func handleTournamentTreeRequest(s *Session, _ *protocol.C2SFrame) error {
-	if s.Coach == nil {
-		return nil
-	}
-	w := protocol.NewWriter().
-		I32(0). // treeSize
-		I32(0). // node count
-		I32(0)  // bib (trailing, read unconditionally)
-	frame, err := protocol.EncodeS2C(protocol.OpTournamentTree, w.Bytes())
-	if err != nil {
-		return err
-	}
-	s.log.Debug("tournament tree (empty)", "coach", s.Coach.Name)
-	return s.Send(frame)
-}
-
 // --- Tournament opponent search (28609/28610/28611/28612/28614/28616) ---
 //
 // The third member of the "ready up and look for an opponent" pattern: the
 // client's ds_2 frame is the same shape as vu_1 (classic) and wp_0 (evolution),
-// and 28611 is sent by the Tournois tab's "Combattre" AND by Légendes (which
+// and 28611 is sent by the Tournois tab's "Combattre" AND by LÃƒÂ©gendes (which
 // passes the legend pseudo-preset 9999). Both sender sites pop the team panel
 // themselves (`hu_2` ... `apN.aDK().b(this)`) after pushing the fight frame, so
 // an unanswered 28611 is the SEVERE variant of the B-098/B-099 defect: the panel
 // closes, no overlay appears, and there is nothing left to click.
 //
 // WHY THIS REFUSES INSTEAD OF QUEUEING. For the other two families, accepting the
-// search is truthful — two coaches really can pair and fight. A tournament match
+// search is truthful Ã¢â‚¬â€ two coaches really can pair and fight. A tournament match
 // is not a free pairing: it is a specific bracket fixture between two registered
 // entrants, and this server has no bracket/match layer (28649 is answered with an
 // empty tree). Pairing arbitrary searchers would invent semantics and produce
@@ -229,7 +208,7 @@ func handleTournamentSearchRequest(s *Session, f *protocol.C2SFrame) error {
 
 // handleTournamentSearchCancel (28609 bt_0) answers the tournament overlay's
 // Cancel. Nothing can currently be queued, but the reply is what closes that
-// overlay and unregisters ds_2, so it is sent unconditionally — the same reason
+// overlay and unregisters ds_2, so it is sent unconditionally Ã¢â‚¬â€ the same reason
 // the classic and evolution cancels do.
 func handleTournamentSearchCancel(s *Session, _ *protocol.C2SFrame) error {
 	if s.Coach == nil {
