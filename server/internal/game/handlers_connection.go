@@ -310,6 +310,11 @@ func (s *Session) enterWorld(coach *domain.Coach) error {
 	// Push online notifications to friends/ignorers who are watching this coach.
 	s.notifyPresence(coach, true)
 
+	// Announce the open opponent-search periods of the tournaments this coach is
+	// registered for. The notification each one creates is the only way to SELECT
+	// a tournament, and the Tournois tab's "Combattre" refuses without one.
+	s.announceTournamentSearchPeriods()
+
 	// If this coach dropped out of a fight that is still open (within its reconnect
 	// grace), offer to RESUME it: push the reconnect QUESTION (26333) while the
 	// coach is in the lobby. The client answers with 26334 (see

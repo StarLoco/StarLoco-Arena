@@ -452,7 +452,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28618 | S2C | - | (ahd_0) | 28xxx family |
 | 28620 | S2C | - | (Yq) | 28xxx family |
 | 28622 | S2C | - | (uw_2) | 28xxx family |
-| 28630 | S2C | - | (dg_0) | 28xxx family |
+| 28630 | S2C | E | TournamentSearchPeriod (dg_0) | `[i64 tid][i8 open]` - opens/closes a tournament's opponent-search period. Creates the client's tournament NOTIFICATION (`zN` builds a `td_0`), and clicking that is the ONLY way to select a tournament (`agz_1` -> `vk_1.ad(tid)`). Without it `hu_2` refuses Combattre with `error.noTournamentSelected` forever |
 | 28633 | C2S | - | (kx_2) | 28xxx family |
 | 28634 | S2C | - | (acn_2) | 28xxx family |
 | 28635 | C2S | - | (aeC) | 28xxx family |

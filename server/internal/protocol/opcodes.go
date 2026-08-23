@@ -279,6 +279,16 @@ const (
 	OpTournamentSearchResult       = 28612 // S2C DR: [i64 tid][i16 preset][i8 accepted]
 	OpTournamentFightStarting      = 28614 // S2C azj_0: [i64 tid]
 	OpTournamentSearchError        = 28616 // S2C kw_1: [i8 code][i8 subCode]
+	// OpTournamentSearchPeriod opens or closes a tournament's opponent-search
+	// period. It is what puts the tournament NOTIFICATION in the client's alert
+	// list (zN case 28630 builds a `td_0`), and clicking that notification is the
+	// only thing that selects a tournament (agz_1 sets `vk_1.ad(tid)`), which the
+	// Tournois tab's "Combattre" requires - `hu_2` refuses with
+	// "error.noTournamentSelected" while `vk_1.fx() == 0`.
+	//
+	// So without this message the tournament UI is unreachable no matter how
+	// valid the team is: there is no other way to select one.
+	OpTournamentSearchPeriod = 28630 // S2C dg_0: [i64 tid][i8 open]
 
 	OpTournamentTreeReq = 28649 // C2S alf_0 (arch 2): [i64 tid][i32 round][i32 nameLen][name]
 	OpTournamentTree    = 28650 // S2C IL: [i32 treeSize][i32 count]{[i32 id][i32 nameLen][name]}[i32 bib]

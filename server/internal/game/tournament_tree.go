@@ -118,6 +118,56 @@ func handleTournamentTreeRequest(s *Session, f *protocol.C2SFrame) error {
 	return s.Send(frame)
 }
 
+// buildTournamentSearchPeriod builds TOURNAMENT_SEARCH_PERIOD (28630, dg_0):
+// [i64 tid][i8 open].
+func buildTournamentSearchPeriod(tid int64, open bool) ([]byte, error) {
+	w := protocol.NewWriter().I64(tid)
+	if open {
+		w.U8(1)
+	} else {
+		w.U8(0)
+	}
+	return protocol.EncodeS2C(protocol.OpTournamentSearchPeriod, w.Bytes())
+}
+
+// announceTournamentSearchPeriods tells a coach which of its tournaments are
+// currently accepting opponent searches.
+//
+// This is what makes the Tournois tab usable at all. The notification it creates
+// (`td_0`) is the ONLY thing that selects a tournament: clicking it runs
+// `agz_1`, which sets `vk_1.ad(tid)` and opens the team panel on the right tab.
+// Until then `hu_2` refuses "Combattre" with "error.noTournamentSelected",
+// however valid the team is - a gate no amount of server-side testing reveals,
+// found by driving the real client.
+//
+// Sent only for tournaments the coach is REGISTERED for: a notification for one
+// it cannot enter would select a tournament whose search must then be refused.
+// The client also warns to its log if the same tournament is announced twice, so
+// this is sent once, at world entry.
+func (s *Session) announceTournamentSearchPeriods() {
+	if s.Coach == nil || s.deps == nil || s.deps.Tournaments == nil || s.deps.Store == nil {
+		return
+	}
+	ts, err := s.deps.Store.Tournaments.ListEnabled()
+	if err != nil {
+		return
+	}
+	for i := range ts {
+		tid := ts[i].WireID()
+		if !s.deps.Tournaments.IsRegistered(s.Coach.ID, tid) {
+			continue
+		}
+		frame, err := buildTournamentSearchPeriod(tid, true)
+		if err != nil {
+			continue
+		}
+		if err := s.Send(frame); err == nil {
+			s.log.Debug("tournament search period announced",
+				"coach", s.Coach.Name, "tournament", tid)
+		}
+	}
+}
+
 // coachDisplayName resolves a coach id to the name shown in the bracket.
 func (d *Deps) coachDisplayName(coachID uint) string {
 	if d.Store != nil {
