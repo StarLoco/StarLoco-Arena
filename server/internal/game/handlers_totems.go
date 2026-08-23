@@ -119,7 +119,13 @@ func handleTournamentListRequest(s *Session, _ *protocol.C2SFrame) error {
 		return err
 	}
 	s.log.Debug("tournament list", "coach", s.Coach.Name, "count", len(ts))
-	return s.Send(frame)
+	if err := s.Send(frame); err != nil {
+		return err
+	}
+	// AFTER the list: the search-period notification names its tournament by
+	// looking it up in the registry this message just filled.
+	s.announceTournamentSearchPeriods()
+	return nil
 }
 
 // handleTournamentRegister handles TOURNAMENT_REGISTER (4607 aik_0):

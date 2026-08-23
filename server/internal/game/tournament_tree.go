@@ -140,10 +140,23 @@ func buildTournamentSearchPeriod(tid int64, open bool) ([]byte, error) {
 // however valid the team is - a gate no amount of server-side testing reveals,
 // found by driving the real client.
 //
+// ORDERING IS LOAD-BEARING: this must follow the tournament LIST (28602), never
+// precede it. `zN` builds the notification with
+//
+//	vg vg2 = vk_1.BZ().aQ(tid);   // the client's own tournament registry
+//	new td_0(vg2.BC());           // its name
+//
+// and that registry is filled by 28602. Announced at world entry - before the
+// client has ever asked for the list - the lookup returns null, `vg2.BC()`
+// throws, the frame loop swallows it, and no notification appears. That is
+// exactly what happened: the message went out, the log said so, and the Tournois
+// panel stayed empty.
+//
 // Sent only for tournaments the coach is REGISTERED for: a notification for one
 // it cannot enter would select a tournament whose search must then be refused.
-// The client also warns to its log if the same tournament is announced twice, so
-// this is sent once, at world entry.
+// The client warns to its own log if the same tournament is announced twice, so
+// re-requesting the list re-announces - acceptable, and the client de-duplicates
+// by tid before adding.
 func (s *Session) announceTournamentSearchPeriods() {
 	if s.Coach == nil || s.deps == nil || s.deps.Tournaments == nil || s.deps.Store == nil {
 		return
