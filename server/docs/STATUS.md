@@ -3,7 +3,7 @@
 Single entry point for picking the 2.70 server back up cold. Everything else is
 detail; this is state.
 
-**Updated:** 2026-08-21
+**Updated:** 2026-08-23
 
 ---
 
@@ -17,9 +17,10 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 **Tiers 0, 1 and 2 are COMPLETE** (see `ROADMAP.md`). Tier 3 is where work is now, and
 most of it is done too: **29 Sphere Board**, **31 guilds/clans**, **34 schema migrations**
 and **35 web admin panel** have all landed. What is left in Tier 3 is almost entirely the
-maintainer's own deferrals — **30 (2v2)**, **32 (tournament match layer)** and **33
-(X-vs-X allies, which needs 2v2)** — so picking up "the next roadmap item" is no longer
-the right default. Ask before starting one of those.
+maintainer's own deferrals. **30 (2v2) is now DONE too** — live-verified with four retail
+clients. What remains is **32 (tournament match layer)** and **33 (X-vs-X allies)**, and 33
+turned out to be unrelated to 2v2: its 26313 exists only as the client's `Test` Lua
+binding `XvsXInvitation`, with no UI anywhere. Ask before starting one of those.
 
 A recurring result worth knowing before picking up an item: **five Tier 1 entries were
 resolved by evidence rather than code** — initiative re-sort, 5203 destructive ops, buff
@@ -46,7 +47,10 @@ implementing** (§9).
 
 | # | What |
 |---|---|
-| DOCS | `OPCODE-INVENTORY.md` had rotted badly and is now **machine-checked** (`opcode_inventory_test.go`): 20 implemented opcodes were still marked `-` "gap", 3 handlers had no row, and **5106/5108 were marked handled but do not exist in the client at all** (no class returns them). Also settled: 5109/5111 are **C2S**, not S2C — their base `so_0` throws *"ne peut être décodé"*, i.e. send-only |
+| ITEM 30 | **2v2 DONE** - four retail clients, two duos, one fight: `2v2 side formed side=0 coaches=2 fighters=2` / `side=1 coaches=2 fighters=2`, and post-fight `reports=4 standing=map[1:10 2:10 3:3 4:3]`. Formation is the 60xx team family (2VS2 tab -> friend list -> 6024/6025/6026/6028), NOT item 33's 26313 |
+| B-121 | Presence reached only friends with `notify` on - a toast preference used as a subscription, so a 2v2 invite worked or failed purely on who logged in first |
+| B-120 | The friend list sent coach id **0** for everyone (adP is the coach id AND the presence flag; adO is notify) |
+| DOCS | `OPCODE-INVENTORY.md` had rotted badly and is now **machine-checked** (`opcode_inventory_test.go`): 20 implemented opcodes were still marked `-` "gap", 3 handlers had no row, and **5106/5108 were marked handled but do not exist in the client at all** (no class returns them). Also settled: 5109/5111 are **C2S**, not S2C ÔÇö their base `so_0` throws *"ne peut ├¬tre d├®cod├®"*, i.e. send-only || DOCS | `OPCODE-INVENTORY.md` had rotted badly and is now **machine-checked** (`opcode_inventory_test.go`): 20 implemented opcodes were still marked `-` "gap", 3 handlers had no row, and **5106/5108 were marked handled but do not exist in the client at all** (no class returns them). Also settled: 5109/5111 are **C2S**, not S2C — their base `so_0` throws *"ne peut être décodé"*, i.e. send-only |
 | ITEM 29 | **Sphere Board (Kanodo) complete**: types 900/901 byte-exact, board/cursor/owned nodes served, 23009 purchases fully re-derived server-side, node effects and sphere spells applied in fight, type 251 equipment entitlement enforced, and the XP economy audited against the post-fight grant |
 | B-118 | The evolution tail's two "passive" lists are not passives — `ee_2` resolves them through the SPELL and EQUIPMENT-POOL tables, so sending them empty made a bought Spell sphere cease to exist on relog |
 | B-117 | Worlds 86–109 (the clan islands) served no interactive elements, so their Zaaps dead-ended; fixed by regenerating `elements_data.go` with those worlds in `policyWorlds` |
@@ -187,9 +191,15 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
 7. ~~**Sphere Board**~~ — **DONE** (item 29). The "largest unimplemented system, 17 542
    records" framing was the misleading part: the board graph is client-side data, so the
    record count was never the size of the server's job.
-8. **2v2 / multi-coach fights** — deferred by the maintainer. Now the **biggest single
-   unlock left**: it is the blocker for item 33, for `/p` group chat having any audience,
-   and for 22 of the 47 stranded achievements.
+8. ~~**2v2 / multi-coach fights**~~ — **DONE** (item 30), live-verified with four retail
+   clients: duo formation through the 2VS2 tab (the 60xx team family, not item 33's
+   26313), four-coach fights, and post-fight for all four
+   (`reports=4 standing=map[1:10 2:10 3:3 4:3]`). This also gave `/p` group chat a real
+   audience and unblocked 22 of the 47 stranded achievements.
+   **The lesson is worth more than the feature**: every clause of the roadmap's
+   description was wrong, and three separate client rules (`afL`, the preset type, and
+   the fighter entry's second i64 being the OWNING COACH) each surfaced only after the
+   previous one was fixed. Read the client's validation path *before* writing code.
 9. **Tournament live-match layer** (brackets, scheduling, prizes) — deferred by the
    maintainer; blocks the other 25 stranded achievements.
 10. **Fusion success probability** — genuinely unknown; no client code reveals the curve.

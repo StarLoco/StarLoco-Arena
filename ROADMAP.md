@@ -58,7 +58,7 @@ opcode constants · 9 of 24 populated client record types decoded.
 | Sphere Board | ✅ | Types 900/901 decode byte-exactly; board/cursor/owned nodes served, buying (23009) validated server-side, and bought nodes apply their stats and spells in fight. Live-verified end to end |
 | Achievements | ✅ | 332/5/13 decoded byte-exactly; tab opens (B-105), unlocks evaluated + announced, tome grow-only (B-106). 47 are structurally blocked on 2v2/tournaments; the rest need their statistic to start moving |
 | Guilds / clans | ✅ | **Complete** (item 31), and never structurally blocked — the client's clan feature is fully wired; the server was writing an empty 0x20 blob, which every entry point gates on. Create/invite/accept, ranks + rights, kick/quit/destroy, clan chat, clan tag + clan ladder, demon affiliation, and clan islands on the retail rule (one island per demon, held by its top clan). Live-verified |
-| 2v2 | ⬜ | Deferred by the maintainer (item 30) |
+| 2v2 | ✅ | DONE (item 30). Duo formation via the 2VS2 tab (60xx), four-coach fights, per-owner AI/absence/rewards, post-fight for all four. Live-verified with four retail clients |
 | Ops: config, releases, Docker, web portal | OK | Self-configuring, auto-released, full account + admin web portal |
 | RE tooling (MCP harness, deobf lab) | 🟡 | Live-client driver works; deobfuscation is class+field only |
 
@@ -236,7 +236,7 @@ Firework 5, TournamentTotem 2, Challenge 2, DemonI 1, DemonIII 1.
 | Channel membership family | ⛔ | **Dead code in 2.70** — all six handlers in `om_0` cast the message and `return false`. No C2S counterpart exists (not even in the 2007 reference), no UI, nothing gated. Sending them is unobservable |
 | Trade chat (`/t`, 3159 → 3168) | ✅ | Global. Was dropped as an unhandled opcode while the client rendered the sender's own line locally, so it looked sent (B-103) |
 | Clan chat (`/c`, 3199 → 3198) | 🟡 | Served and **validated** — the client-supplied guild id is re-checked against the sender's own. No coach has a guild yet (item 31), so it resolves to nobody; the client also self-gates and emits nothing without one |
-| Group chat (`/p`, 3161 → 3170) | 🟡 | Served. The audience is resolved from the sender's own fight, **not** the client-supplied coach id — trusting that would make `/p` an unfilterable DM channel. Empty until 2v2 (item 30) |
+| Group chat (`/p`, 3161 → 3170) | 🟡 | Served. The audience is resolved from the sender's own fight, **not** the client-supplied coach id — trusting that would make `/p` an unfilterable DM channel. It now HAS an audience: 2v2 is done (item 30), so an ally in the same fight receives it |
 | Chat safety (ignore list, markup, rate limits) | ✅ | Ignore filtering on every pipe — private had **no client-side filter** and force-opens the chat window — plus `<`/`>` stripping and the client's own 30 s Trade cooldown (B-104) |
 | Friends add/remove + list | ✅ | All four ack layouts differ per opcode and are individually verified |
 | Ignore add/remove + list | ✅ | |
@@ -1446,7 +1446,7 @@ is a signing certificate or SignPath); no published Docker image.
     guild-scoped and the client self-gates — with no guild it emits *no packet at
     all*, confirmed live — so it cannot even be exercised before item 31. `/p`
     **Group** (3161) targets the ally coach on your side of a live fight, read out
-    of CREATE_FIGHT's coach list, so it needs 2v2 (item 30, deferred).
+    of CREATE_FIGHT's coach list, so it needed 2v2 - which is now done (item 30).
 
     **All four live pipes are now served**, and the two that cannot yet reach an
     audience are served *correctly* rather than skipped: `/p` resolves its
@@ -1497,7 +1497,7 @@ is a signing certificate or SignPath); no published Docker image.
 
     | Blocked by | Achievements | Statistic ids |
     |---|---|---|
-    | **2v2** (item 30) | 22 | 146, 147, 148, 171 |
+    | ~~**2v2** (item 30)~~ - **unblocked**, item 30 is done | 22 | 146, 147, 148, 171 |
     | **Tournament match layer** (item 32) | 25 | 183, 187, 188, 189 |
 
     None of them are hidden, so they are visible-but-stuck in the client's list.
@@ -1602,9 +1602,67 @@ is a signing certificate or SignPath); no published Docker image.
     Item node - is offered an entirely EMPTY equipment picker, exactly as the
     server''s rule says; and one won evolution fight moved it 148 -> 298 spendable
     xp while lifetime went 150 -> 300, the 2 it spent staying spent.
-30. **2v2 / multi-coach fights** *(deferred by the maintainer)* — needs the fixed
-    2-team array to become a slice, the ready gate to count teams, per-team
-    session lists, and the 8000 coach loop generalised.
+30. [x] **2v2 / multi-coach fights** — **DONE, live-verified end to end with four
+    retail clients.** Every clause of the original description was wrong, which is
+    worth keeping as a record of how far a plausible plan can sit from the data.
+    The 2-team array must NOT become a slice: `aat_2` reads exactly two
+    (`fight.team0` / `fight.team1`) and indexes `teArray[side]`. What varies is
+    COACHES PER SIDE, and the wire always allowed it — the coach list is
+    variable-length and independent of the team list, every fighter blob carries
+    its owner's id, and `axw.a(team, side)` derives each coach's side from the
+    team its fighters landed in.
+
+    So `FightTeam.Coach/Session/Absent` became `Members []*FightMember`. The
+    interesting part was not the rename but the places where "the team's coach"
+    silently stood in for something per-coach: AI control (asking whether the SIDE
+    had a session hands a human's fighters to the AI), absence (one coach dropping
+    forfeited its ally), post-fight set bonuses (an ally's gear buffing fighters it
+    does not own), stats, ladder, reward cards and the 8300 frames. Each is now
+    per-owner — identical for 1v1, correct for 2v2.
+
+    **Formation is the 60xx team family, not the 26313 XvsX of item 33.** The 2VS2
+    tab creates a duo: teammate chosen from the FRIEND LIST, 6024 invite → 6025
+    dialog → 6026 answer → 6027 refused / 6028 both open the picker. Every rule is
+    re-derived server-side (the inviter is the sender, never the packet's id; an
+    answer must name the coach that really invited it, or a stranger could be
+    dragged into a duo). 26313 exists only as the `Test` Lua binding
+    `XvsXInvitation` and has no UI — the two are unrelated.
+
+    Three client rules had to be read rather than guessed, each found only after
+    the previous was fixed:
+    - a duo preset's coach list must hold BOTH coaches: `sw_1.afL()` is
+      `bMK.size() == 2`, and the 2VS2 tab lists exactly the presets where it holds.
+      `zK.cG()` APPENDS, so a hand-made team is `[self]` and a duo `[ally, self]`;
+      `afG()` returns entry 0, the id 23103 sends back.
+    - the preset TYPE must be one the client stamps (-6). Type 0 belongs to no
+      bucket and skips the appearance bytes only -5/-6/-7 carry, so the row had
+      nothing to draw and the tab stayed empty.
+    - **each fighter entry's second i64 is the OWNING COACH, not a budget.**
+      `cF(coachId)` keeps entries where `bMJ.du(id) == coachId`, and `afH()`
+      requires every coach in the list to control one — which raises "Un des coachs
+      ne contrôle aucun combattant". A 1v1 never noticed (afH only runs with >1
+      coach); a 2v2 could never start. `cF()` reads the preset alone and never
+      consults the roster, so no extra roster push is needed.
+
+    23103 "Combattre" carries that ally id in its leading i64 — which we used to
+    discard as "the team owner, trust the session". Both partners must press it
+    before the pair queues once; `joinDuoPartner` merges the ally into the side and
+    `pickArenaSeating(2)` picks from the 25 arenas that seat two coaches a side.
+    On arenas: every .fmd stores SIX pedestal slots (28 of 47 populate all six, 24
+    of those split 3/3 — the maps were always built for up to THREE coaches a
+    side), and the 15 that populate none used to place a coach at the
+    unpacked-zero sentinel, 2047 tiles off the map.
+
+    Live: `2v2 side formed side=0 coaches=2 fighters=2` / `side=1 coaches=2
+    fighters=2`, four fighters in the timeline (two red, two blue), pedestals both
+    sides, turns cycling through all four coaches' fighters with `ai=false`. And
+    the post-fight: `reports=4 standing=map[1:10 2:10 3:3 4:3]`, both winners +10
+    standing / +1 win / +25 strength, both losers +3 / +1 loss, and every fighter
+    that fought +208 xp and morale.
+
+    Nothing blocking is left. 2v2 has no matchmaking mode of its own, so a duo is
+    paired by the ordinary queue — which works, but means a duo can currently be
+    matched against a solo coach.
 31. 🟡 **Guilds / clans** — **core loop DONE and live-verified.** The premise
     held: the client's clan feature is fully wired and reachable (handler `lh_1`
     registered on login, 13 C2S classes with production callers, the guild tab

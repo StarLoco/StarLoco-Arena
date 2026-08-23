@@ -140,6 +140,51 @@ belongs to the coach.
 
 ## Fixed
 
+### B-121 - presence notifications reached only friends with "notify" on
+
+**Symptom.** A 2v2 invitation succeeded or failed depending on **who logged in first**.
+Sparrer → Peer was refused with *"Le coach a refusé la création, ou est indisponible."*
+while Peer → Sparrer worked, with identical data. Found by driving four clients at once.
+
+**Root cause.** `CoachRepo.WatchersAsFriend` filtered on `notify = true`, treating a TOAST
+preference as a subscription. The client makes the distinction explicit (`om_0` case 3148):
+
+    axa_03.ai(true);
+    axa_03.c(dh_02.no());                 // presence AND the friend's coach id
+    if (axa_03.aJM()) { ...show "X vient de se connecter"... }
+
+The presence/id repair is unconditional; the flag gates only the message — and the client
+already holds that flag, because we send it in the friend list (`adO`, see B-120). So the
+filter did far more than silence a toast: a friend with notify off never learned the other
+had come online, and never received its **coach id**.
+
+That id is the whole problem. Per B-120 the friend LIST only carries an id for coaches who
+were already online when it was built (offline friends are `-1`, which is the client's own
+presence test). So the only way to learn a *later* arrival's id is the 3148 we were
+suppressing — and the 2v2 teammate picker sends `axa_0.getId()` as the invited coach.
+Whoever logged in first held its partner at `-1` and invited nobody.
+
+**Fix.** The query no longer filters on `notify`; the client decides whether to print.
+
+**Verified:** `unit` (`TestWatchersAsFriendIgnoresNotifyFlag`, mutation-checked: restoring
+the filter fails it) + `live` (four clients, both invitation directions now work).
+
+Two test-quality notes, both mistakes made while writing it:
+- the first fixture contained **no notify=false row at all**. `Notify: false` is the
+  struct's zero value and the column is `gorm:"default:true"`, so GORM omitted the field
+  and the database wrote `true`. The rows are now written through a map, and the test
+  asserts the fixture really holds one notify=false row before relying on it.
+- the first mutation run reported MISSED because the anchor matched the **test file**
+  (alphabetically ahead of `repos.go`) rather than the repository. A mutation that edits
+  the test instead of the code proves nothing — verify which file changed.
+
+**Not a bug, retracted:** the "Evolution TESTER starts a PvE challenge" report was wrong.
+26330's second field really is 99 for a challenge accept (`cj_0`, `pn_0`, `zs_1` all send
+`fH(challengeId), bM(99)`); the team panel sends the real preset id and the Légendes tab
+sends the 9999 pseudo-preset, which already falls back to the coach's own fighters. The
+original observation was a mis-click on a challenge bubble, diagnosed without reading the
+client's senders.
+
 ### B-120 - every friend had coach id 0 and read as permanently online
 
 **Symptom.** Creating a 2v2 team always failed with *"Le coach a refusé la création, ou
