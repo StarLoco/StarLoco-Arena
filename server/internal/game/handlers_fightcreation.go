@@ -21,6 +21,17 @@ func registerFightCreationHandlers(r *Router, d *Deps) {
 // client mode values are small). The value is deliberately out of that range.
 const modeClassicReady int16 = 23103
 
+// modeDuoReady is the same queue tag for a 2v2 "Combattre".
+//
+// A duo must not be matched against a lone coach: the sides would be two coaches
+// and two rosters against one, each with its own 6000-point budget. The client
+// already treats them as different things - a preset's `zK.cB()` is 1 for an
+// ordinary team and 2 for a duo, and the 2VS2 tab lists only the latter - so
+// this is not a house rule, it is the client's own distinction carried into the
+// queue. The matchmaker pairs only searchers with equal `mode`, so a distinct
+// tag is the whole implementation.
+const modeDuoReady int16 = 23104
+
 // sparringCoachID is the synthetic id of the "Tester" practice opponent. It is
 // far above any real DB coach id, so it never collides with a live coach.
 const sparringCoachID uint = 1 << 31
@@ -187,7 +198,9 @@ func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 	// queue, which is exactly what the client's own "waitingReplyForFight" dialog
 	// tells the first one to expect. Queueing on the first press would drag the
 	// ally into a fight it never agreed to start.
+	searchMode := modeClassicReady
 	if partner := s.deps.duoLaunchPartner(s.Coach.ID, claimedAlly); partner != 0 {
+		searchMode = modeDuoReady
 		ready, both := s.deps.TeamUps.markLaunchReady(s.Coach.ID, partner)
 		if err := classicSearchFamily.sendResult(s, teamID, true); err != nil {
 			return err
@@ -208,7 +221,7 @@ func handleClassicReadyForFight(s *Session, f *protocol.C2SFrame) error {
 	if err := classicSearchFamily.sendResult(s, teamID, true); err != nil {
 		return err
 	}
-	pm := s.deps.Matchmaker.Search(s, modeClassicReady, 0, roster)
+	pm := s.deps.Matchmaker.Search(s, searchMode, 0, roster)
 	if pm == nil {
 		s.log.Info("combattre: waiting for opponent", "coach", s.Coach.Name, "team", teamID)
 		return nil

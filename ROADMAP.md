@@ -1660,9 +1660,14 @@ is a signing certificate or SignPath); no published Docker image.
     standing / +1 win / +25 strength, both losers +3 / +1 loss, and every fighter
     that fought +208 xp and morale.
 
-    Nothing blocking is left. 2v2 has no matchmaking mode of its own, so a duo is
-    paired by the ordinary queue — which works, but means a duo can currently be
-    matched against a solo coach.
+    The queue segregates duos from solo coaches. A duo must not face a lone coach -
+    that side would field two coaches and two rosters, each with its own 6000-point
+    budget, against one - and this is the CLIENT's distinction rather than a house
+    rule: a preset's `zK.cB()` is 1 for an ordinary team and 2 for a duo, and the
+    2VS2 tab lists only the latter. The matchmaker pairs only searchers with equal
+    mode, so carrying it through is a single distinct tag.
+
+    Nothing blocking is left.
 31. 🟡 **Guilds / clans** — **core loop DONE and live-verified.** The premise
     held: the client's clan feature is fully wired and reachable (handler `lh_1`
     registered on login, 13 C2S classes with production callers, the guild tab
