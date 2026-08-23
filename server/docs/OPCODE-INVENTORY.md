@@ -444,9 +444,9 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28608 | S2C | E | TournamentRegisterReply (dy_0) | reply to 4607: [i64 tid][i8 err] (0=accepted) |
 | 28609 | C2S | H | TournamentSearchCancel (bt_0) | `handleTournamentSearchCancel` - refuses visibly rather than going silent (B-100) |
 | 28610 | S2C | E | TournamentSearchCancelResult |  |
-| 28611 | C2S | H | TournamentSearchRequest (ly_1) | `handleTournamentSearchRequest` - see 28609 |
-| 28612 | S2C | - | (DR) | 28xxx family |
-| 28614 | S2C | - | (azj_0) | 28xxx family |
+| 28611 | C2S | H | TournamentSearchRequest (ly_1) | `handleTournamentSearchRequest` - `[i64 tid][i64 coachId][i16 preset]`. Only an ENTRANT may ready up; pairing is scoped to the one tournament |
+| 28612 | S2C | E | TournamentSearchResult (DR) | `[i64 tid][i16 preset][i8 accepted]` - opens the client's waiting dialog (`tournamentsSearchStatusDialog`). Must be sent, or the team panel closes leaving no overlay |
+| 28614 | S2C | E | TournamentFightStarting (azj_0) | `[i64 tid]` - *"Lancement du combat"*. Closes the waiting dialog, so it goes out BEFORE CREATE_FIGHT |
 | 28616 | S2C | E | TournamentSearchError |  |
 | 28617 | C2S | - | (afg_2) | 28xxx family |
 | 28618 | S2C | - | (ahd_0) | 28xxx family |

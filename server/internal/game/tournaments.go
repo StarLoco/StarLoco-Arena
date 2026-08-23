@@ -71,8 +71,12 @@ type tournamentRegistrationStore interface {
 //
 // The store is optional: with none, the manager behaves exactly as it used to.
 type TournamentManager struct {
-	mu    sync.Mutex
-	reg   map[uint]map[int64]bool // coachID -> set of registered tournament wire ids
+	mu  sync.Mutex
+	reg map[uint]map[int64]bool // coachID -> set of registered tournament wire ids
+	// ready holds the one entrant waiting for a match in each tournament. It is
+	// process-lived on purpose: a "ready" state is a player sitting in front of a
+	// waiting dialog, which cannot survive their disconnection anyway.
+	ready map[int64]uint // tournament wire id -> waiting coach
 	store tournamentRegistrationStore
 }
 
@@ -202,6 +206,45 @@ func (m *TournamentManager) EntrantsFor(tid int64) []uint {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
+}
+
+// ReadyUp records that a registered entrant is ready to play its next tournament
+// match, and returns an opponent if one of the SAME tournament is already
+// waiting.
+//
+// The pairing is deliberately per-tournament rather than through the shared
+// matchmaker: a tournament match is a fixture between two entrants of one
+// tournament, so pairing across tournaments - or against a coach who never
+// registered - would produce a fight that advances nothing. The caller is
+// expected to have checked IsRegistered first; this only guards the pairing.
+//
+// A coach readying twice replaces its own entry rather than matching itself.
+func (m *TournamentManager) ReadyUp(tid int64, coachID uint) (uint, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ready == nil {
+		m.ready = make(map[int64]uint)
+	}
+	if waiting, ok := m.ready[tid]; ok && waiting != coachID {
+		delete(m.ready, tid)
+		return waiting, true
+	}
+	m.ready[tid] = coachID
+	return 0, false
+}
+
+// CancelReady removes a coach from every tournament's ready slot.
+func (m *TournamentManager) CancelReady(coachID uint) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	found := false
+	for tid, waiting := range m.ready {
+		if waiting == coachID {
+			delete(m.ready, tid)
+			found = true
+		}
+	}
+	return found
 }
 
 // buildTournamentCalendar builds TOURNAMENT_CALENDAR (17003 awa_0): the scheduled

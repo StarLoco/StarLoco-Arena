@@ -201,9 +201,85 @@ func handleTournamentSearchRequest(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	s.log.Info("tournament search refused: no bracket/match layer yet",
-		"coach", s.Coach.Name, "tournament", tid, "preset", preset)
-	return s.sendTournamentSearchError(searchErrCannotStart, 0)
+	// Only an ENTRANT may ready up. Without this a coach could join any
+	// tournament's fixture list by sending a tid it never registered for, and the
+	// match would advance a bracket it is not in.
+	if s.deps.Tournaments == nil || !s.deps.Tournaments.IsRegistered(s.Coach.ID, tid) {
+		s.log.Info("tournament search refused: not an entrant",
+			"coach", s.Coach.Name, "tournament", tid)
+		return s.sendTournamentSearchError(searchErrCannotStart, 0)
+	}
+
+	// Accept first: 28612 is what opens the client's waiting dialog. Without it
+	// the team panel has already closed itself and the player is left with no
+	// overlay and nothing to click - the B-098/B-099 defect.
+	if err := s.sendTournamentSearchResult(tid, preset, true); err != nil {
+		return err
+	}
+
+	opponent, paired := s.deps.Tournaments.ReadyUp(tid, s.Coach.ID)
+	if !paired {
+		s.log.Info("tournament search: waiting for an opponent",
+			"coach", s.Coach.Name, "tournament", tid)
+		return nil
+	}
+	other := s.deps.sessionForCoach(opponent)
+	if other == nil {
+		// The waiting entrant vanished between readying and pairing; put this one
+		// back rather than dropping it silently.
+		s.deps.Tournaments.ReadyUp(tid, s.Coach.ID)
+		s.log.Info("tournament search: opponent went offline, still waiting",
+			"coach", s.Coach.Name, "tournament", tid)
+		return nil
+	}
+	s.log.Info("tournament match paired", "tournament", tid,
+		"a", other.Coach.Name, "b", s.Coach.Name)
+	return s.deps.startTournamentMatch(tid, other, s, preset)
+}
+
+// startTournamentMatch tells both entrants the fixture is starting and builds the
+// fight.
+//
+// 28614 goes out FIRST: it is what closes the waiting dialog
+// ("Lancement du combat") and re-arms the client's fight frame. Sending it after
+// CREATE_FIGHT would leave the overlay on top of the arena.
+func (d *Deps) startTournamentMatch(tid int64, a, b *Session, preset uint16) error {
+	frame, err := protocol.EncodeS2C(protocol.OpTournamentFightStarting,
+		protocol.NewWriter().I64(tid).Bytes())
+	if err != nil {
+		return err
+	}
+	_ = a.Send(frame)
+	_ = b.Send(frame)
+
+	arena := pickArena()
+	teamA, err := d.buildFightTeamFor(a, 0, arena.startCells(0), d.resolveTeamRoster(a.Coach.ID, uint(preset)))
+	if err != nil {
+		return err
+	}
+	teamB, err := d.buildFightTeamFor(b, 1, arena.startCells(1), d.resolveTeamRoster(b.Coach.ID, uint(preset)))
+	if err != nil {
+		return err
+	}
+	// Ranked: a tournament match is competitive, so it feeds stats and the ladder
+	// exactly like a Combattre pairing.
+	return d.startFightWithTeams(arena, teamA, teamB, false, 0, false)
+}
+
+// sendTournamentSearchResult sends TOURNAMENT_SEARCH_RESULT (28612 DR):
+// [i64 tid][i16 preset][i8 accepted].
+func (s *Session) sendTournamentSearchResult(tid int64, preset uint16, accepted bool) error {
+	w := protocol.NewWriter().I64(tid).U16(preset)
+	if accepted {
+		w.U8(1)
+	} else {
+		w.U8(0)
+	}
+	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchResult, w.Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
 }
 
 // handleTournamentSearchCancel (28609 bt_0) answers the tournament overlay's
@@ -214,9 +290,10 @@ func handleTournamentSearchCancel(s *Session, _ *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
 	}
-	if s.deps.Matchmaker.CancelSearch(s.Coach.ID) {
+	if s.deps.Tournaments != nil && s.deps.Tournaments.CancelReady(s.Coach.ID) {
 		s.log.Info("tournament search cancelled", "coach", s.Coach.Name)
 	}
+	s.deps.Matchmaker.CancelSearch(s.Coach.ID)
 	w := protocol.NewWriter().U8(boolU8(true))
 	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchCancelResult, w.Bytes())
 	if err != nil {
