@@ -18,9 +18,21 @@ re-tuned). Every v2.04b-inherited value checked so far has turned out wrong in 2
 most of it is done too: **29 Sphere Board**, **31 guilds/clans**, **34 schema migrations**
 and **35 web admin panel** have all landed. What is left in Tier 3 is almost entirely the
 maintainer's own deferrals. **30 (2v2) is now DONE too** — live-verified with four retail
-clients. What remains is **32 (tournament match layer)** and **33 (X-vs-X allies)**, and 33
-turned out to be unrelated to 2v2: its 26313 exists only as the client's `Test` Lua
-binding `XvsXInvitation`, with no UI anywhere. Ask before starting one of those.
+clients. **32 (tournament match layer)** is now done bar one live check: brackets,
+per-fixture pairing, byes, persistence (schema 7) and prizes have all landed, and the
+registration path is live-verified; what has NOT been observed live is a tournament fight
+actually paying out (see below). What remains is **33 (X-vs-X allies)**, which turned out
+to be unrelated to 2v2: its 26313 exists only as the client's `Test` Lua binding
+`XvsXInvitation`, with no UI anywhere. Ask before starting it.
+
+**Open, and the next thing to do on 32:** drive a tournament fight to its end with two
+clients and confirm `tournament prize awarded`. Blocked on a client-side detail, not on
+server code — the Tournois roster loads at login but comes back **empty** after the totem
+trip that produces the tournament notification, so COMBATTRE has nothing to send. Both are
+needed at once: the notification is the only way to select a tournament, and the roster is
+the only way to field a team. Worth finding out whether selecting a tournament
+(`agz_1` → `onlyTabEnabledId`) is what clears the roster, since that is the one action
+between the two states.
 
 A recurring result worth knowing before picking up an item: **five Tier 1 entries were
 resolved by evidence rather than code** — initiative re-sort, 5203 destructive ops, buff
@@ -47,7 +59,7 @@ implementing** (§9).
 
 | # | What |
 |---|---|
-| ITEM 32 | **Tournament match layer live-verified**: totem right-click -> 28601/28602 -> 28630 -> the tournament appears in the Tournois tab -> select -> Combattre -> `tournament match paired a=Chrono b=ExBot` -> `fight started arena=77`, both retail clients in Phase de placement. Bracket (28649/28650) served; result propagation up the heap still open || ITEM 30 | **2v2 DONE** - four retail clients, two duos, one fight: `2v2 side formed side=0 coaches=2 fighters=2` / `side=1 coaches=2 fighters=2`, and post-fight `reports=4 standing=map[1:10 2:10 3:3 4:3]`. Formation is the 60xx team family (2VS2 tab -> friend list -> 6024/6025/6026/6028), NOT item 33's 26313 |
+| ITEM 32 | **Tournament match layer**: totem right-click -> 28601/28602 -> 28630 -> the tournament appears in the Tournois tab -> select -> Combattre -> `tournament match paired a=Chrono b=ExBot` -> `fight started arena=77`, both retail clients in Phase de placement. Bracket (28649/28650) served; results advance up the heap, persist (schema 7), pair per-fixture, bye an unopposed coach (B-122) and pay the definition's prize (B-123). Not yet seen live: a fight actually paying out || ITEM 30 | **2v2 DONE** - four retail clients, two duos, one fight: `2v2 side formed side=0 coaches=2 fighters=2` / `side=1 coaches=2 fighters=2`, and post-fight `reports=4 standing=map[1:10 2:10 3:3 4:3]`. Formation is the 60xx team family (2VS2 tab -> friend list -> 6024/6025/6026/6028), NOT item 33's 26313 |
 | B-121 | Presence reached only friends with `notify` on - a toast preference used as a subscription, so a 2v2 invite worked or failed purely on who logged in first |
 | B-120 | The friend list sent coach id **0** for everyone (adP is the coach id AND the presence flag; adO is notify) |
 | DOCS | `OPCODE-INVENTORY.md` had rotted badly and is now **machine-checked** (`opcode_inventory_test.go`): 20 implemented opcodes were still marked `-` "gap", 3 handlers had no row, and **5106/5108 were marked handled but do not exist in the client at all** (no class returns them). Also settled: 5109/5111 are **C2S**, not S2C ÔÇö their base `so_0` throws *"ne peut ├¬tre d├®cod├®"*, i.e. send-only || DOCS | `OPCODE-INVENTORY.md` had rotted badly and is now **machine-checked** (`opcode_inventory_test.go`): 20 implemented opcodes were still marked `-` "gap", 3 handlers had no row, and **5106/5108 were marked handled but do not exist in the client at all** (no class returns them). Also settled: 5109/5111 are **C2S**, not S2C — their base `so_0` throws *"ne peut être décodé"*, i.e. send-only |

@@ -176,15 +176,28 @@ a subtree contains an entrant exactly when its first leaf does, and a range that
 its last leaf still answers correctly everywhere. The masking disappears the moment
 seeding gains a gap, so the helper's contract is pinned on its own.
 
-### B-123 - the client advertised a tournament prize the server never paid
+### B-123 - a tournament prize defined in the client data was never paid
 
-**Symptom.** A tournament built on definition 11 or 18 showed a prize card on the
-tournament panel ("Récompenses"), and winning it granted nothing.
+**Symptom.** A tournament built on definition 11 or 18 defines a prize card, and
+winning it granted nothing.
 
 **Root cause.** The prize is `aub.aHi()`, bound to the GUI field `tournamentRewards`
 and read by the client **straight out of its own data.bdat** - it is never sent over
-the wire. So the panel renders the advertised prize whether or not the server has any
-idea it exists, and nothing on the wire could reveal the discrepancy.
+the wire, so nothing on the wire could reveal the discrepancy.
+
+**Correction to the original write-up.** This was first recorded as "the client
+*advertises* a prize the server never paid", and that overstated it. `qr_0` does expose
+the reward (`new wy_2(aub.aHi())`), and `tournamentsOfTheDay.xml` /
+`tournamentListDialog.xml` do bind it into the "Récompenses" list - but the
+`<itemRenderer>` there has only an `<isNull/>` branch drawing an empty
+`CardRewardBackground`, with no renderer for an actual card. Checked live with a
+tournament switched to definition 11: the strip stays empty whether or not a prize
+exists. So the shipped GUI never displays it, and the panel is dead in the same way
+B-046 found the ladder's reward panel to be.
+
+That does not change the fix - the data defines a prize for that tournament and a win
+should pay it, and the player does see the card arrive in their inventory - but the
+justification is "the data defines it", not "the player was shown it".
 
 Only 2 of the 22 shipped definitions name a prize (11 → card 26, a rank-5 card worth
 14350; 18 → card 544). Both are free to enter, so both pass the web console's
@@ -203,6 +216,16 @@ from the operator's list.
 Tests: `tournament_prize_test.go` (granted; the definition's own card, not a fixed one;
 nothing when no prize is advertised - including with no card catalogue loaded, where the
 `RewardCard == 0` check is the only guard; and only at the winner slot, not per round).
+
+**Live verification: partial.** With two retail clients the reachability chain and the
+registration path were confirmed end to end - totem right-click → `tournament list
+count=3` → `tournament search period announced tournament=2600002`, "Inscription au
+tournoi acceptée" with the row taking a green check, and the registration surviving a
+full server restart (it was re-announced on the next totem visit). The tournament then
+appears in the Tournois panel as its notification row. The fight itself was NOT reached:
+the team roster loads at login but is empty again after the totem trip, so COMBATTRE had
+nothing to send. Paying the prize is therefore unit-tested but not yet observed live -
+see the open item in STATUS.md.
 
 ### B-121 - presence notifications reached only friends with "notify" on
 
