@@ -158,6 +158,17 @@ var migrations = []migration{
 			return tx.AutoMigrate(&domain.Team{})
 		},
 	},
+	{
+		// Tournament bracket results. Registrations were already persisted while
+		// the bracket they feed was not, so a restart reset every tournament to
+		// its first round - which looked like the results had been thrown away,
+		// because they had.
+		Version: 7,
+		Name:    "tournament_bracket_slots",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.TournamentSlot{})
+		},
+	},
 }
 
 // runMigrations applies every step the database has not recorded yet, in order.

@@ -58,6 +58,8 @@ type tournamentRegistrationStore interface {
 	ListRegistrations() ([]domain.TournamentRegistration, error)
 	AddRegistration(coachID uint, tid int64) error
 	RemoveRegistration(coachID uint, tid int64) error
+	ListSlots() ([]domain.TournamentSlot, error)
+	SetSlot(tid int64, slot int32, coachID uint) error
 }
 
 // TournamentManager records which coaches have registered for which standing
@@ -78,12 +80,12 @@ type TournamentManager struct {
 	// waiting dialog, which cannot survive their disconnection anyway.
 	ready map[int64]uint // tournament wire id -> waiting coach
 	// advanced records who has won through to each bracket slot ABOVE the first
-	// round: tournament -> slot -> coach.
+	// round: tournament -> slot -> coach. Written through to the store, and
+	// primed from it at boot, so a restart no longer resets every tournament to
+	// its first round.
 	//
-	// NOT persisted, unlike registrations. That is a real limitation rather than
-	// a design choice - a restart currently resets the bracket to its first round
-	// - and it is called out here rather than hidden because the fix is a schema
-	// step, not a rewrite: the map is already keyed exactly as a table would be.
+	// Only slots above the first round are kept. The first round is derived from
+	// the registrations, so a seeding cannot drift away from who is entered.
 	advanced map[int64]map[int32]uint
 	store    tournamentRegistrationStore
 }
@@ -113,6 +115,22 @@ func NewTournamentManagerWithStore(s tournamentRegistrationStore) (*TournamentMa
 			m.reg[r.CoachID] = set
 		}
 		set[r.TournamentWireID] = true
+	}
+	// Prime the bracket. A failure here is returned like a registration failure:
+	// starting with a silently empty bracket would look exactly like "everyone
+	// was knocked back to the first round".
+	slots, err := s.ListSlots()
+	if err != nil {
+		return m, err
+	}
+	for _, sl := range slots {
+		if m.advanced[sl.TournamentWireID] == nil {
+			if m.advanced == nil {
+				m.advanced = map[int64]map[int32]uint{}
+			}
+			m.advanced[sl.TournamentWireID] = map[int32]uint{}
+		}
+		m.advanced[sl.TournamentWireID][sl.Slot] = sl.CoachID
 	}
 	return m, nil
 }
@@ -266,6 +284,13 @@ func (m *TournamentManager) RecordMatchResult(tid int64, winner, loser uint) int
 		m.advanced[tid] = map[int32]uint{}
 	}
 	m.advanced[tid][parent] = winner
+	if m.store != nil {
+		// Write through while holding the lock: the in-memory bracket and the
+		// stored one must not be able to disagree about who is in a slot.
+		if err := m.store.SetSlot(tid, parent, winner); err != nil {
+			return parent // the round still stands for this session
+		}
+	}
 	return parent
 }
 

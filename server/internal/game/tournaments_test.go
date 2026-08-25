@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 	"time"
 
@@ -260,9 +261,33 @@ func TestTournamentListReportsClosedRegistration(t *testing.T) {
 // fakeRegStore is an in-process stand-in for the registration store, so the
 // write-through and load-back paths can be tested without a database.
 type fakeRegStore struct {
-	rows    []domain.TournamentRegistration
-	addErr  error
-	loadErr error
+	rows     []domain.TournamentRegistration
+	slots    []domain.TournamentSlot
+	addErr   error
+	loadErr  error
+	slotErr  error
+	slotSets int
+}
+
+func (f *fakeRegStore) ListSlots() ([]domain.TournamentSlot, error) {
+	return f.slots, f.slotErr
+}
+
+func (f *fakeRegStore) SetSlot(tid int64, slot int32, coachID uint) error {
+	f.slotSets++
+	if f.slotErr != nil {
+		return f.slotErr
+	}
+	for i := range f.slots {
+		if f.slots[i].TournamentWireID == tid && f.slots[i].Slot == slot {
+			f.slots[i].CoachID = coachID
+			return nil
+		}
+	}
+	f.slots = append(f.slots, domain.TournamentSlot{
+		TournamentWireID: tid, Slot: slot, CoachID: coachID,
+	})
+	return nil
 }
 
 func (f *fakeRegStore) ListRegistrations() ([]domain.TournamentRegistration, error) {
@@ -428,5 +453,43 @@ func TestTournamentListReflectsRegistration(t *testing.T) {
 	}
 	if r.Remaining() != 0 {
 		t.Errorf("list has %d trailing bytes", r.Remaining())
+	}
+}
+
+// TestBracketSurvivesRestart: registrations were persisted while the bracket they
+// feed was not, so a restart reset every tournament to its first round - which
+// looked exactly like the results had been thrown away, because they had.
+func TestBracketSurvivesRestart(t *testing.T) {
+	st := &fakeRegStore{rows: []domain.TournamentRegistration{
+		{CoachID: 1, TournamentWireID: 7},
+		{CoachID: 2, TournamentWireID: 7},
+	}}
+	m, err := NewTournamentManagerWithStore(st)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if got := m.RecordMatchResult(7, 1, 2); got != 8 {
+		t.Fatalf("advanced to %d, want 8", got)
+	}
+	if st.slotSets == 0 {
+		t.Fatal("the result was never written through to the store")
+	}
+
+	// Reboot from the same store.
+	m2, err := NewTournamentManagerWithStore(st)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if got := m2.BracketSlots(7)[8]; got != 1 {
+		t.Errorf("after restart slot 8 = coach %d, want 1 - the bracket was reset", got)
+	}
+}
+
+// TestBracketLoadFailureIsReported: starting with a silently empty bracket is
+// indistinguishable from every entrant having been knocked back to round one.
+func TestBracketLoadFailureIsReported(t *testing.T) {
+	st := &fakeRegStore{slotErr: errors.New("boom")}
+	if _, err := NewTournamentManagerWithStore(st); err == nil {
+		t.Error("a bracket load failure was swallowed")
 	}
 }

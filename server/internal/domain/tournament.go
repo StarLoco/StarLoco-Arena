@@ -62,6 +62,21 @@ func (Tournament) TableName() string { return "tournaments" }
 // The field is deliberately named for what it holds — the WIRE id, not the
 // tournament row id — because the two differ by TournamentWireBase and confusing
 // them would silently register people for the wrong thing.
+// TournamentSlot records who occupies a bracket slot.
+//
+// The bracket is a 1-indexed binary heap (see game.bracket*): slot 1 is the
+// winner, 16-31 the first round, and slot i is decided by the pair in 2i / 2i+1.
+// Only slots ABOVE the first round are stored - the first round is derived from
+// the registrations, so seeding cannot drift away from who is actually entered.
+type TournamentSlot struct {
+	ID uint `gorm:"primaryKey"`
+
+	TournamentWireID int64 `gorm:"index;not null;uniqueIndex:idx_tourn_slot"`
+	Slot             int32 `gorm:"not null;uniqueIndex:idx_tourn_slot"`
+	CoachID          uint  `gorm:"index;not null"`
+
+	CreatedAt time.Time
+}
 type TournamentRegistration struct {
 	ID      uint `gorm:"primaryKey"`
 	CoachID uint `gorm:"index;not null;uniqueIndex:idx_tourn_reg_coach_tid"`

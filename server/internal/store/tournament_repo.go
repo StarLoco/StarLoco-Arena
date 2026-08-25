@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
 )
@@ -182,4 +183,26 @@ func (r *TournamentRepo) SeedDefaults() (int, error) {
 		}
 	}
 	return len(defaults), nil
+}
+
+// ListSlots returns every stored bracket slot (all tournaments), for priming the
+// in-memory bracket at boot.
+func (r *TournamentRepo) ListSlots() ([]domain.TournamentSlot, error) {
+	var out []domain.TournamentSlot
+	err := r.db.Find(&out).Error
+	return out, err
+}
+
+// SetSlot records the occupant of a bracket slot, replacing any previous one.
+//
+// Upsert rather than insert: a slot is decided once, but a fixture can be
+// replayed (a disconnect, a GM ending a fight), and the later result is the one
+// that stands.
+func (r *TournamentRepo) SetSlot(tid int64, slot int32, coachID uint) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tournament_wire_id"}, {Name: "slot"}},
+		DoUpdates: clause.AssignmentColumns([]string{"coach_id"}),
+	}).Create(&domain.TournamentSlot{
+		TournamentWireID: tid, Slot: slot, CoachID: coachID,
+	}).Error
 }
