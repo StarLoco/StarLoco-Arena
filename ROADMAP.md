@@ -1707,8 +1707,8 @@ is a signing certificate or SignPath); no published Docker image.
     tests rather than buried.
     **Not implemented, deliberately:** 513 (rename) and 551 (icon) - reachable
     only from the client's `Test` Lua debug library, no UI, no assets.
-32. [x] **Tournament live-match layer** — **brackets and progression DONE and
-    live-verified; prizes remain.**
+32. [x] **Tournament live-match layer** — **DONE and live-verified end to end**,
+    prizes included.
 
     The bracket is the client's own shape and not negotiable: `ah_1.getFieldValue`
     slices a 1-indexed binary heap by hard-coded slot range — 1 winner, 2-3 finale,
@@ -1744,8 +1744,28 @@ is a signing certificate or SignPath); no published Docker image.
     are persisted (schema 7) so a restart no longer resets every tournament to its
     first round.
 
-    Still open: **prizes** (the type-1000 `aHi()` reward card is decoded and
-    unpaid), and the rest of the 28xxx admin family (28603/28605/28633/28635),
+    A short draw is won by **byes** (B-122). The client's tree is a fixed
+    16-entrant heap, so without them a coach whose half was never seeded ran out
+    of opponents and the winner slot was never filled — most tournaments simply
+    never finished. "Unopposed" means the sibling's whole SUBTREE holds no
+    entrant, not that the sibling slot is momentarily empty; the two readings
+    agree on a finished round and disagree on a live one. Byes are derived, never
+    stored, so they always match the current entrant list.
+
+    **Prizes are paid** (B-123): `aub.aHi()` is the definition's reward card. It
+    never crosses the wire — the client reads it from its own data.bdat — and the
+    shipped GUI has no renderer for it, so nothing on either side would have
+    revealed it was unpaid. Only definitions 11 (card 26) and 18 (card 544) name
+    one. Note `aub.qo()` is the sibling field and is an entry FEE, not a second
+    prize; that was already handled by excluding fee-charging definitions from
+    the operator's list.
+
+    Live end to end: `tournament match paired a=Chrono b=ExBot` → `fight started
+    arena=74` → `bracket advanced winner=1 slot=1` (a bye — with two entrants the
+    one match IS the final) → `prize awarded def=11 card=26`, with the card in
+    `coach_cards` and only slot 8 persisted.
+
+    Still open: the rest of the 28xxx admin family (28603/28605/28633/28635),
     which is a tournament ADMIN console rather than player-facing.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting

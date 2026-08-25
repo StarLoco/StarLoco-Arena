@@ -167,12 +167,16 @@ Tests: `TestRosterSurvivesAWorldChange` (e2e, drives a real `/WORLD` over a sock
 requires both 6006 and the preset list to follow). Verified live: roster intact after a
 teleport that emptied it before the fix.
 
-**Not the whole story.** A SECOND, independent cause is still open: after visiting the
-tournament totem the roster is empty again even with this fix in place. That is a
-different trigger (the totem/tournament-notification chain, not the instance change) and
-is what still blocks live-verifying a tournament fight. STATUS.md carries it as the open
-item; the earlier guess that `agz_1` → `onlyTabEnabledId` was responsible is now known to
-be wrong for the teleport case and unproven for this one.
+**The second cause turned out NOT to be a bug.** After the totem visit the panel still
+looked empty with this fix in place, but the giveaway was the budget: it read 6600, not 0,
+so the team was loaded and only the portraits were missing. Switching tab away and back
+(Evolution → Tournois) repaints them, and the tournament fight then runs normally.
+
+So that half is a client-side repaint quirk with no server involvement, and needs no fix -
+only a note for anyone driving the client: **after opening the team panel, switch tabs
+once before trusting what the roster shows.** The earlier guess that `agz_1` →
+`onlyTabEnabledId` cleared the roster was wrong twice over - wrong for the teleport (that
+was this bug) and wrong for the totem (nothing was cleared at all).
 
 ### B-122 - an under-filled tournament could never be won
 
@@ -251,15 +255,24 @@ Tests: `tournament_prize_test.go` (granted; the definition's own card, not a fix
 nothing when no prize is advertised - including with no card catalogue loaded, where the
 `RewardCard == 0` check is the only guard; and only at the winner slot, not per round).
 
-**Live verification: partial.** With two retail clients the reachability chain and the
-registration path were confirmed end to end - totem right-click → `tournament list
-count=3` → `tournament search period announced tournament=2600002`, "Inscription au
-tournoi acceptée" with the row taking a green check, and the registration surviving a
-full server restart (it was re-announced on the next totem visit). The tournament then
-appears in the Tournois panel as its notification row. The fight itself was NOT reached:
-the team roster loads at login but is empty again after the totem trip, so COMBATTRE had
-nothing to send. Paying the prize is therefore unit-tested but not yet observed live -
-see the open item in STATUS.md.
+**Live-verified, end to end.** Two retail clients, a tournament switched to definition 11:
+
+```
+tournament match paired  tournament=2600002 a=Chrono b=ExBot
+fight started            id=1 arena=74
+tournament bracket advanced  tournament=2600002 winner=1 slot=1
+tournament prize awarded     coach=1 tournament=2600002 def=11 card=26
+```
+
+and `coach_cards` really holds template 26 qty 1 afterwards. The registration also
+survived a full server restart (`tournament registrations restored count=2`, re-announced
+on the next totem visit).
+
+Two things worth reading off that trace. `slot=1` from a single match is B-122's byes
+working: with two entrants seeded at 16/17 the one match IS the final, and the winner
+rides the empty half of the draw to the root. And only `slot=8` is persisted - slots 4, 2
+and 1 are derived on read, which is the "byes are derived, never stored" rule holding in
+practice rather than only in the unit tests.
 
 ### B-121 - presence notifications reached only friends with "notify" on
 
