@@ -178,6 +178,37 @@ once before trusting what the roster shows.** The earlier guess that `agz_1` →
 `onlyTabEnabledId` cleared the roster was wrong twice over - wrong for the teleport (that
 was this bug) and wrong for the totem (nothing was cleared at all).
 
+### B-125 - an unopposed tournament entrant waited in the overlay forever
+
+**Symptom.** A coach that readied up for a tournament fixture nobody could ever contest -
+the common case once byes exist, since a short draw leaves whole halves empty - sat in
+`tournamentsSearchStatusDialog` for the rest of the session. Cancel was the only way out,
+and it gave up a tournament the coach had in fact already won.
+
+**Root cause.** `handleTournamentSearchRequest` queued every accepted entrant and waited
+for a pairing. Nothing ever closes that overlay from the server side except **28648**
+(`df_1`), which was unimplemented: `zN` case 28648 dismisses the dialog on its winner
+branch, and there is no timeout.
+
+**Fix.** Send 28648 with forfeit=0 - the client's *"the other player was not searching for
+an opponent while you were, so you are declared winner by forfeit"* - and award the prize,
+when the byes have already carried the coach to the root.
+
+**The gate is the subtle part.** This is allowed only once registration is CLOSED. Byes
+are derived from the current entrant list, so while registration is open an empty half of
+the draw means only "nobody has entered there *yet*"; a lone early entrant would otherwise
+be handed the tournament, and its prize, the instant it pressed Combattre. Retail ties
+forfeits to a search *period* closing for the same reason.
+
+That error was caught by an existing test (`TestTournamentReadyAcceptsAndWaits`) going red
+on the first attempt, which is what it was written for.
+
+Tests: `TestUnopposedTournamentEntrantIsDeclaredWinner` (closed, alone -> 28648 forfeit=0),
+`TestLoneEntrantWaitsWhileRegistrationIsOpen` (open, alone -> no 28648) and
+`TestClosedTournamentWithAnOpponentStillWaits` (closed, opponent seeded -> no 28648). The
+last exists because with a single entrant "the bracket says I won" and "always true" are
+indistinguishable - the mutation survived until a two-entrant case was added.
+
 ### B-122 - an under-filled tournament could never be won
 
 **Symptom.** A tournament with fewer than 16 entrants stalled: every entrant played

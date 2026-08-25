@@ -459,7 +459,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28636 | S2C | - | (aig_1) | 28xxx family |
 | 28644 | S2C | - | (aaj_0) | 28xxx family |
 | 28646 | S2C | - | (aNq) | 28xxx family |
-| 28648 | S2C | - | (df_1) | 28xxx family |
+| 28648 | S2C | E | TournamentSearchEnded (df_1) | `[i64 tid][i8 forfeit]` - closes an opponent-search period. forfeit=0 is *"the other player was not searching while you were, so you are declared winner by forfeit"*; forfeit=1 is the same sentence reversed. The ONLY server-side way to dismiss `tournamentsSearchStatusDialog` (`zN` case 28648), so an unopposed coach that never gets this waits in it forever |
 | 28649 | C2S | H | TournamentTreeReq (alf_0) | `handleTournamentTreeRequest` - `[i64 tournamentId][i32 page][i32 len][utf8 highlightName]`. The page is driven by the tree dialog's paging buttons (20069) and the name by its search box (20068) |
 | 28650 | S2C | E | TournamentTree (IL) | `encodeTournamentTree` - `[i32 page][i32 n]{[i32 slot][i32 len][utf8 name]}[i32 unread]`. A 1-indexed binary heap: 1 winner, 2-3 finale, 4-7 semi, 8-15 quarter, 16-31 first round (`ah_1.getFieldValue`). Names are **UTF-8**, not cp1252. Upper rounds stay empty until a match layer decides them |
 
@@ -517,7 +517,35 @@ These are whole subsystems the server has zero code for. Identify them (client o
 behaviour) before deciding whether the retail client needs them:
 
 - **27504–27552** (paired C2S/S2C) — the leaderboard family, now fully identified for the ranking window. It has **SEVEN** tabs, all wired: **1 vs 1** 27500/27501, **Coach** 27508/27509, **2 vs 2** 27504/27505, **Clan** 27502/27503, **Tournoi** 27506/27507, **Ligue Pro** 27514/27515, **Démon** 27512/27513 (+ the per-demon drill-down 27510/27511). Corrected in B-046: 27506/27507 is the *Tournoi* tab (not "seasonal"), and *Ligue Pro* is the separate 27514/27515 pair that previously had no handler. Remaining 275xx opcodes are dark.
-- **28601–28650** (paired C2S/S2C, ~40 opcodes) — the tournament subsystem. The player-facing entry is now live: **28601/28602 list**, **17002/17003 calendar**, **4607/28608 registration**, **28649/28650 bracket** (empty tree). The remaining pairs (28603/28605/28607 create/destroy/admin, 28609/28611 setNotReady/setReady, 28617 report, 28633/28635 period control, 28644/28646/28648 status pushes) drive the deferred **live-match layer** — opponent search, scheduled fights, bracket progression and rewards — which needs many coaches and wall-clock scheduling.
+- **28601–28650** (paired C2S/S2C, ~40 opcodes) — the tournament subsystem, now live
+  end to end: **28601/28602 list**, **17002/17003 calendar**, **4607/28608
+  registration**, **28630 search period**, **28609/28611 cancel/ready**,
+  **28612/28614 accept + fight start**, **28648 search ended**, **28649/28650
+  bracket**.
+
+  The remainder splits in two, and the split is the point:
+
+  **Dead in the retail client — do not implement.** 28603 (`ayQ` create), 28605
+  (`bi_2`), 28607 (`ago_0`), 28617 (`afg_2`), 28633 (`kx_2`), 28635 (`aeC`) are the
+  tournament ADMIN family. Each message class exists and can encode, but **nothing
+  in the client ever constructs one**: `new ayQ()`, `new bi_2()`, `new kx_2()`,
+  `new aeC()` and `new ago_0()` appear nowhere, and the single `new afg_2()` sits
+  inside `gs_2`, which is `ajp_0`'s own inner class. (Grep case-sensitively here:
+  `ayQ` and `aeC` collide with unrelated *methods* `TradeContentCommand.ayQ()` and
+  `ry_2.aeC()`, which makes them look used.)
+
+  Their replies — 28604, 28606, 28618, 28634, 28636 — are handled only by `ajp_0`,
+  a **debug-console** command handler (`apk_0` is the client's console:
+  `HelpCommand`, `NavigateToParentCommandSetCommand`). It reports via `ajp_0.cE()`,
+  which writes to a sink installed by `ajp_0.a(apk_0)` — and nothing calls that
+  either, so the sink stays null and even the printing is inert. A server
+  implementation of this family could never be reached by the retail client.
+
+  **Live and still open.** 28620 (`Yq`, finale announcement), 28622 (`uw_2`), 28644
+  (`aaj_0`, "next search period is at T" countdown) and 28646 (`aNq`, "search period
+  opens now, valid N minutes") are handled by the REAL tournament classes `zN` and
+  `ds_2`, not by the console. They are the remaining player-facing pushes and need
+  wall-clock search-period scheduling, which the server does not have.
 - **15xxx — solved: this is the mailbox** (15000/15001 list, 15003 send result, 15004 delete, 15005 notice, 15006/15007 attachments, 15506/15507 name lookup, plus C2S 539 send). Fully implemented.
 - **17xxx — solved: the tournament calendar** (17002/17003, now serving real standing-tournament events). 17004–17010 are admin calendar-edit opcodes (create/update/remove events), not needed for the player flow.
 - **22xxx (minus 22003)** — statistics/achievements beyond the single counter we handle. **22094/22095 (fireworks) and 22099 (resurrection card) are now implemented.**

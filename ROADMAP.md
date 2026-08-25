@@ -1765,8 +1765,29 @@ is a signing certificate or SignPath); no published Docker image.
     one match IS the final) → `prize awarded def=11 card=26`, with the card in
     `coach_cards` and only slot 8 persisted.
 
-    Still open: the rest of the 28xxx admin family (28603/28605/28633/28635),
-    which is a tournament ADMIN console rather than player-facing.
+    An entrant with nobody left to play is now told so (**28648**, *"the other
+    player was not searching while you were, so you are declared winner by
+    forfeit"*). That message is the only server-side way to dismiss
+    `tournamentsSearchStatusDialog`, so without it an unopposed coach sat in the
+    waiting overlay for the rest of the session. It is gated on registration being
+    CLOSED: byes are derived from the current entrant list, so an empty half of
+    the draw while registration is open means only "nobody has entered there
+    *yet*", and a lone early entrant would otherwise be handed the tournament and
+    its prize the moment it pressed Combattre.
+
+    **The 28xxx admin family is dead in the retail client and deliberately not
+    implemented.** 28603/28605/28607/28617/28633/28635 all have message classes
+    that can encode, but nothing anywhere constructs one — the only `new afg_2()`
+    is inside `ajp_0`'s own inner class. Their replies land solely in `ajp_0`, a
+    **debug-console** handler whose output sink (`ajp_0.a(apk_0)`) is never
+    installed, so even its logging is inert. Server handlers for these could not
+    be reached by any player action. Same call as item 33, on the same evidence:
+    the code exists, the caller does not. See `docs/OPCODE-INVENTORY.md`.
+
+    Still open, and genuinely live: 28620 (finale announcement), 28622, 28644
+    ("next search period at T") and 28646 ("search period opens now, N minutes"),
+    which `zN`/`ds_2` really handle. They need wall-clock search-period
+    scheduling, which the server does not have.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting
     `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen

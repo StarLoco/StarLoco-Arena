@@ -290,6 +290,20 @@ const (
 	// valid the team is: there is no other way to select one.
 	OpTournamentSearchPeriod = 28630 // S2C dg_0: [i64 tid][i8 open]
 
+	// OpTournamentSearchEnded closes an opponent-search period for a fixture the
+	// recipient is in, and says how it was settled: [i64 tid][i8 forfeit].
+	//
+	// forfeit=0 is "tournamentWinner" - "the other player was not searching for
+	// an opponent while you were, so you are declared winner by forfeit for this
+	// match". forfeit=1 is "tournamentForfeit" - the same sentence pointed the
+	// other way.
+	//
+	// It is also the only thing that closes the client's waiting overlay from the
+	// server side: `zN` case 28648 dismisses `tournamentsSearchStatusDialog` on
+	// the winner branch. Without it a coach who readies up and is never paired
+	// sits in that dialog for the rest of the session.
+	OpTournamentSearchEnded = 28648 // S2C df_1: [i64 tid][i8 forfeit]
+
 	OpTournamentTreeReq = 28649 // C2S alf_0 (arch 2): [i64 tid][i32 round][i32 nameLen][name]
 	OpTournamentTree    = 28650 // S2C IL: [i32 treeSize][i32 count]{[i32 id][i32 nameLen][name]}[i32 bib]
 

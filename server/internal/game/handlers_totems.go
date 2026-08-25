@@ -223,6 +223,26 @@ func handleTournamentSearchRequest(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 
+	// A coach the byes have already carried to the root has won the tournament and
+	// has nobody left to play. Queueing it would leave the waiting overlay up for
+	// the rest of the session, since only an opponent - who cannot exist - would
+	// take it down. 28648 is exactly the client's word for this: "the other player
+	// was not searching while you were, so you are declared winner by forfeit".
+	//
+	// Gated on registration being CLOSED, and that gate is the whole subtlety.
+	// Byes are derived from the current entrant list, so while registration is
+	// still open "nobody can ever arrive in the sibling subtree" is only true
+	// until the next person registers. Without this a lone early entrant would be
+	// handed the tournament, and its prize, the instant it pressed Combattre.
+	// Retail ties forfeits to a search PERIOD closing for the same reason.
+	if s.unopposedInTournament(tid) {
+		s.log.Info("tournament search: unopposed, winner by forfeit",
+			"coach", s.Coach.Name, "tournament", tid)
+		s.deps.Tournaments.CancelReady(s.Coach.ID)
+		s.deps.awardTournamentPrize(tid, s.Coach.ID, s)
+		return s.sendTournamentSearchEnded(tid, false)
+	}
+
 	opponent, paired := s.deps.Tournaments.ReadyUp(tid, s.Coach.ID)
 	if !paired {
 		s.log.Info("tournament search: waiting for an opponent",
@@ -292,6 +312,45 @@ func (s *Session) sendTournamentSearchResult(tid int64, preset uint16, accepted 
 		w.U8(0)
 	}
 	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchResult, w.Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// unopposedInTournament reports whether this coach has already won `tid` without
+// playing: the byes carried it to the root AND no further entrant can arrive to
+// change that, because registration is closed.
+//
+// Both halves are required. The bracket alone is not enough while registration is
+// open, since byes are re-derived from the entrant list on every read and a later
+// registration can put a real opponent in the empty half.
+func (s *Session) unopposedInTournament(tid int64) bool {
+	if s.deps.Tournaments == nil || s.deps.Store == nil {
+		return false
+	}
+	t, err := s.deps.Store.Tournaments.GetByWireID(tid)
+	if err != nil || t == nil || t.RegistrationOpen {
+		return false
+	}
+	return s.deps.Tournaments.BracketSlots(tid)[bracketWinnerSlot] == s.Coach.ID
+}
+
+// sendTournamentSearchEnded closes the recipient's opponent-search period for a
+// fixture (28648 df_1) and says how it was settled.
+//
+// forfeit=false is the client's "tournamentWinner": *"the other player was not
+// searching for an opponent while you were, so you are declared winner by
+// forfeit"*. It also dismisses `tournamentsSearchStatusDialog`, which is the
+// only server-side way to take that overlay down.
+func (s *Session) sendTournamentSearchEnded(tid int64, forfeit bool) error {
+	w := protocol.NewWriter().I64(tid)
+	if forfeit {
+		w.U8(1)
+	} else {
+		w.U8(0)
+	}
+	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchEnded, w.Bytes())
 	if err != nil {
 		return err
 	}

@@ -410,3 +410,166 @@ func TestEvolutionFightFeedsProgression(t *testing.T) {
 			"does not feed progression (practice?), so evolution mode is inert")
 	}
 }
+
+// --- unopposed tournament entrant (28648) ---
+
+const (
+	opTournamentRegister      = 4607
+	opTournamentRegisterReply = 28608
+	opTournamentSearchResult  = 28612
+	opTournamentSearchEnded   = 28648
+)
+
+// TestUnopposedTournamentEntrantIsDeclaredWinner: a coach that readies up with
+// nobody left to play must be TOLD, not left queued.
+//
+// The client's waiting overlay (tournamentsSearchStatusDialog) is dismissed by
+// exactly one server message - 28648 on its winner branch - so an entrant whose
+// half of the draw is empty would otherwise sit in that dialog for the rest of
+// the session waiting for an opponent who cannot exist.
+//
+// A sole entrant is the extreme case: the byes carry it from slot 16 to the
+// root, so it has won the tournament before playing anything.
+func TestUnopposedTournamentEntrantIsDeclaredWinner(t *testing.T) {
+	st, addr := testServerWithStore(t)
+	tr := &domain.Tournament{
+		DefID: 1, Name: "Lonely Cup", Short: "LC",
+		Enabled: true, RegistrationOpen: true,
+	}
+	_ = tr
+	if err := st.Tournaments.Create(tr); err != nil {
+		t.Fatalf("create tournament: %v", err)
+	}
+	tid := tr.WireID()
+
+	c, coachID := dialLogin(t, addr, "solo_t", "SoloT")
+	reachWorld(t, c)
+	c.DrainReceived(200 * time.Millisecond)
+
+	// Register through the real 4607 path.
+	_ = c.Send(3, opTournamentRegister, testclient.NewW().
+		I64(tid).I64(coachID).U16(0xFFFF).I32(0).Bytes())
+	f, _, err := c.WaitFor(opTournamentRegisterReply, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no registration reply: %v", err)
+	}
+	r := testclient.NewR(f.Payload)
+	_ = r.I64()
+	if code := r.U8(); code != 0 {
+		t.Fatalf("registration refused with code %d", code)
+	}
+
+	// Close registration. Until it closes, an empty half of the draw only means
+	// nobody has entered YET, so the server correctly keeps the coach waiting;
+	// once closed, no opponent can ever arrive.
+	if err := st.DB().Table("tournaments").Where("id = ?", tr.ID).
+		Update("registration_open", false).Error; err != nil {
+		t.Fatalf("close registration: %v", err)
+	}
+
+	// Ready up. 28612 accepts and opens the overlay; 28648 must then close it.
+	_ = c.Send(2, opTournamentSearchRequest, tournamentSearchPayload(tid, coachID, 1))
+	if _, _, err := c.WaitFor(opTournamentSearchResult, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("no 28612 accept: %v", err)
+	}
+	f, _, err = c.WaitFor(opTournamentSearchEnded, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no TournamentSearchEnded(28648): an unopposed entrant is left "+
+			"in the waiting dialog forever: %v", err)
+	}
+	if n := len(f.Payload); n != 9 {
+		t.Fatalf("28648 payload = %d bytes, want 9 ([i64 tid][i8 forfeit])", n)
+	}
+	r = testclient.NewR(f.Payload)
+	if got := r.I64(); got != tid {
+		t.Errorf("28648 tid = %d, want %d", got, tid)
+	}
+	if forfeit := r.U8(); forfeit != 0 {
+		t.Errorf("28648 forfeit = %d, want 0: the unopposed coach is the WINNER "+
+			"by forfeit, not the one forfeiting", forfeit)
+	}
+}
+
+// TestLoneEntrantWaitsWhileRegistrationIsOpen is the other half of the rule.
+//
+// Byes are derived from the current entrant list, so an empty half of the draw
+// while registration is OPEN means only "nobody has entered there yet". Handing
+// the tournament - and its prize - to whoever pressed Combattre first would be
+// both wrong and unrecoverable.
+func TestLoneEntrantWaitsWhileRegistrationIsOpen(t *testing.T) {
+	st, addr := testServerWithStore(t)
+	tr := &domain.Tournament{
+		DefID: 1, Name: "Open Cup", Short: "OC",
+		Enabled: true, RegistrationOpen: true,
+	}
+	if err := st.Tournaments.Create(tr); err != nil {
+		t.Fatalf("create tournament: %v", err)
+	}
+	tid := tr.WireID()
+
+	c, coachID := dialLogin(t, addr, "open_t", "OpenT")
+	reachWorld(t, c)
+	c.DrainReceived(200 * time.Millisecond)
+
+	_ = c.Send(3, opTournamentRegister, testclient.NewW().
+		I64(tid).I64(coachID).U16(0xFFFF).I32(0).Bytes())
+	if _, _, err := c.WaitFor(opTournamentRegisterReply, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("no registration reply: %v", err)
+	}
+
+	_ = c.Send(2, opTournamentSearchRequest, tournamentSearchPayload(tid, coachID, 1))
+	if _, _, err := c.WaitFor(opTournamentSearchResult, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("no 28612 accept: %v", err)
+	}
+	if f, _, err := c.WaitFor(opTournamentSearchEnded, 700*time.Millisecond); err == nil {
+		t.Fatalf("got 28648 (payload %d bytes) while registration was still open: "+
+			"the coach was handed the tournament before its opponents could enter",
+			len(f.Payload))
+	}
+}
+
+// TestClosedTournamentWithAnOpponentStillWaits: registration being closed is not
+// on its own a licence to declare a winner - there must actually be nobody in
+// the other half of the draw.
+//
+// Two entrants seed at slots 16 and 17, so the first to ready up has a real
+// opponent and must wait for it, not be handed the tournament.
+func TestClosedTournamentWithAnOpponentStillWaits(t *testing.T) {
+	st, addr := testServerWithStore(t)
+	tr := &domain.Tournament{
+		DefID: 1, Name: "Duo Cup", Short: "DC",
+		Enabled: true, RegistrationOpen: true,
+	}
+	if err := st.Tournaments.Create(tr); err != nil {
+		t.Fatalf("create tournament: %v", err)
+	}
+	tid := tr.WireID()
+
+	register := func(login, name string) (*testclient.Client, int64) {
+		c, coachID := dialLogin(t, addr, login, name)
+		reachWorld(t, c)
+		c.DrainReceived(200 * time.Millisecond)
+		_ = c.Send(3, opTournamentRegister, testclient.NewW().
+			I64(tid).I64(coachID).U16(0xFFFF).I32(0).Bytes())
+		if _, _, err := c.WaitFor(opTournamentRegisterReply, testclient.DefaultTimeout); err != nil {
+			t.Fatalf("%s: no registration reply: %v", name, err)
+		}
+		return c, coachID
+	}
+	a, aID := register("dc_a", "DcA")
+	register("dc_b", "DcB")
+
+	if err := st.DB().Table("tournaments").Where("id = ?", tr.ID).
+		Update("registration_open", false).Error; err != nil {
+		t.Fatalf("close registration: %v", err)
+	}
+
+	_ = a.Send(2, opTournamentSearchRequest, tournamentSearchPayload(tid, aID, 1))
+	if _, _, err := a.WaitFor(opTournamentSearchResult, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("no 28612 accept: %v", err)
+	}
+	if _, _, err := a.WaitFor(opTournamentSearchEnded, 700*time.Millisecond); err == nil {
+		t.Fatal("got 28648: a coach with a real opponent in the draw was declared " +
+			"winner by forfeit instead of waiting for it")
+	}
+}
