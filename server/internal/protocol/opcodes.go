@@ -302,6 +302,18 @@ const (
 	// server side: `zN` case 28648 dismisses `tournamentsSearchStatusDialog` on
 	// the winner branch. Without it a coach who readies up and is never paired
 	// sits in that dialog for the rest of the session.
+	// OpTournamentFinale announces (or withdraws) a tournament FINAL, as the
+	// standing "Finale du tournoi X — A VS B" entry in the client's alert list.
+	//
+	//	ADD    : [i8 1][i64 id][i32 n]{i64 coachId}[i32 n]{[i32 len][utf8 name]}[i32 len][utf8 tournamentName]
+	//	REMOVE : [i8 2][i64 id]
+	//
+	// WIRE TRAP: `Yq.a` reads BOTH arrays backwards (`for (n = len-1; 0 <= n; --n)`),
+	// so the first element on the wire lands at index n-1. `zN` prints
+	// `names[0] VS names[1]`, so the pair must be written in REVERSE order or the
+	// two finalists appear the wrong way round.
+	OpTournamentFinale = 28620 // S2C Yq
+
 	OpTournamentSearchEnded = 28648 // S2C df_1: [i64 tid][i8 forfeit]
 
 	OpTournamentTreeReq = 28649 // C2S alf_0 (arch 2): [i64 tid][i32 round][i32 nameLen][name]

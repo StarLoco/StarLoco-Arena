@@ -353,6 +353,31 @@ func (m *TournamentManager) BracketSlots(tid int64) map[int32]uint {
 	return m.bracketSlotsLocked(tid, slots)
 }
 
+// FixtureDecidesTournament reports whether the winner of the pair that decides
+// `parent` goes on to win the whole tournament without playing again - that is,
+// every round above `parent` is a bye.
+//
+// "The parent slot is the root" is NOT the same question, and using it instead is
+// wrong for every draw that is not exactly full: with four entrants the pair at
+// slots 8/9 decides slot 4, and the byes above carry that winner to the root, so
+// it IS the final even though its parent is not slot 1.
+func (m *TournamentManager) FixtureDecidesTournament(tid int64, parent int32) bool {
+	first := m.firstRoundSlots(tid)
+	seeded := make(map[int32]bool, len(first))
+	for _, s := range first {
+		seeded[s] = true
+	}
+	for slot := parent; slot > bracketWinnerSlot; slot /= 2 {
+		lo, hi := firstRoundRange(slot ^ 1)
+		for s := lo; s <= hi; s++ {
+			if seeded[s] {
+				return false // somebody can still arrive to contest this round
+			}
+		}
+	}
+	return true
+}
+
 // ReadyUp records that a registered entrant is ready to play its next tournament
 // match, and returns its opponent once that opponent is ready too.
 //

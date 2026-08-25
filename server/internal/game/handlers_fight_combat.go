@@ -948,6 +948,9 @@ func (d *Deps) advanceTournamentBracket(f *Fight, winnerTeam uint8) {
 	d.Log.Info("tournament bracket advanced",
 		"tournament", f.TournamentID, "winner", winner, "slot", slot)
 	if slot == bracketWinnerSlot {
+		// The final is over: take the announcement down before paying out, so the
+		// alert list never shows a final that has already been decided.
+		d.withdrawFinale(f.TournamentID)
 		d.awardTournamentPrize(f.TournamentID, winner, winnerSession(f, winner))
 	}
 }

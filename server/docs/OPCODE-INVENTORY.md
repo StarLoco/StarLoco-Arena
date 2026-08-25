@@ -450,7 +450,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28616 | S2C | E | TournamentSearchError |  |
 | 28617 | C2S | - | (afg_2) | 28xxx family |
 | 28618 | S2C | - | (ahd_0) | 28xxx family |
-| 28620 | S2C | - | (Yq) | 28xxx family |
+| 28620 | S2C | E | TournamentFinale (Yq) | ADD `[i8 1][i64 id][i32 n]{i64 coachId}[i32 n]{[i32 len][utf8]}[i32 len][utf8 tournamentName]`, REMOVE `[i8 2][i64 id]`. The "Finale du tournoi X - A VS B" alert. **`Yq.a` reads BOTH arrays backwards**, so they are written in reverse or the finalists are announced swapped |
 | 28622 | S2C | - | (uw_2) | 28xxx family |
 | 28630 | S2C | E | TournamentSearchPeriod (dg_0) | `[i64 tid][i8 open]` - opens/closes a tournament's opponent-search period. Creates the client's tournament NOTIFICATION (`zN` builds a `td_0`), and clicking that is the ONLY way to select a tournament (`agz_1` -> `vk_1.ad(tid)`). Without it `hu_2` refuses Combattre with `error.noTournamentSelected` forever |
 | 28633 | C2S | - | (kx_2) | 28xxx family |
@@ -541,11 +541,20 @@ behaviour) before deciding whether the retail client needs them:
   either, so the sink stays null and even the printing is inert. A server
   implementation of this family could never be reached by the retail client.
 
-  **Live and still open.** 28620 (`Yq`, finale announcement), 28622 (`uw_2`), 28644
-  (`aaj_0`, "next search period is at T" countdown) and 28646 (`aNq`, "search period
-  opens now, valid N minutes") are handled by the REAL tournament classes `zN` and
-  `ds_2`, not by the console. They are the remaining player-facing pushes and need
-  wall-clock search-period scheduling, which the server does not have.
+  **28622 is dead too**, for a different reason: `ds_2` does have a case for it, but
+  the body is empty (`bl2 = false; break;`), and the static list it decodes into is
+  only reachable through `uw_2.ahZ()`, which nothing calls. A `case` label is not
+  evidence of a consumer.
+
+  **Live and still open.** 28644 (`aaj_0`, `[i64 tid][i64 nextSearchEpochMillis]`,
+  the "next search period is at T" countdown) and 28646 (`aNq`,
+  `[i64 tid][i64 durationMillis]`, "search period opens now, valid N minutes") are
+  genuinely rendered by `zN`. Both need wall-clock search-period scheduling, which
+  the server does not have — `domain.Tournament` carries no schedule columns.
+
+  One hazard for whoever builds it: `zN` case 28646 adds its `td_0` notification
+  **without** the duplicate guard that case 28630 has, so emitting both for the same
+  tournament leaves two identical rows in the alert list.
 - **15xxx — solved: this is the mailbox** (15000/15001 list, 15003 send result, 15004 delete, 15005 notice, 15006/15007 attachments, 15506/15507 name lookup, plus C2S 539 send). Fully implemented.
 - **17xxx — solved: the tournament calendar** (17002/17003, now serving real standing-tournament events). 17004–17010 are admin calendar-edit opcodes (create/update/remove events), not needed for the player flow.
 - **22xxx (minus 22003)** — statistics/achievements beyond the single counter we handle. **22094/22095 (fireworks) and 22099 (resurrection card) are now implemented.**

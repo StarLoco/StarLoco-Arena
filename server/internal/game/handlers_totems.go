@@ -270,6 +270,10 @@ func handleTournamentSearchRequest(s *Session, f *protocol.C2SFrame) error {
 // ("Lancement du combat") and re-arms the client's fight frame. Sending it after
 // CREATE_FIGHT would leave the overlay on top of the arena.
 func (d *Deps) startTournamentMatch(tid int64, a, b *Session, preset uint16) error {
+	// Decided BEFORE the fight starts: once it ends the winner has moved up and
+	// the pair no longer looks like a final.
+	final := d.isFinalFixture(tid, a.Coach.ID, b.Coach.ID)
+
 	frame, err := protocol.EncodeS2C(protocol.OpTournamentFightStarting,
 		protocol.NewWriter().I64(tid).Bytes())
 	if err != nil {
@@ -298,6 +302,9 @@ func (d *Deps) startTournamentMatch(tid int64, a, b *Session, preset uint16) err
 	// tournaments. The fight is registered synchronously, so this lookup is safe.
 	if f := d.Fights.ByCoach(a.Coach.ID); f != nil {
 		f.TournamentID = tid
+	}
+	if final {
+		d.announceFinale(tid, a, b)
 	}
 	return nil
 }

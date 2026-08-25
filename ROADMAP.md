@@ -1784,10 +1784,24 @@ is a signing certificate or SignPath); no published Docker image.
     be reached by any player action. Same call as item 33, on the same evidence:
     the code exists, the caller does not. See `docs/OPCODE-INVENTORY.md`.
 
-    Still open, and genuinely live: 28620 (finale announcement), 28622, 28644
-    ("next search period at T") and 28646 ("search period opens now, N minutes"),
-    which `zN`/`ds_2` really handle. They need wall-clock search-period
-    scheduling, which the server does not have.
+    **28620** (the "Finale du tournoi X — A VS B" alert) is implemented: it needs
+    no scheduler, because the final is simply the fixture whose winner takes the
+    root. That test is *not* "the parent slot is 1" — with four entrants the pair
+    at 8/9 decides slot 4 and the byes carry that winner home, so it is the final
+    too. `Yq.a` reads both of its arrays **backwards**, so they are written in
+    reverse; writing them naturally yields a valid frame announcing the finalists
+    swapped.
+
+    **28622 is dead** like the admin family: `ds_2`'s case body is empty, and the
+    static list it decodes into (`uw_2.ahZ()`) is never read by anything.
+
+    Still open: **28644** ("next search period is at T") and **28646** ("search
+    period opens now, valid N minutes"), which `zN` genuinely renders. Both are
+    blocked on wall-clock **search-period scheduling**, which needs schedule
+    columns on `domain.Tournament` (it has only `RegistrationOpen` today), a
+    ticker, and care over one hazard: `zN` case 28646 adds its `td_0` notification
+    **without** the duplicate check that case 28630 has, so sending both for one
+    tournament leaves two identical entries in the alert list.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting
     `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen
