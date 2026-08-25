@@ -133,11 +133,9 @@ func TestTournamentWithNoPrizePaysNothing(t *testing.T) {
 // TestTournamentPrizeOnlyAtTheWinnerSlot: the prize is for winning the
 // tournament, not for winning a round.
 //
-// This needs a FULL 16-entrant draw. The bracket has a fixed 16-slot first
-// round and no byes, so a coach whose sibling slot is empty simply stops
-// advancing - with four entrants the winner stalls at slot 4 and slot 1 is
-// never reached. That is a real limitation of the bracket (see BUGS B-122), not
-// of the prize, so it is pinned separately below and kept out of this test.
+// Uses a FULL 16-entrant draw so the winner earns the root by playing every
+// round rather than riding byes into it - the short-draw case is covered by
+// TestShortDrawIsWonByBye below.
 func TestTournamentPrizeOnlyAtTheWinnerSlot(t *testing.T) {
 	d, coachID, tid := tournamentPrizeDeps(t, 11)
 	const prizeCard = 26
@@ -209,11 +207,12 @@ func TestTournamentPrizeOnlyAtTheWinnerSlot(t *testing.T) {
 	}
 }
 
-// TestBracketStallsWithoutAFullDraw pins the limitation the prize test works
-// around: the first round is a fixed 16 slots and there are no byes, so a coach
-// whose sibling slot is empty never advances and an under-filled tournament can
-// never be won. Recorded as B-122.
-func TestBracketStallsWithoutAFullDraw(t *testing.T) {
+// TestShortDrawIsWonByBye: a 4-entrant tournament can be won (B-122).
+//
+// The client's bracket is a fixed 16-entrant tree, so three quarters of a short
+// draw is empty. Beating the only other entrant left must carry the winner all
+// the way to the root rather than stranding it against nobody.
+func TestShortDrawIsWonByBye(t *testing.T) {
 	m := tmWithEntrants(7, 1, 2, 3, 4)
 	if got := m.RecordMatchResult(7, 1, 2); got != 8 {
 		t.Fatalf("advanced to %d, want 8", got)
@@ -221,13 +220,33 @@ func TestBracketStallsWithoutAFullDraw(t *testing.T) {
 	if got := m.RecordMatchResult(7, 3, 4); got != 9 {
 		t.Fatalf("advanced to %d, want 9", got)
 	}
-	if got := m.RecordMatchResult(7, 1, 3); got != 4 {
-		t.Fatalf("advanced to %d, want 4", got)
+	// Slots 8 and 9 decide slot 4, and the whole 5-subtree (leaves 20..23) was
+	// never seeded, so the winner rides the byes from 4 to the root.
+	if got := m.RecordMatchResult(7, 1, 3); got != bracketWinnerSlot {
+		t.Errorf("final advanced to slot %d, want %d: with the top half of the "+
+			"draw empty the winner must not be stranded", got, bracketWinnerSlot)
 	}
-	// Slot 4's sibling is slot 5, which nobody reached: coach 1 has won every
-	// match available to it and is still not the tournament winner.
-	if _, decided := m.BracketSlots(7)[bracketWinnerSlot]; decided {
-		t.Error("a 4-entrant draw reached the winner slot - byes are implemented, " +
-			"so B-122 and the prize test's 16-entrant workaround can go")
+	if got := m.BracketSlots(7)[bracketWinnerSlot]; got != 1 {
+		t.Errorf("winner slot = coach %d, want 1", got)
+	}
+}
+
+// TestByeIsNotGivenWhileAnOpponentIsStillComing is the rule that makes byes
+// safe. "Unopposed" must mean nobody can EVER arrive in the sibling subtree, not
+// merely that it is empty at this instant - otherwise the first coach to win its
+// match is walked straight past an opponent who is still playing.
+func TestByeIsNotGivenWhileAnOpponentIsStillComing(t *testing.T) {
+	m := tmWithEntrants(7, 1, 2, 3, 4)
+	// Coach 1 wins its first round and reaches slot 8. Slot 9 is empty right
+	// now, but 3 and 4 are seeded beneath it and have not played yet.
+	if got := m.RecordMatchResult(7, 1, 2); got != 8 {
+		t.Fatalf("advanced to %d, want 8", got)
+	}
+	if got, ok := m.BracketSlots(7)[bracketWinnerSlot]; ok {
+		t.Fatalf("coach %d was byed to the winner slot while coaches 3 and 4 "+
+			"were still to play their semi-final", got)
+	}
+	if got := m.BracketSlots(7)[4]; got != 0 {
+		t.Errorf("slot 4 = coach %d before the other semi-final was played", got)
 	}
 }

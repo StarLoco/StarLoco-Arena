@@ -468,8 +468,10 @@ func TestBracketSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if got := m.RecordMatchResult(7, 1, 2); got != 8 {
-		t.Fatalf("advanced to %d, want 8", got)
+	// Two entrants seed into 16/17, so this one match decides slot 8 and the
+	// byes above it carry the winner to the root.
+	if got := m.RecordMatchResult(7, 1, 2); got != bracketWinnerSlot {
+		t.Fatalf("advanced to %d, want %d", got, bracketWinnerSlot)
 	}
 	if st.slotSets == 0 {
 		t.Fatal("the result was never written through to the store")

@@ -254,11 +254,15 @@ func (m *TournamentManager) firstRoundSlots(tid int64) map[uint]int32 {
 //
 // The bracket is a binary heap, so the pair in slots 2i / 2i+1 is decided into
 // slot i. The two coaches must actually FACE each other - siblings in the tree -
-// or the result is ignored: pairing is per-tournament but not yet per-fixture, so
-// two entrants from opposite halves of the draw can meet, and advancing one of
-// them would put a coach in a slot it never played for.
+// or the result is ignored. ReadyUp only ever offers a coach its sibling, so
+// that should not arise through the queue; it is still checked, because a fight
+// can be ended by a GM command and putting a coach in a slot it never played for
+// is worse than declining to advance it.
 //
-// Returns the slot the winner advanced to, or 0 if the result did not fit.
+// Returns the slot the winner ends up in, which is not always the parent of the
+// pair: if the next round is unopposed the bye carries it further, and a caller
+// asking "has this decided the tournament?" must see the slot it actually
+// reached. 0 means the result did not fit.
 func (m *TournamentManager) RecordMatchResult(tid int64, winner, loser uint) int32 {
 	slots := m.firstRoundSlots(tid)
 
@@ -291,40 +295,62 @@ func (m *TournamentManager) RecordMatchResult(tid int64, winner, loser uint) int
 			return parent // the round still stands for this session
 		}
 	}
+	// Re-derive: winning into the parent can expose a bye above it, and the
+	// caller needs the slot the winner actually reached - a final decided by a
+	// bye is still a tournament win.
+	if final, ok := topSlotOf(m.bracketSlotsLocked(tid, slots), winner); ok {
+		return final
+	}
 	return parent
 }
 
+// bracketSlotsLocked builds the whole bracket: entrants seeded into the first
+// round, everyone who has won through above it, and the byes that follow from a
+// short draw. Caller holds mu and supplies the seeding.
+//
+// Byes are DERIVED here rather than stored, so they always agree with the
+// current entrant list: a coach that got a bye because its half of the draw was
+// empty stops getting one the moment somebody registers there, with no stored
+// slot left behind to contradict the seeding.
+func (m *TournamentManager) bracketSlotsLocked(tid int64, first map[uint]int32) map[int32]uint {
+	out := make(map[int32]uint, len(first))
+	seeded := make(map[int32]bool, len(first))
+	for coachID, slot := range first {
+		out[slot] = coachID
+		seeded[slot] = true
+	}
+	for slot, coachID := range m.advanced[tid] {
+		out[slot] = coachID
+	}
+	applyByes(out, seeded)
+	return out
+}
+
 // slotOfLocked finds a coach's current slot: the highest round it has reached,
-// falling back to its first-round seat. Caller holds mu.
+// counting byes, and falling back to its first-round seat. Caller holds mu.
 func (m *TournamentManager) slotOfLocked(tid int64, coachID uint, first map[uint]int32) (int32, bool) {
+	return topSlotOf(m.bracketSlotsLocked(tid, first), coachID)
+}
+
+// topSlotOf returns the furthest a coach has got up the tree. Lower slot number
+// = nearer the root, so the smallest occupied slot wins.
+func topSlotOf(slots map[int32]uint, coachID uint) (int32, bool) {
 	best := int32(0)
-	for slot, c := range m.advanced[tid] {
-		// Lower slot number = further up the tree, so prefer the smallest.
+	for slot, c := range slots {
 		if c == coachID && (best == 0 || slot < best) {
 			best = slot
 		}
 	}
-	if best != 0 {
-		return best, true
-	}
-	s, ok := first[coachID]
-	return s, ok
+	return best, best != 0
 }
 
-// BracketSlots returns the whole current bracket: entrants in the first round
-// plus everyone who has won through above it.
+// BracketSlots returns the whole current bracket: entrants in the first round,
+// everyone who has won through above it, and any byes.
 func (m *TournamentManager) BracketSlots(tid int64) map[int32]uint {
 	slots := m.firstRoundSlots(tid)
-	out := make(map[int32]uint, len(slots))
-	for coachID, slot := range slots {
-		out[slot] = coachID
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for slot, coachID := range m.advanced[tid] {
-		out[slot] = coachID
-	}
-	return out
+	return m.bracketSlotsLocked(tid, slots)
 }
 
 // ReadyUp records that a registered entrant is ready to play its next tournament

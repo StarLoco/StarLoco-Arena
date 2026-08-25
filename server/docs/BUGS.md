@@ -136,28 +136,45 @@ belongs to the coach.
   method throws just before `apN.aDK().a(ajo_1.azb())` — and `bC`'s `OW` blob
   length, since `new OW(bytes)` may itself be strict about the 40-byte record.
 
-### B-122 - an under-filled tournament can never be won
+---
 
-**Symptom.** A tournament with fewer than 16 entrants stalls: every entrant plays until
-it runs out of opponents and the winner slot is never filled, so the tournament never
-ends and (since B-123's fix) its prize is never paid. With four entrants the survivor
-stops at slot 4.
+## Fixed
+
+### B-122 - an under-filled tournament could never be won
+
+**Symptom.** A tournament with fewer than 16 entrants stalled: every entrant played
+until it ran out of opponents and the winner slot was never filled, so the tournament
+never ended and its prize (B-123) was never paid. With four entrants the survivor
+stopped at slot 4. Since a 16-entrant tournament is the exception rather than the rule,
+this meant most tournaments simply never finished.
 
 **Root cause.** The client's bracket is a fixed 16-entrant binary heap
 (`ah_1.getFieldValue` hard-codes the slot ranges), and the server seeds only the
 entrants it has. `RecordMatchResult` advances the winner of slots 2i/2i+1, so a coach
-whose sibling slot was never seeded has no fixture to play and simply stops. There are
-no **byes**: an unopposed coach is not walked up the tree.
+whose sibling slot was never seeded had no fixture to play and simply stopped. There
+were no **byes**.
 
-**Status: OPEN.** Pinned by `TestBracketStallsWithoutAFullDraw`, which asserts the
-stall so the day byes are implemented the test fails and says so. The fix is to advance
-a coach automatically when its sibling slot is empty at the start of a round - but that
-has to be decided at ROUND boundaries, not on registration, or a coach who registers
-early is walked to the final before its opponents arrive.
+**Fix.** `applyByes` walks unopposed coaches up the tree, deepest-first so a bye
+cascades through several rounds in one pass.
 
----
+The load-bearing detail is what "unopposed" means. It is NOT "the sibling slot is empty
+right now" - that walks a coach straight past an opponent who has not finished its own
+match yet. It is "the sibling's entire **subtree** holds no entrant", i.e. nobody can
+ever arrive there, which is decidable from the seeding alone and therefore gives the
+same answer no matter when it is asked.
 
-## Fixed
+Byes are **derived**, never stored, so they always agree with the current entrant list:
+a coach byed because its half of the draw was empty stops being byed the moment somebody
+registers there, with no stored slot left behind to contradict the seeding.
+`RecordMatchResult` consequently returns the slot the winner *ends up* in rather than
+the parent of the pair, so a final decided by a bye still reads as a tournament win.
+
+Tests: `TestShortDrawIsWonByBye`, `TestByeIsNotGivenWhileAnOpponentIsStillComing`, and
+`TestFirstRoundRange`. That last one exists because behaviour tests provably *cannot*
+catch an off-by-one in the subtree range: seeding fills the first round contiguously, so
+a subtree contains an entrant exactly when its first leaf does, and a range that drops
+its last leaf still answers correctly everywhere. The masking disappears the moment
+seeding gains a gap, so the helper's contract is pinned on its own.
 
 ### B-123 - the client advertised a tournament prize the server never paid
 

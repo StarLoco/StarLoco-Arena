@@ -137,3 +137,42 @@ func TestEmptyTournamentTreeStillWellFormed(t *testing.T) {
 		t.Errorf("empty tree = page %d, %d slots, trailing %d", page, len(slots), trailing)
 	}
 }
+
+// TestFirstRoundRange pins the subtree helper directly.
+//
+// Behaviour tests cannot catch an off-by-one here: seeding fills the first round
+// contiguously from slot 16, so a subtree contains an entrant exactly when its
+// FIRST leaf does, and a range that drops its last leaf still gives the right
+// answer everywhere. That masking disappears the moment seeding gains a gap, so
+// the contract is asserted on its own.
+func TestFirstRoundRange(t *testing.T) {
+	cases := []struct{ slot, lo, hi int32 }{
+		{1, 16, 31}, // the root covers the whole draw
+		{2, 16, 23}, // the top half
+		{3, 24, 31}, // the bottom half
+		{4, 16, 19},
+		{5, 20, 23},
+		{9, 18, 19},
+		{16, 16, 16}, // a first-round slot covers only itself
+		{31, 31, 31},
+	}
+	for _, c := range cases {
+		lo, hi := firstRoundRange(c.slot)
+		if lo != c.lo || hi != c.hi {
+			t.Errorf("firstRoundRange(%d) = (%d,%d), want (%d,%d)",
+				c.slot, lo, hi, c.lo, c.hi)
+		}
+	}
+	// Every slot must cover a power-of-two span and stay inside the first round.
+	for slot := int32(1); slot < bracketSlots; slot++ {
+		lo, hi := firstRoundRange(slot)
+		if lo < bracketFirstRoundSlot || hi >= bracketSlots || lo > hi {
+			t.Fatalf("firstRoundRange(%d) = (%d,%d) is outside the first round",
+				slot, lo, hi)
+		}
+		if n := hi - lo + 1; n&(n-1) != 0 {
+			t.Errorf("firstRoundRange(%d) spans %d leaves, not a power of two",
+				slot, n)
+		}
+	}
+}

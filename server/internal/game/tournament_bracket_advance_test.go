@@ -39,13 +39,19 @@ func TestBracketAdvancesTheWinnerOfASiblingPair(t *testing.T) {
 		t.Errorf("slot 16 = coach %d, want 1 still seated in its first round", got)
 	}
 
-	// 3 beats 4 -> parent 9. Then 1 (now at 8) beats 3 (now at 9) -> parent 4.
+	// 3 beats 4 -> parent 9. Then 1 (now at 8) beats 3 (now at 9) -> parent 4,
+	// and because the whole 5-subtree was never seeded the byes carry it from
+	// there to the root: with four entrants that last win IS the tournament.
 	if got := m.RecordMatchResult(7, 3, 4); got != 9 {
 		t.Fatalf("advanced to slot %d, want 9", got)
 	}
-	if got := m.RecordMatchResult(7, 1, 3); got != 4 {
-		t.Fatalf("advanced to slot %d, want 4 (parent of 8/9) - the winner must "+
-			"advance from the round it actually reached", got)
+	if got := m.RecordMatchResult(7, 1, 3); got != bracketWinnerSlot {
+		t.Fatalf("advanced to slot %d, want %d - the winner must advance from "+
+			"the round it actually reached, then take its byes", got,
+			bracketWinnerSlot)
+	}
+	if got := m.BracketSlots(7)[4]; got != 1 {
+		t.Errorf("slot 4 = coach %d, want 1 still recorded on the way up", got)
 	}
 }
 

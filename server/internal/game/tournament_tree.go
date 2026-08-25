@@ -34,6 +34,60 @@ const (
 	bracketEntrants = bracketSlots - bracketFirstRoundSlot
 )
 
+// firstRoundRange returns the span of first-round slots sitting under slot.
+//
+// In a binary heap a slot's descendants are a contiguous run at every level, so
+// scaling the slot down to the first round gives its leaves directly: slot 5
+// covers 20..23, slot 1 covers the whole draw, and a first-round slot covers
+// only itself.
+func firstRoundRange(slot int32) (int32, int32) {
+	lo, hi := slot, slot
+	for lo < bracketFirstRoundSlot {
+		lo *= 2
+		hi = hi*2 + 1
+	}
+	return lo, hi
+}
+
+// applyByes walks unopposed coaches up the tree.
+//
+// A tournament rarely fills all 16 first-round places, and the client's bracket
+// has no notion of a short draw - so without this a coach whose half of the tree
+// was never seeded runs out of opponents and the winner slot is never filled
+// (B-122).
+//
+// The test for "unopposed" is deliberately NOT "the sibling slot is empty right
+// now", which would walk a coach past an opponent who simply has not finished
+// its own match yet. It is "the sibling's entire subtree holds no entrant" -
+// nobody can ever arrive there - which is decidable from the seeding alone and
+// so gives the same answer no matter when it is asked.
+//
+// Slots are visited deepest-first so a bye can cascade: a coach alone in its
+// quarter of the draw rides up several rounds in one pass.
+func applyByes(out map[int32]uint, seeded map[int32]bool) {
+	for slot := int32(bracketSlots) - 1; slot >= 2; slot-- {
+		coachID, ok := out[slot]
+		if !ok {
+			continue
+		}
+		parent := slot / 2
+		if _, taken := out[parent]; taken {
+			continue // already decided by a real result
+		}
+		lo, hi := firstRoundRange(slot ^ 1)
+		opposed := false
+		for s := lo; s <= hi; s++ {
+			if seeded[s] {
+				opposed = true
+				break
+			}
+		}
+		if !opposed {
+			out[parent] = coachID
+		}
+	}
+}
+
 // bracket is a sparse slot -> display name map.
 type bracket map[int32]string
 
