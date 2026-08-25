@@ -29,6 +29,13 @@ import (
 //     and it sets 229 itself on the first world entry, so the ack stops arriving
 //     after that.
 //
+//  4. The FIGHTER ROSTER (6006) and TEAM PRESET LIST. The element manager is not
+//     the only thing the client throws away on a 4600: it drops the roster and
+//     the saved presets too, and never asks for them again. Without this the
+//     team panel is empty after any Zaap trip or GM teleport - six "Recruter"
+//     slots and a budget of 0 - until the player relogs, which looks exactly
+//     like the team was deleted.
+//
 // It also keeps Session.currentWorld in sync.
 func (s *Session) sendEnterOverworld(x, y float32, alt, worldID int16) error {
 	enter, err := handshake.EncodeEnterInstance(x, y, alt, worldID, false)
@@ -53,5 +60,19 @@ func (s *Session) sendEnterOverworld(x, y float32, alt, worldID int16) error {
 		}
 	}
 	s.refreshWorldElements(worldID, int32(x), int32(y))
+
+	// Re-send what the client dropped along with the elements. Same reasoning as
+	// resetSpawnedElements above: the client discards this on EVERY 4600, so it
+	// has to go out on every entry rather than only on a world change.
+	//
+	// Failures are logged, not returned: arriving in the world with a stale team
+	// panel is a great deal better than failing the teleport half-way through,
+	// with the coach already told to render the destination.
+	if err := s.pushFighterList(); err != nil {
+		s.log.Warn("re-push fighter roster after instance change", "err", err)
+	}
+	if err := s.pushTeamPresetList(); err != nil {
+		s.log.Warn("re-push team presets after instance change", "err", err)
+	}
 	return nil
 }

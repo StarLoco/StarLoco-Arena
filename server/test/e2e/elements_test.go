@@ -143,3 +143,31 @@ func TestWorldElementsResentOnSameWorldReentry(t *testing.T) {
 		t.Errorf("re-entry spawn is missing the Zaap (37); got %v", got)
 	}
 }
+
+// TestRosterSurvivesAWorldChange: the client throws away the fighter roster and
+// the saved team presets on EVERY ENTER_INSTANCE (4600), exactly as it does its
+// element manager, and never asks for them again.
+//
+// Without the server re-sending them, the team panel is empty after any Zaap
+// trip or GM teleport - six "Recruter" slots and a budget of 0 - until the
+// player relogs, which looks precisely like the team was deleted. Found by
+// driving the retail client: the roster was present after login and gone after
+// a single /WORLD.
+func TestRosterSurvivesAWorldChange(t *testing.T) {
+	_, addr := testServerWithStore(t)
+	a, _ := dialLogin(t, addr, "roster_w", "RosterW")
+	reachWorld(t, a)
+	a.DrainReceived(300 * time.Millisecond)
+
+	// GM commands ride on vicinity chat (3153, [u16 len]message).
+	_ = a.Send(3, 3153, testclient.NewW().StrU16("/WORLD 25 4 45").Bytes())
+
+	if _, _, err := a.WaitFor(testclient.OpFighterList, testclient.DefaultTimeout); err != nil {
+		t.Errorf("no fighter roster (6006) after a world change: the team panel "+
+			"stays empty until relog: %v", err)
+	}
+	if _, _, err := a.WaitFor(testclient.OpTeamPresetList, testclient.DefaultTimeout); err != nil {
+		t.Errorf("no team preset list after a world change: the saved teams stay "+
+			"missing until relog: %v", err)
+	}
+}

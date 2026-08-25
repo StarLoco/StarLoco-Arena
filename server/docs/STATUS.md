@@ -26,13 +26,19 @@ to be unrelated to 2v2: its 26313 exists only as the client's `Test` Lua binding
 `XvsXInvitation`, with no UI anywhere. Ask before starting it.
 
 **Open, and the next thing to do on 32:** drive a tournament fight to its end with two
-clients and confirm `tournament prize awarded`. Blocked on a client-side detail, not on
-server code — the Tournois roster loads at login but comes back **empty** after the totem
-trip that produces the tournament notification, so COMBATTRE has nothing to send. Both are
-needed at once: the notification is the only way to select a tournament, and the roster is
-the only way to field a team. Worth finding out whether selecting a tournament
-(`agz_1` → `onlyTabEnabledId`) is what clears the roster, since that is the one action
-between the two states.
+clients and confirm `tournament prize awarded`. The Tournois roster comes back **empty**
+after the totem trip that produces the tournament notification, so COMBATTRE has nothing
+to send — and both are needed at once, since the notification is the only way to select a
+tournament and the roster the only way to field a team.
+
+Bisecting that found **two** causes, not one. The first was a real server bug and is
+fixed (B-124): the client discards the roster and presets on every ENTER_INSTANCE, so a
+plain `/WORLD` — no totem involved — emptied the team panel, as did every Zaap trip.
+The second is still open: with B-124 fixed, a teleport now preserves the roster but
+visiting the **totem** still clears it. That is a different trigger, and the earlier guess
+(`agz_1` → `onlyTabEnabledId`) is now known to be wrong for the teleport case and remains
+unproven for this one — worth reading what the client does on 28602/28630 before guessing
+again.
 
 A recurring result worth knowing before picking up an item: **five Tier 1 entries were
 resolved by evidence rather than code** — initiative re-sort, 5203 destructive ops, buff

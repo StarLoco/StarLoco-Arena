@@ -140,6 +140,40 @@ belongs to the coach.
 
 ## Fixed
 
+### B-124 - the team panel emptied after any teleport, Zaap trip or GM /WORLD
+
+**Symptom.** After arriving anywhere - a Zaap, a GM `/TP` or `/WORLD` - the team panel
+showed six empty "Recruter" slots and a budget of 0, exactly as if the team had been
+deleted. Relogging brought it back. Found while trying to start a tournament fight: the
+roster was present right after login and gone after a single `/WORLD`.
+
+**Root cause.** The client throws away the fighter roster and the saved team presets on
+**every** ENTER_INSTANCE (4600), the same way it clears its element manager, and never
+asks for them again. `sendEnterOverworld` re-sent the elements (which
+`resetSpawnedElements` and its comment already document) but not the roster or the
+presets - those were pushed only once, during login.
+
+So every path through `sendEnterOverworld` was affected: Zaap travel, `/TP`, `/WORLD`,
+and returning from a fight. The post-fight case was accidentally covered, because the
+end-of-fight code pushes a fresh roster of its own for other reasons.
+
+**Fix.** `sendEnterOverworld` re-pushes both, with the same reasoning as the element
+reset: the client discards them on every 4600, so they must go out on every entry rather
+than only on a world change. Failures are logged, not returned - arriving with a stale
+team panel beats failing a teleport half-way through, after the client has already been
+told to render the destination.
+
+Tests: `TestRosterSurvivesAWorldChange` (e2e, drives a real `/WORLD` over a socket and
+requires both 6006 and the preset list to follow). Verified live: roster intact after a
+teleport that emptied it before the fix.
+
+**Not the whole story.** A SECOND, independent cause is still open: after visiting the
+tournament totem the roster is empty again even with this fix in place. That is a
+different trigger (the totem/tournament-notification chain, not the instance change) and
+is what still blocks live-verifying a tournament fight. STATUS.md carries it as the open
+item; the earlier guess that `agz_1` → `onlyTabEnabledId` was responsible is now known to
+be wrong for the teleport case and unproven for this one.
+
 ### B-122 - an under-filled tournament could never be won
 
 **Symptom.** A tournament with fewer than 16 entrants stalled: every entrant played
