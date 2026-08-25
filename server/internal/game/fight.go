@@ -252,6 +252,11 @@ type Fight struct {
 	// challenge). Set for the overworld DemonChallenge / BreedMaster fights; on
 	// victory it selects the reward cards to grant. See challenge_fights.go.
 	ChallengeID int32
+	// TournamentID is the tournament wire id this fight is a fixture of (0 = not
+	// a tournament match). On conclusion the winner is written into the bracket,
+	// which is the only thing that makes a tournament a progression rather than a
+	// themed queue.
+	TournamentID int64
 	// Evolution marks the LETHAL fight mode (client aKl()==6): a fighter that
 	// falls to 0 HP dies for good (→ evolution state "dead"), filling the
 	// graveyard from real play. Only evolution fights persist deaths; ranked,

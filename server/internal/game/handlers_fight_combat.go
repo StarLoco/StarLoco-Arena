@@ -812,6 +812,9 @@ func (d *Deps) checkFightEnd(f *Fight) {
 			}
 		}
 	}
+	// A tournament fixture advances its winner one round up the bracket.
+	d.advanceTournamentBracket(f, winnerTeam)
+
 	// Coach META pass: XP / morale / fatigue per fighter + coach reputation. It
 	// must run BEFORE the packet is built, because its output IS part of 8300.
 	reports, standingByCoach, killed, injured, diedByCoach := d.runPostFightMeta(f, winnerTeam)
@@ -906,4 +909,40 @@ func (d *Deps) announceDeaths(f *Fight, diedByCoach map[uint][]string) {
 			_ = mem.Session.pushFighterList() // 6006: the client applies the new states
 		}
 	}
+}
+
+// advanceTournamentBracket writes the winner of a tournament fixture into the
+// bracket slot above the pair.
+//
+// A no-op for every other kind of fight, and for a fixture whose two coaches are
+// not siblings in the draw - pairing is per-tournament but not yet per-fixture,
+// so entrants from opposite halves can meet, and advancing one of them would
+// seat a coach in a slot it never played for.
+func (d *Deps) advanceTournamentBracket(f *Fight, winnerTeam uint8) {
+	if f == nil || f.TournamentID == 0 || d.Tournaments == nil {
+		return
+	}
+	var winner, loser uint
+	for _, t := range f.Teams {
+		c := t.Coach()
+		if c == nil || isSyntheticCoach(c.ID) {
+			continue
+		}
+		if t.ID == winnerTeam {
+			winner = c.ID
+		} else {
+			loser = c.ID
+		}
+	}
+	if winner == 0 || loser == 0 {
+		return
+	}
+	slot := d.Tournaments.RecordMatchResult(f.TournamentID, winner, loser)
+	if slot == 0 {
+		d.Log.Info("tournament result not advanced (not a bracket sibling)",
+			"tournament", f.TournamentID, "winner", winner, "loser", loser)
+		return
+	}
+	d.Log.Info("tournament bracket advanced",
+		"tournament", f.TournamentID, "winner", winner, "slot", slot)
 }

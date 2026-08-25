@@ -269,7 +269,17 @@ func (d *Deps) startTournamentMatch(tid int64, a, b *Session, preset uint16) err
 	}
 	// Ranked: a tournament match is competitive, so it feeds stats and the ladder
 	// exactly like a Combattre pairing.
-	return d.startFightWithTeams(arena, teamA, teamB, false, 0, false)
+	if err := d.startFightWithTeams(arena, teamA, teamB, false, 0, false); err != nil {
+		return err
+	}
+	// Tag the fixture so its result can be advanced up the bracket. Done after
+	// creation rather than by threading a tournament id through
+	// startFightWithTeams, which has seven callers with nothing to do with
+	// tournaments. The fight is registered synchronously, so this lookup is safe.
+	if f := d.Fights.ByCoach(a.Coach.ID); f != nil {
+		f.TournamentID = tid
+	}
+	return nil
 }
 
 // sendTournamentSearchResult sends TOURNAMENT_SEARCH_RESULT (28612 DR):

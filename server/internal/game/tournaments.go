@@ -77,7 +77,15 @@ type TournamentManager struct {
 	// process-lived on purpose: a "ready" state is a player sitting in front of a
 	// waiting dialog, which cannot survive their disconnection anyway.
 	ready map[int64]uint // tournament wire id -> waiting coach
-	store tournamentRegistrationStore
+	// advanced records who has won through to each bracket slot ABOVE the first
+	// round: tournament -> slot -> coach.
+	//
+	// NOT persisted, unlike registrations. That is a real limitation rather than
+	// a design choice - a restart currently resets the bracket to its first round
+	// - and it is called out here rather than hidden because the fix is a schema
+	// step, not a rewrite: the map is already keyed exactly as a table would be.
+	advanced map[int64]map[int32]uint
+	store    tournamentRegistrationStore
 }
 
 // NewTournamentManager returns an empty, non-persisting registration tracker.
@@ -205,6 +213,92 @@ func (m *TournamentManager) EntrantsFor(tid int64) []uint {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// firstRoundSlots maps each entrant to its first-round bracket slot.
+//
+// Seeding is by sorted coach id (see EntrantsFor): registration ORDER is not
+// recoverable from a set, and a stable-but-arbitrary seeding is far better than
+// one that reshuffles with Go's map iteration every time the client turns a page.
+func (m *TournamentManager) firstRoundSlots(tid int64) map[uint]int32 {
+	out := map[uint]int32{}
+	for i, coachID := range m.EntrantsFor(tid) {
+		if i >= bracketEntrants {
+			break
+		}
+		out[coachID] = int32(bracketFirstRoundSlot + i)
+	}
+	return out
+}
+
+// RecordMatchResult advances the winner of a tournament fixture one round.
+//
+// The bracket is a binary heap, so the pair in slots 2i / 2i+1 is decided into
+// slot i. The two coaches must actually FACE each other - siblings in the tree -
+// or the result is ignored: pairing is per-tournament but not yet per-fixture, so
+// two entrants from opposite halves of the draw can meet, and advancing one of
+// them would put a coach in a slot it never played for.
+//
+// Returns the slot the winner advanced to, or 0 if the result did not fit.
+func (m *TournamentManager) RecordMatchResult(tid int64, winner, loser uint) int32 {
+	slots := m.firstRoundSlots(tid)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ws, wok := m.slotOfLocked(tid, winner, slots)
+	ls, lok := m.slotOfLocked(tid, loser, slots)
+	if !wok || !lok || ws == ls {
+		return 0
+	}
+	// Siblings share a parent: floor(a/2) == floor(b/2), and they must differ.
+	if ws/2 != ls/2 {
+		return 0
+	}
+	parent := ws / 2
+	if parent < bracketWinnerSlot {
+		return 0
+	}
+	if m.advanced[tid] == nil {
+		if m.advanced == nil {
+			m.advanced = map[int64]map[int32]uint{}
+		}
+		m.advanced[tid] = map[int32]uint{}
+	}
+	m.advanced[tid][parent] = winner
+	return parent
+}
+
+// slotOfLocked finds a coach's current slot: the highest round it has reached,
+// falling back to its first-round seat. Caller holds mu.
+func (m *TournamentManager) slotOfLocked(tid int64, coachID uint, first map[uint]int32) (int32, bool) {
+	best := int32(0)
+	for slot, c := range m.advanced[tid] {
+		// Lower slot number = further up the tree, so prefer the smallest.
+		if c == coachID && (best == 0 || slot < best) {
+			best = slot
+		}
+	}
+	if best != 0 {
+		return best, true
+	}
+	s, ok := first[coachID]
+	return s, ok
+}
+
+// BracketSlots returns the whole current bracket: entrants in the first round
+// plus everyone who has won through above it.
+func (m *TournamentManager) BracketSlots(tid int64) map[int32]uint {
+	slots := m.firstRoundSlots(tid)
+	out := make(map[int32]uint, len(slots))
+	for coachID, slot := range slots {
+		out[slot] = coachID
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for slot, coachID := range m.advanced[tid] {
+		out[slot] = coachID
+	}
 	return out
 }
 

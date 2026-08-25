@@ -101,20 +101,21 @@ func handleTournamentTreeRequest(s *Session, f *protocol.C2SFrame) error {
 		}
 	}
 
-	var names []string
+	// The whole current bracket, not just the entrants: first-round seats PLUS
+	// everyone who has won through above them.
+	b := bracket{}
 	if s.deps.Tournaments != nil {
-		for _, coachID := range s.deps.Tournaments.EntrantsFor(tid) {
-			names = append(names, s.deps.coachDisplayName(coachID))
+		for slot, coachID := range s.deps.Tournaments.BracketSlots(tid) {
+			b[slot] = s.deps.coachDisplayName(coachID)
 		}
 	}
-	b := buildBracket(names)
 
 	frame, err := encodeTournamentTree(page, b)
 	if err != nil {
 		return err
 	}
 	s.log.Debug("tournament tree", "coach", s.Coach.Name,
-		"tournament", tid, "page", page, "entrants", len(names))
+		"tournament", tid, "page", page, "occupied", len(b))
 	return s.Send(frame)
 }
 
