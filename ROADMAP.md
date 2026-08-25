@@ -1707,7 +1707,46 @@ is a signing certificate or SignPath); no published Docker image.
     tests rather than buried.
     **Not implemented, deliberately:** 513 (rename) and 551 (icon) - reachable
     only from the client's `Test` Lua debug library, no UI, no assets.
-32. **Tournament live-match layer** — brackets, scheduling, progression, prizes.
+32. [x] **Tournament live-match layer** — **brackets and progression DONE and
+    live-verified; prizes remain.**
+
+    The bracket is the client's own shape and not negotiable: `ah_1.getFieldValue`
+    slices a 1-indexed binary heap by hard-coded slot range — 1 winner, 2-3 finale,
+    4-7 semi, 8-15 quarter, 16-31 first round — so 16 entrants over 31 slots, and
+    slot i is decided by the pair in 2i / 2i+1. Names in 28650 are **UTF-8**, not
+    the cp1252 the rest of the protocol uses (B-068), and `IL.a` reads a trailing
+    i32 unconditionally, so an empty tree still needs it or the client underflows
+    instead of showing its own "unavailable".
+
+    The match flow, read off `ds_2`: 28611 ready-up → 28612 (which opens the
+    waiting dialog and MUST be sent, because the Tournois tab closes itself after
+    28611) → 28614 *"Lancement du combat"*, which closes that dialog and therefore
+    goes out BEFORE CREATE_FIGHT.
+
+    **Reaching that UI was the hard part and none of it is server-visible.** The
+    Tournois tab never requests the tournament list; only the calendar (20032) and
+    the TOTEM (20070) do, and the totem is an interactive world element (`hb_0`),
+    so the flow is entered from the map. 28630 then creates the notification that
+    is the only way to SELECT a tournament (`agz_1` → `vk_1.ad(tid)`), and it must
+    follow 28602 because `zN` resolves the tournament's NAME out of the registry
+    28602 fills. Sent at world entry it throws inside the client and vanishes.
+
+    Live: right-click the totem → `tournament list count=3` →
+    `search period announced` → the tournament appears in the Tournois panel →
+    select → Combattre → `tournament match paired a=Chrono b=ExBot` →
+    `fight started arena=77`, both retail clients in placement.
+
+    Pairing is per-FIXTURE, not per-tournament: a coach's opponent is the entrant
+    in the sibling slot (`slot ^ 1`) and nobody else. Pairing any two ready
+    entrants was safe — the bracket refuses a non-sibling result — but it sent two
+    players into a match that advanced neither, which is worse than waiting.
+    Results advance the winner to slot i, from the round it actually REACHED, and
+    are persisted (schema 7) so a restart no longer resets every tournament to its
+    first round.
+
+    Still open: **prizes** (the type-1000 `aHi()` reward card is decoded and
+    unpaid), and the rest of the 28xxx admin family (28603/28605/28633/28635),
+    which is a tournament ADMIN console rather than player-facing.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting
     `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen

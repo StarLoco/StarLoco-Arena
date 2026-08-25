@@ -78,7 +78,7 @@ type TournamentManager struct {
 	// ready holds the one entrant waiting for a match in each tournament. It is
 	// process-lived on purpose: a "ready" state is a player sitting in front of a
 	// waiting dialog, which cannot survive their disconnection anyway.
-	ready map[int64]uint // tournament wire id -> waiting coach
+	ready map[int64]map[uint]bool // tournament wire id -> coaches waiting for a fixture
 	// advanced records who has won through to each bracket slot ABOVE the first
 	// round: tournament -> slot -> coach. Written through to the store, and
 	// primed from it at boot, so a restart no longer resets every tournament to
@@ -328,38 +328,57 @@ func (m *TournamentManager) BracketSlots(tid int64) map[int32]uint {
 }
 
 // ReadyUp records that a registered entrant is ready to play its next tournament
-// match, and returns an opponent if one of the SAME tournament is already
-// waiting.
+// match, and returns its opponent once that opponent is ready too.
 //
-// The pairing is deliberately per-tournament rather than through the shared
-// matchmaker: a tournament match is a fixture between two entrants of one
-// tournament, so pairing across tournaments - or against a coach who never
-// registered - would produce a fight that advances nothing. The caller is
-// expected to have checked IsRegistered first; this only guards the pairing.
+// The opponent is not "whoever else is waiting" - it is the entrant occupying the
+// SIBLING slot in the bracket, and nobody else. In a binary heap the pair that
+// decides slot i is 2i and 2i+1, so a coach's opponent sits at `slot ^ 1`.
 //
-// A coach readying twice replaces its own entry rather than matching itself.
+// This used to pair any two ready entrants of the tournament. That was safe -
+// advanceTournamentBracket refuses to advance a non-sibling result - but it meant
+// two players could be sent into a match that advanced neither of them, which is
+// worse than waiting: it looks like a tournament fixture and settles nothing.
+//
+// The caller is expected to have checked IsRegistered; this guards the pairing.
 func (m *TournamentManager) ReadyUp(tid int64, coachID uint) (uint, bool) {
+	// Computed outside the lock: BracketSlots takes it itself.
+	slots := m.BracketSlots(tid)
+	mySlot := int32(0)
+	for slot, c := range slots {
+		if c == coachID && (mySlot == 0 || slot < mySlot) {
+			mySlot = slot
+		}
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ready == nil {
-		m.ready = make(map[int64]uint)
+		m.ready = make(map[int64]map[uint]bool)
 	}
-	if waiting, ok := m.ready[tid]; ok && waiting != coachID {
-		delete(m.ready, tid)
-		return waiting, true
+	if m.ready[tid] == nil {
+		m.ready[tid] = make(map[uint]bool)
 	}
-	m.ready[tid] = coachID
+	// No seat in the bracket (not entered, or the draw is full): it can wait, but
+	// it can never be anyone's sibling, so it will not be paired.
+	if mySlot > bracketWinnerSlot {
+		if opponent, ok := slots[mySlot^1]; ok && opponent != coachID && m.ready[tid][opponent] {
+			delete(m.ready[tid], opponent)
+			delete(m.ready[tid], coachID)
+			return opponent, true
+		}
+	}
+	m.ready[tid][coachID] = true
 	return 0, false
 }
 
-// CancelReady removes a coach from every tournament's ready slot.
+// CancelReady removes a coach from every tournament's ready set.
 func (m *TournamentManager) CancelReady(coachID uint) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	found := false
-	for tid, waiting := range m.ready {
-		if waiting == coachID {
-			delete(m.ready, tid)
+	for _, set := range m.ready {
+		if set[coachID] {
+			delete(set, coachID)
 			found = true
 		}
 	}

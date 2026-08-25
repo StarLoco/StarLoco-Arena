@@ -87,24 +87,62 @@ func TestTournamentPairingIsPerTournament(t *testing.T) {
 	}
 }
 
-// TestTournamentReadyUpPairsWithinOne is the manager-level rule on its own: a
-// second entrant of the SAME tournament pairs with the first, and each coach
-// readying twice replaces itself rather than matching itself.
-func TestTournamentReadyUpPairsWithinOne(t *testing.T) {
-	m := NewTournamentManager()
+// TestTournamentReadyUpPairsSiblings: the opponent is the entrant in the SIBLING
+// bracket slot (slot ^ 1), not whoever else happens to be waiting.
+//
+// Coaches 1..4 seed into slots 16,17,18,19, so the fixtures are 1-v-2 and 3-v-4.
+// Pairing 1 with 3 would send two players into a match that advances neither -
+// the bracket would refuse the result - which is worse than making them wait.
+func TestTournamentReadyUpPairsSiblings(t *testing.T) {
+	m := tmWithEntrants(7, 1, 2, 3, 4)
+
 	if _, paired := m.ReadyUp(7, 1); paired {
 		t.Fatal("the first entrant paired with nobody")
 	}
 	if _, paired := m.ReadyUp(7, 1); paired {
 		t.Fatal("a coach readying twice matched itself")
 	}
+	// Coach 3 sits in the other half of the draw: it must NOT take coach 1.
+	if opp, paired := m.ReadyUp(7, 3); paired {
+		t.Fatalf("coach 3 was paired with %d - it is not coach 1's bracket sibling", opp)
+	}
+	// Coach 2 IS coach 1's sibling.
 	opp, paired := m.ReadyUp(7, 2)
 	if !paired || opp != 1 {
-		t.Fatalf("ReadyUp = (%d, %v), want (1, true)", opp, paired)
+		t.Fatalf("ReadyUp(2) = (%d, %v), want (1, true)", opp, paired)
 	}
-	// The slot is consumed: a third entrant waits rather than re-matching coach 1.
-	if _, paired := m.ReadyUp(7, 3); paired {
-		t.Error("the pairing did not consume the waiting entrant")
+	// That fixture is consumed; coach 4 pairs with the still-waiting coach 3.
+	opp, paired = m.ReadyUp(7, 4)
+	if !paired || opp != 3 {
+		t.Fatalf("ReadyUp(4) = (%d, %v), want (3, true)", opp, paired)
+	}
+	// BOTH sides of a returned fixture must leave the queue. If the opponent were
+	// left behind, the next coach to ready would be handed a stale pairing for a
+	// match that is already under way.
+	if opp, paired := m.ReadyUp(7, 2); paired {
+		t.Errorf("coach 2 was immediately re-paired with %d - the previous fixture "+
+			"left a stale entrant in the queue", opp)
+	}
+}
+
+// TestTournamentReadyUpPairsTheNextRound: after a round is decided, the winners
+// become each other's siblings one level up and pair there.
+func TestTournamentReadyUpPairsTheNextRound(t *testing.T) {
+	m := tmWithEntrants(7, 1, 2, 3, 4)
+	if got := m.RecordMatchResult(7, 1, 2); got != 8 {
+		t.Fatalf("advanced to %d, want 8", got)
+	}
+	if got := m.RecordMatchResult(7, 3, 4); got != 9 {
+		t.Fatalf("advanced to %d, want 9", got)
+	}
+	// 1 is now at slot 8, 3 at slot 9: siblings (8^1 == 9).
+	if _, paired := m.ReadyUp(7, 1); paired {
+		t.Fatal("paired before the opponent was ready")
+	}
+	opp, paired := m.ReadyUp(7, 3)
+	if !paired || opp != 1 {
+		t.Fatalf("ReadyUp(3) = (%d, %v), want (1, true) - the semi-final winners "+
+			"must meet in the next round", opp, paired)
 	}
 }
 
