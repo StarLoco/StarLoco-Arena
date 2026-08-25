@@ -4,6 +4,7 @@ import (
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
 // Combat fallbacks for when a spell cannot be resolved from gamedata — an
@@ -915,9 +916,10 @@ func (d *Deps) announceDeaths(f *Fight, diedByCoach map[uint][]string) {
 // bracket slot above the pair.
 //
 // A no-op for every other kind of fight, and for a fixture whose two coaches are
-// not siblings in the draw - pairing is per-tournament but not yet per-fixture,
-// so entrants from opposite halves can meet, and advancing one of them would
-// seat a coach in a slot it never played for.
+// not siblings in the draw. ReadyUp only offers a coach its bracket sibling, so
+// that second case should now be unreachable through the queue; it is still
+// checked, because a fight can also be ended by a GM command and seating a coach
+// in a slot it never played for is worse than declining to advance it.
 func (d *Deps) advanceTournamentBracket(f *Fight, winnerTeam uint8) {
 	if f == nil || f.TournamentID == 0 || d.Tournaments == nil {
 		return
@@ -945,4 +947,71 @@ func (d *Deps) advanceTournamentBracket(f *Fight, winnerTeam uint8) {
 	}
 	d.Log.Info("tournament bracket advanced",
 		"tournament", f.TournamentID, "winner", winner, "slot", slot)
+	if slot == bracketWinnerSlot {
+		d.awardTournamentPrize(f.TournamentID, winner, winnerSession(f, winner))
+	}
+}
+
+// winnerSession finds the live session of the winning coach, if it has one, so
+// the prize can be pushed to its inventory immediately.
+func winnerSession(f *Fight, coachID uint) *Session {
+	for _, m := range f.members() {
+		if m.Coach != nil && m.Coach.ID == coachID {
+			return m.Session
+		}
+	}
+	return nil
+}
+
+// awardTournamentPrize grants the definition's reward card to the coach that
+// reached the winner slot.
+//
+// The prize lives in the CLIENT's own data (a type-1000 aub record, field
+// aHi(), bound to the GUI field "tournamentRewards") and is never sent over the
+// wire - the tournament panel renders it straight from data.bdat. So the client
+// has been advertising a prize for every tournament built on a definition that
+// names one, whether or not the server paid it. Only definitions 11 and 18 of
+// the 22 shipped ones do, but both are free to enter and therefore both pass the
+// web console's "no entry ticket" filter and can be picked by an operator.
+func (d *Deps) awardTournamentPrize(tid int64, coachID uint, sess *Session) {
+	if d.Store == nil || d.TournamentDefs == nil {
+		return
+	}
+	t, err := d.Store.Tournaments.GetByWireID(tid)
+	if err != nil || t == nil {
+		return
+	}
+	def := d.TournamentDefs.Get(int16(t.DefID))
+	if def == nil || def.RewardCard == 0 {
+		return // most tournaments advertise no prize
+	}
+	// Same dangling-reference guard the challenge rewards use: a definition that
+	// names a card the game does not ship would otherwise leave an inventory row
+	// the client cannot render.
+	if d.Cards != nil && d.Cards.Get(def.RewardCard) == nil {
+		d.Log.Warn("tournament reward names an unknown card; skipping",
+			"tournament", tid, "def", t.DefID, "card", def.RewardCard)
+		return
+	}
+	grants := []store.GrantCard{{TemplateID: def.RewardCard, Quantity: 1}}
+	if err := d.Store.Coaches.GrantCards(coachID, grants); err != nil {
+		d.Log.Warn("award tournament prize", "coach", coachID,
+			"tournament", tid, "card", def.RewardCard, "err", err)
+		return
+	}
+	d.Log.Info("tournament prize awarded", "coach", coachID,
+		"tournament", tid, "def", t.DefID, "card", def.RewardCard)
+	if sess == nil {
+		return // won while offline; the card is in the inventory at next login
+	}
+	fresh, err := d.Store.Coaches.Get(coachID)
+	if err != nil {
+		return
+	}
+	if sess.Coach != nil {
+		sess.Coach.Inventory = fresh.Inventory
+	}
+	if err := sess.pushInventory(fresh); err != nil {
+		d.Log.Warn("push inventory after tournament prize", "coach", coachID, "err", err)
+	}
 }

@@ -24,8 +24,11 @@ func TestLoadTournamentsReal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tr.Len() == 0 {
-		t.Fatal("no tournament definitions decoded")
+	// 22 records ship. Checking the exact count (not just "some") is what would
+	// catch a record being silently rejected: decodeTournamentDef returns nil on
+	// a bad parse, so a layout slip drops records rather than failing loudly.
+	if tr.Len() != 22 {
+		t.Fatalf("decoded %d tournament definitions, want 22", tr.Len())
 	}
 
 	ids := make([]int16, 0, tr.Len())
@@ -63,4 +66,59 @@ func TestLoadTournamentsReal(t *testing.T) {
 		}
 	}
 	t.Logf("levels (type 1001): %v", tr.Levels())
+}
+
+// TestTournamentFeesAndRewardsAreScarce pins WHICH definitions charge and pay.
+//
+// This is the fact the prize handling rests on, and it is easy to assume wrongly
+// in both directions. Only two of the 22 shipped tournaments advertise a prize
+// and only two charge an entry ticket; the rest are free and pay nothing, so a
+// reward path exercised only against the definitions the server currently
+// offers (1, 4, 17 - all zero on both counts) would look correct while never
+// once running.
+func TestTournamentFeesAndRewardsAreScarce(t *testing.T) {
+	dir := filepath.Join("..", "..", "data-dist")
+	if _, err := os.Stat(filepath.Join(dir, "data.bdat")); err != nil {
+		t.Skip("no data-dist; skipping")
+	}
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := st.LoadTournaments()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotReward := map[int16]int32{}
+	gotFee := map[int16]int32{}
+	for id, d := range tr.All() {
+		if d.RewardCard != 0 {
+			gotReward[id] = d.RewardCard
+		}
+		if d.InscriptionCard != 0 {
+			gotFee[id] = d.InscriptionCard
+		}
+	}
+
+	wantReward := map[int16]int32{11: 26, 18: 544}
+	wantFee := map[int16]int32{13: 16, 19: 808}
+	if !sameTournamentCardMap(gotReward, wantReward) {
+		t.Errorf("reward cards = %v, want %v", gotReward, wantReward)
+	}
+	if !sameTournamentCardMap(gotFee, wantFee) {
+		t.Errorf("inscription cards = %v, want %v", gotFee, wantFee)
+	}
+}
+
+func sameTournamentCardMap(a, b map[int16]int32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }

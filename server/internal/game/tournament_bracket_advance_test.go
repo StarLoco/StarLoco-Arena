@@ -5,10 +5,11 @@ import (
 )
 
 // Advancing a result up the bracket. The tree is a binary heap, so the winner of
-// slots 2i / 2i+1 takes slot i - and only a genuine SIBLING pair may advance,
-// because pairing is per-tournament but not yet per-fixture: two entrants from
-// opposite halves of the draw can be matched, and advancing one of them would
-// seat a coach in a slot it never played for.
+// slots 2i / 2i+1 takes slot i - and only a genuine SIBLING pair may advance.
+// ReadyUp now offers a coach only its sibling, so a non-sibling pair should not
+// reach here through the queue; it is still refused, because a GM can end a
+// fight directly and seating a coach in a slot it never played for is worse than
+// declining to advance it.
 
 func tmWithEntrants(tid int64, coaches ...uint) *TournamentManager {
 	m := NewTournamentManager()

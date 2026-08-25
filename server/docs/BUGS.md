@@ -136,9 +136,56 @@ belongs to the coach.
   method throws just before `apN.aDK().a(ajo_1.azb())` — and `bC`'s `OW` blob
   length, since `new OW(bytes)` may itself be strict about the 40-byte record.
 
+### B-122 - an under-filled tournament can never be won
+
+**Symptom.** A tournament with fewer than 16 entrants stalls: every entrant plays until
+it runs out of opponents and the winner slot is never filled, so the tournament never
+ends and (since B-123's fix) its prize is never paid. With four entrants the survivor
+stops at slot 4.
+
+**Root cause.** The client's bracket is a fixed 16-entrant binary heap
+(`ah_1.getFieldValue` hard-codes the slot ranges), and the server seeds only the
+entrants it has. `RecordMatchResult` advances the winner of slots 2i/2i+1, so a coach
+whose sibling slot was never seeded has no fixture to play and simply stops. There are
+no **byes**: an unopposed coach is not walked up the tree.
+
+**Status: OPEN.** Pinned by `TestBracketStallsWithoutAFullDraw`, which asserts the
+stall so the day byes are implemented the test fails and says so. The fix is to advance
+a coach automatically when its sibling slot is empty at the start of a round - but that
+has to be decided at ROUND boundaries, not on registration, or a coach who registers
+early is walked to the final before its opponents arrive.
+
 ---
 
 ## Fixed
+
+### B-123 - the client advertised a tournament prize the server never paid
+
+**Symptom.** A tournament built on definition 11 or 18 showed a prize card on the
+tournament panel ("Récompenses"), and winning it granted nothing.
+
+**Root cause.** The prize is `aub.aHi()`, bound to the GUI field `tournamentRewards`
+and read by the client **straight out of its own data.bdat** - it is never sent over
+the wire. So the panel renders the advertised prize whether or not the server has any
+idea it exists, and nothing on the wire could reveal the discrepancy.
+
+Only 2 of the 22 shipped definitions name a prize (11 → card 26, a rank-5 card worth
+14350; 18 → card 544). Both are free to enter, so both pass the web console's
+"no entry ticket" filter and can be picked by an operator.
+
+**Fix.** `Deps.awardTournamentPrize`, called from `advanceTournamentBracket` when the
+winner reaches `bracketWinnerSlot`, grants the definition's `RewardCard` and pushes a
+fresh inventory. Guarded like the challenge rewards against a definition naming a card
+the game does not ship.
+
+Note the sibling field `aub.qo()` = `tournamentInscriptionCard` is an entry **fee**,
+not a reward: `aug.registerTournament` refuses to send the registration unless the coach
+holds that card. That rule was already handled, by excluding fee-charging definitions
+from the operator's list.
+
+Tests: `tournament_prize_test.go` (granted; the definition's own card, not a fixed one;
+nothing when no prize is advertised - including with no card catalogue loaded, where the
+`RewardCard == 0` check is the only guard; and only at the winner slot, not per round).
 
 ### B-121 - presence notifications reached only friends with "notify" on
 
