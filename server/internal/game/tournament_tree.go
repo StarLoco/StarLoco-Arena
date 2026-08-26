@@ -1,6 +1,9 @@
 package game
 
 import (
+	"time"
+
+	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
@@ -233,6 +236,35 @@ func (s *Session) announceTournamentSearchPeriods() {
 			s.log.Debug("tournament search period announced",
 				"coach", s.Coach.Name, "tournament", tid)
 		}
+		s.announceUpcomingSearchPeriod(&ts[i])
+	}
+}
+
+// announceUpcomingSearchPeriod sends 28644 when this tournament's search window
+// is still ahead, so the entrant sees a countdown to it.
+//
+// Deliberately NOT sent once the window has opened or passed: `zN` computes the
+// remaining minutes as 1 + (start - now)/60000, so a start in the past produces a
+// negative countdown rather than nothing.
+//
+// 28646 ("the period opens NOW, valid N minutes") is the natural companion and is
+// still unimplemented on purpose - `zN` case 28646 adds its `td_0` WITHOUT the
+// duplicate guard that case 28630 has, so sending both for one tournament leaves
+// two identical rows in the alert list. Emitting it needs 28630 to stop being the
+// selection mechanism first.
+func (s *Session) announceUpcomingSearchPeriod(t *domain.Tournament) {
+	start := t.SearchPeriodStart
+	if start.IsZero() || t.SearchPeriodMinutes <= 0 || !start.After(time.Now()) {
+		return
+	}
+	w := protocol.NewWriter().I64(t.WireID()).I64(start.UnixMilli())
+	frame, err := protocol.EncodeS2C(protocol.OpTournamentSearchUpcoming, w.Bytes())
+	if err != nil {
+		return
+	}
+	if err := s.Send(frame); err == nil {
+		s.log.Debug("tournament search period upcoming",
+			"coach", s.Coach.Name, "tournament", t.WireID(), "start", start)
 	}
 }
 

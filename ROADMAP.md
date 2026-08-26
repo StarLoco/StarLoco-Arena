@@ -1795,13 +1795,22 @@ is a signing certificate or SignPath); no published Docker image.
     **28622 is dead** like the admin family: `ds_2`'s case body is empty, and the
     static list it decodes into (`uw_2.ahZ()`) is never read by anything.
 
-    Still open: **28644** ("next search period is at T") and **28646** ("search
-    period opens now, valid N minutes"), which `zN` genuinely renders. Both are
-    blocked on wall-clock **search-period scheduling**, which needs schedule
-    columns on `domain.Tournament` (it has only `RegistrationOpen` today), a
-    ticker, and care over one hazard: `zN` case 28646 adds its `td_0` notification
-    **without** the duplicate check that case 28630 has, so sending both for one
-    tournament leaves two identical entries in the alert list.
+    Tournaments now carry a real **opponent-search schedule**
+    (`SearchPeriodStart` / `SearchPeriodMinutes`, schema 8), and **28644** sends
+    entrants the countdown to it. The schedule is a single source of truth: the
+    calendar's "phase" pair used to be invented as `now+1h..now+2h` on every
+    request, so what the player was shown drifted each time the window was opened
+    and corresponded to nothing. 28644 goes out only while the window is still
+    ahead — `zN` renders `1 + (start-now)/60000` minutes, so a past start shows a
+    negative countdown.
+
+    Still open: **28646** ("the period opens now, valid N minutes") and the
+    **settlement** that gives the schedule teeth — declaring the absentees forfeit
+    once a window closes, which is what lets a tournament progress when only one
+    finalist is online. 28646 is blocked on a specific hazard rather than effort:
+    `zN` case 28646 adds its `td_0` **without** the duplicate guard case 28630 has,
+    so emitting both for one tournament leaves two identical alert rows — 28630
+    would have to stop being the selection mechanism first.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting
     `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen

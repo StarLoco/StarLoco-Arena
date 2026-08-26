@@ -169,6 +169,17 @@ var migrations = []migration{
 			return tx.AutoMigrate(&domain.TournamentSlot{})
 		},
 	},
+	{
+		// Additive columns still need their own step: the baseline AutoMigrate
+		// only covers a FRESH database, so an existing one is already recorded at
+		// its version and never sees them. Tests pass, production breaks with
+		// "table tournaments has no column named search_period_start".
+		Version: 8,
+		Name:    "tournament_search_period",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.Tournament{})
+		},
+	},
 }
 
 // runMigrations applies every step the database has not recorded yet, in order.

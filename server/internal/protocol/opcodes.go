@@ -314,6 +314,14 @@ const (
 	// two finalists appear the wrong way round.
 	OpTournamentFinale = 28620 // S2C Yq
 
+	// OpTournamentSearchUpcoming tells an entrant when the next opponent-search
+	// period begins: [i64 tid][i64 startEpochMillis].
+	//
+	// `zN` turns it into a countdown entry (`apd`) showing the remaining minutes,
+	// computed as 1 + (start - now)/60000 - so a start in the PAST yields a
+	// negative, nonsensical count. Only send it while the period is still ahead.
+	OpTournamentSearchUpcoming = 28644 // S2C aaj_0
+
 	OpTournamentSearchEnded = 28648 // S2C df_1: [i64 tid][i8 forfeit]
 
 	OpTournamentTreeReq = 28649 // C2S alf_0 (arch 2): [i64 tid][i32 round][i32 nameLen][name]

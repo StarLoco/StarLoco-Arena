@@ -464,8 +464,16 @@ func buildTournamentCalendar(ts []domain.Tournament) ([]byte, error) {
 func writeTournamentEvent(w *protocol.Writer, t *domain.Tournament, now time.Time) {
 	startedMs := now.Add(-time.Hour).UnixMilli()      // event has already started (extraDate / bOF)
 	expireMs := now.Add(tournamentWindow).UnixMilli() // event runs until (startDate slot / OV)
+
+	// The phase pair is the opponent-search window. When the tournament has a real
+	// schedule this is it; otherwise fall back to the window this used to invent
+	// unconditionally, so rows created before the schedule existed still render.
 	phaseStartMs := now.Add(time.Hour).UnixMilli()
 	phaseEndMs := now.Add(2 * time.Hour).UnixMilli()
+	if end := t.SearchPeriodEnd(); !end.IsZero() {
+		phaseStartMs = t.SearchPeriodStart.UnixMilli()
+		phaseEndMs = end.UnixMilli()
+	}
 
 	w.I32(tournamentContentTypeID) // [i32 typeId] -> qr_0
 

@@ -2,7 +2,9 @@ package game
 
 import (
 	"testing"
+	"time"
 
+	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
 
@@ -56,4 +58,97 @@ func TestSearchPeriodOpcode(t *testing.T) {
 		t.Errorf("OpTournamentSearchPeriod = %d, want 28630",
 			protocol.OpTournamentSearchPeriod)
 	}
+}
+
+// --- scheduled opponent-search period (28644) ---
+
+// TestSearchPeriodDrivesTheAdvertisedSchedule: the calendar's "phase" pair used
+// to be invented as now+1h..now+2h on every request, so what the player was shown
+// drifted each time the window was opened and matched nothing the server knew.
+// With a real schedule the advertised window must BE that schedule.
+func TestSearchPeriodDrivesTheAdvertisedSchedule(t *testing.T) {
+	start := time.Now().Add(3 * time.Hour).Truncate(time.Second)
+	tr := &domain.Tournament{
+		ID: 1, DefID: 1, Name: "Sched", Short: "S", Enabled: true,
+		SearchPeriodStart: start, SearchPeriodMinutes: 30,
+	}
+	w := protocol.NewWriter()
+	writeTournamentEvent(w, tr, time.Now())
+
+	phaseStart, phaseEnd := phasePairFromEvent(t, w.Bytes())
+	if phaseStart != start.UnixMilli() {
+		t.Errorf("advertised phase start = %d, want %d (the tournament's own "+
+			"schedule, not an invented window)", phaseStart, start.UnixMilli())
+	}
+	if want := start.Add(30 * time.Minute).UnixMilli(); phaseEnd != want {
+		t.Errorf("advertised phase end = %d, want %d", phaseEnd, want)
+	}
+}
+
+// TestUnscheduledTournamentKeepsTheOldWindow: rows created before the schedule
+// existed have a zero start, and must still render rather than advertising 1970.
+func TestUnscheduledTournamentKeepsTheOldWindow(t *testing.T) {
+	now := time.Now()
+	tr := &domain.Tournament{ID: 1, DefID: 1, Name: "Old", Short: "O", Enabled: true}
+	w := protocol.NewWriter()
+	writeTournamentEvent(w, tr, now)
+
+	phaseStart, phaseEnd := phasePairFromEvent(t, w.Bytes())
+	if phaseStart <= now.UnixMilli() || phaseEnd <= phaseStart {
+		t.Errorf("unscheduled tournament advertised %d..%d, want a sane future "+
+			"window", phaseStart, phaseEnd)
+	}
+}
+
+// phasePairFromEvent walks a qr_0 calendar body to its schedule pair.
+func phasePairFromEvent(t *testing.T, b []byte) (int64, int64) {
+	t.Helper()
+	r := protocol.NewReader(b)
+	mustI32 := func() int32 {
+		v, err := r.I32()
+		if err != nil {
+			t.Fatalf("i32: %v", err)
+		}
+		return v
+	}
+	mustI64 := func() int64 {
+		v, err := r.I64()
+		if err != nil {
+			t.Fatalf("i64: %v", err)
+		}
+		return v
+	}
+	mustU8 := func() uint8 {
+		v, err := r.U8()
+		if err != nil {
+			t.Fatalf("u8: %v", err)
+		}
+		return v
+	}
+
+	mustI32() // typeId
+	mustI64() // eventId
+	mustI64() // startDate slot
+	mustI64() // endDate
+	mustI64() // recurrence
+	mustI32() // label
+	mustI64() // extraDate
+	mustI64() // tournamentId
+	if _, err := r.StringU8(); err != nil {
+		t.Fatalf("name: %v", err)
+	}
+	dlen, err := r.U16()
+	if err != nil {
+		t.Fatalf("description len: %v", err)
+	}
+	if _, err := r.String(int(dlen)); err != nil {
+		t.Fatalf("description: %v", err)
+	}
+	if _, err := r.StringU8(); err != nil {
+		t.Fatalf("short: %v", err)
+	}
+	if n := mustU8(); n != 1 {
+		t.Fatalf("schedule pairs = %d, want 1", n)
+	}
+	return mustI64(), mustI64()
 }

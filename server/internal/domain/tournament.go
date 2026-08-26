@@ -44,8 +44,41 @@ type Tournament struct {
 	// Position orders the list players see; ties fall back to ID.
 	Position int `gorm:"not null;default:0"`
 
+	// SearchPeriodStart / SearchPeriodMinutes describe the tournament's
+	// opponent-search period: the window in which entrants are expected to press
+	// Combattre, and outside which retail declares the absentees forfeit.
+	//
+	// This is the SAME schedule the client is shown. The calendar event (17003
+	// qr_0) carries a "phase" pair which used to be invented as now+1h..now+2h on
+	// every request - display-only, and drifting each time the window was opened.
+	// Driving both from these columns is what stops the advertised schedule and
+	// the server's own idea of it from disagreeing.
+	//
+	// A zero SearchPeriodStart means "not scheduled"; the calendar then falls back
+	// to the old synthesized window so existing rows keep working.
+	SearchPeriodStart   time.Time
+	SearchPeriodMinutes int32 `gorm:"not null;default:0"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// SearchPeriodEnd is when the opponent-search window closes, or the zero time if
+// none is scheduled.
+func (t *Tournament) SearchPeriodEnd() time.Time {
+	if t == nil || t.SearchPeriodStart.IsZero() || t.SearchPeriodMinutes <= 0 {
+		return time.Time{}
+	}
+	return t.SearchPeriodStart.Add(time.Duration(t.SearchPeriodMinutes) * time.Minute)
+}
+
+// SearchPeriodOpenAt reports whether the search window contains `now`.
+func (t *Tournament) SearchPeriodOpenAt(now time.Time) bool {
+	end := t.SearchPeriodEnd()
+	if end.IsZero() {
+		return false
+	}
+	return !now.Before(t.SearchPeriodStart) && now.Before(end)
 }
 
 func (Tournament) TableName() string { return "tournaments" }

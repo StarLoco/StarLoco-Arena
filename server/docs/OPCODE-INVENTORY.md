@@ -457,7 +457,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28634 | S2C | - | (acn_2) | 28xxx family |
 | 28635 | C2S | - | (aeC) | 28xxx family |
 | 28636 | S2C | - | (aig_1) | 28xxx family |
-| 28644 | S2C | - | (aaj_0) | 28xxx family |
+| 28644 | S2C | E | TournamentSearchUpcoming (aaj_0) | `[i64 tid][i64 startEpochMillis]` - the countdown to a tournament's next opponent-search period. `zN` shows `1 + (start-now)/60000` minutes, so a start in the PAST renders a negative count; sent only while the window is still ahead |
 | 28646 | S2C | - | (aNq) | 28xxx family |
 | 28648 | S2C | E | TournamentSearchEnded (df_1) | `[i64 tid][i8 forfeit]` - closes an opponent-search period. forfeit=0 is *"the other player was not searching while you were, so you are declared winner by forfeit"*; forfeit=1 is the same sentence reversed. The ONLY server-side way to dismiss `tournamentsSearchStatusDialog` (`zN` case 28648), so an unopposed coach that never gets this waits in it forever |
 | 28649 | C2S | H | TournamentTreeReq (alf_0) | `handleTournamentTreeRequest` - `[i64 tournamentId][i32 page][i32 len][utf8 highlightName]`. The page is driven by the tree dialog's paging buttons (20069) and the name by its search box (20068) |
