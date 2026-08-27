@@ -73,7 +73,7 @@ jobs:
 
       - name: Run the test suite before publishing
         working-directory: server
-        run: go test $(go list ./... | grep -v '/cmd/studio')
+        run: go test -timeout 25m $(go list ./... | grep -v '/cmd/studio')
 
       - uses: goreleaser/goreleaser-action@v6
         with:

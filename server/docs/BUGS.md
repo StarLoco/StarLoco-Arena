@@ -140,6 +140,29 @@ belongs to the coach.
 
 ## Fixed
 
+### B-129 - the e2e suite sits too close to go test's 10m default on CI
+
+**Symptom.** `test/e2e` intermittently hit `panic: test timed out after 10m0s` on
+`ubuntu-latest`, with `TestPlacementRejectsIllegalCellsAndPhases` reported as the running
+test. It failed the release job twice, so **v0.5.0 was tagged and published with no
+binaries** - GoReleaser runs the suite and never got to build.
+
+**Not what it looked like.** The obvious readings were both wrong. It is not CPU
+starvation: under `docker --cpus=2`, matching the runner, that test passes in 17s. It is
+not an infinite hang either - one full CI run completed it in 6m49s. What actually happens
+is that CI runs **every package concurrently** (`go test $all_pkgs`), so the e2e fights -
+which drive real sockets and real clocks - contend with the rest of the suite and the
+package total lands close enough to 10m that ordinary variance decides the outcome.
+
+Two greens in between were misleading and worth flagging: docs-only and changelog-only
+commits finished in ~3m because Go served **cached** test results, so they proved nothing
+about the flake.
+
+**Mitigation, not a fix.** `-timeout 25m` on every CI and release `go test` invocation.
+That stops variance from failing releases; it does not make the suite faster, and if a real
+deadlock is ever introduced it now takes 25m to surface instead of 10m. The underlying
+work - the e2e suite is slow because it waits on wall-clock fight phases - is still open.
+
 ### B-126 - two e2e tests raced the fight phase, red on Linux CI only
 
 **Symptom.** After 132 commits went out, CI failed on `ubuntu-latest` while `windows-latest`

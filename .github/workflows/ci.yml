@@ -75,14 +75,17 @@ jobs:
           all_pkgs=$(go list ./... | grep -v '/cmd/studio')
           go build $build_pkgs
           go vet $all_pkgs
-          go test $all_pkgs
+          # -timeout 25m, not the 10m default: the e2e suite drives real fights over real
+          # sockets and every package runs concurrently here, so on a 2-core runner it
+          # lands close enough to 10m that variance alone fails a release (B-129).
+          go test -timeout 25m $all_pkgs
 
       - name: Build, vet and test (Windows, everything)
         if: runner.os == 'Windows'
         run: |
           go build ./...
           go vet ./...
-          go test ./...
+          go test -timeout 25m ./...
 
       # The thing users actually download must compile for every release target
       # on every commit - a cross-compilation break should never be discovered
