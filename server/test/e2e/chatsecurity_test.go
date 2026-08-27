@@ -22,6 +22,7 @@ const (
 	opChatErrTargetIsYourself = 3214 // S2C
 	opChatErrNotEnoughRights  = 3210 // S2C
 	opChatErrMalformedCommand = 3206 // S2C
+	opServerMessage           = 2070 // S2C: [i32 len][cp1252 message]
 )
 
 // ignore makes `by` ignore `name`, over the wire, and waits for the ack — so the
@@ -270,5 +271,56 @@ func TestBareSlashIsAnsweredNotIgnored(t *testing.T) {
 	_ = a.Send(3, opUserVicinity, testclient.NewW().StrU16("/").Bytes())
 	if _, _, err := a.WaitFor(opChatErrMalformedCommand, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("no 3206 for a bare slash: the server answers nothing: %v", err)
+	}
+}
+
+// TestAnnounceReachesEveryConnectedSession: /ANNOUNCE is the operator's "server
+// restarting" channel. 2070 does not merely print - om_0 force-maximises the chat
+// panel and force-opens chatDialog - so it must reach everyone, and only admins
+// must be able to fire it.
+func TestAnnounceReachesEveryConnectedSession(t *testing.T) {
+	addr := testServer(t)
+	adm, _ := dialLogin(t, addr, "ann_adm", "AnnAdm") // first account => admin
+	reachWorld(t, adm)
+	b, _ := dialLogin(t, addr, "ann_b", "AnnB")
+	reachWorld(t, b)
+	adm.DrainReceived(200 * time.Millisecond)
+	b.DrainReceived(200 * time.Millisecond)
+
+	_ = adm.Send(3, opUserVicinity, testclient.NewW().StrU16("/ANNOUNCE server restarting").Bytes())
+
+	f, _, err := b.WaitFor(opServerMessage, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("the other session never received 2070: %v", err)
+	}
+	r := testclient.NewR(f.Payload)
+	n := r.I32()
+	got := string(r.RawN(int(n)))
+	if got != "server restarting" {
+		t.Errorf("announcement = %q, want %q", got, "server restarting")
+	}
+	// The sender is a session too and must see it as well.
+	if _, _, err := adm.WaitFor(opServerMessage, testclient.DefaultTimeout); err != nil {
+		t.Errorf("the announcing admin did not receive its own announcement: %v", err)
+	}
+}
+
+// TestAnnounceIsAdminOnly: a non-admin must get the privilege error, not a
+// server-wide broadcast.
+func TestAnnounceIsAdminOnly(t *testing.T) {
+	addr := testServer(t)
+	first, _ := dialLogin(t, addr, "ann_first", "AnnFirst") // burns the admin slot
+	reachWorld(t, first)
+	a, _ := dialLogin(t, addr, "ann_non", "AnnNon")
+	reachWorld(t, a)
+	first.DrainReceived(200 * time.Millisecond)
+	a.DrainReceived(200 * time.Millisecond)
+
+	_ = a.Send(3, opUserVicinity, testclient.NewW().StrU16("/ANNOUNCE hijack").Bytes())
+	if _, _, err := a.WaitFor(opChatErrNotEnoughRights, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("a non-admin /ANNOUNCE was not refused: %v", err)
+	}
+	if _, _, err := first.WaitFor(opServerMessage, 700*time.Millisecond); err == nil {
+		t.Error("a non-admin /ANNOUNCE was broadcast to other sessions")
 	}
 }

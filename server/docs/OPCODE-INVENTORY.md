@@ -126,7 +126,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 2049 | C2S | H | CoachCreationMessage (alq_0) | `handleCoachCreation` |
 | 2050 | S2C | E | CoachCreationResultMessage (az_0) | `handshake.EncodeCoachCreationResult` |
 | 2052 | S2C | E | CoachInformationsMessage (aoh_2) | `buildCoachInformation` → `EncodeCoachInformations`. Its **0x200 stat-pairs blob is the ONLY safe way criteria reach the client**; `byteLen` must be exactly 4×pairs or the coach fails to materialise |
-| 2070 | S2C | - | (nj) | unidentified |
+| 2070 | S2C | E | ServerMessage (nj) | `[i32 len][cp1252 message]` - a server-wide announcement. `om_0` shows it at severity 5 AND force-maximises the chat panel + force-opens chatDialog, so it interrupts deliberately: operational notices only. Sent by the admin `/ANNOUNCE` command |
 | 2260 | C2S | H | (py_0) | `handleSpectateQuery` (is coach in a spectatable fight?) |
 | 2261 | S2C | E | (wv_2) | spectate reply |
 | 2300 | S2C | I | OpponentFoundMessage (bk_1) | Defined; superseded by 23110 MatchFound |

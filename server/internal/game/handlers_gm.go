@@ -32,7 +32,14 @@ func handleGMCommand(s *Session, line string) error {
 
 	switch verb {
 	case "HELP":
-		return s.gmFeedback("Commands: /HELP /WHERE /TP x y [z] /WORLD id [x y] /WHO /STRENGTH n /FSTATE fighterId state /ENDFIGHT [win|lose] /EVOFIGHT /SUDDENDEATH /MAPDESTRUCT [x y [effectId]]")
+		return s.gmFeedback("Commands: /HELP /ANNOUNCE msg /WHERE /TP x y [z] /WORLD id [x y] /WHO /STRENGTH n /FSTATE fighterId state /ENDFIGHT [win|lose] /EVOFIGHT /SUDDENDEATH /MAPDESTRUCT [x y [effectId]]")
+	case "ANNOUNCE":
+		if len(args) == 0 {
+			return s.gmFeedback("usage: /ANNOUNCE <message>")
+		}
+		text := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "/"), verb))
+		n := s.deps.broadcastServerMessage(text)
+		return s.gmFeedback(fmt.Sprintf("announced to %d session(s)", n))
 	case "WHERE":
 		return s.gmFeedback(fmt.Sprintf("pos=(%d,%d,%d)", s.Coach.PosX, s.Coach.PosY, s.Coach.PosZ))
 	case "WHO":
@@ -408,3 +415,29 @@ func (s *Session) gmFeedback(msg string) error {
 }
 
 var _ = protocol.OpPrivateContentMessage
+
+// broadcastServerMessage sends an operational announcement (2070) to every
+// connected session.
+//
+// The client does not merely print this: `om_0` force-maximises the chat panel
+// and force-opens chatDialog, so it takes over part of the player's screen. That
+// is the right behaviour for "server restarting in 5 minutes" and the wrong one
+// for anything routine, which is why it is admin-only and not wired to any
+// automatic event.
+func (d *Deps) broadcastServerMessage(msg string) int {
+	if d.World == nil || strings.TrimSpace(msg) == "" {
+		return 0
+	}
+	frame, err := protocol.EncodeS2C(protocol.OpServerMessage,
+		protocol.NewWriter().StringU32(msg).Bytes())
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, s := range d.World.allSessions() {
+		if s.Send(frame) == nil {
+			n++
+		}
+	}
+	return n
+}

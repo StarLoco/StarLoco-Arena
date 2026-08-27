@@ -442,6 +442,14 @@ const (
 	//	/p Group  — the ally coach on your side of a live fight, so it needs 2v2.
 	//	/c Clan   — guild-scoped; the client will not even SEND it without a guild.
 	OpUserTradeContentMessage = 3159 // C2S (arch 3): [u16 len][message] — afq_0
+	// OpServerMessage is a server-wide announcement: [i32 len][message] in cp1252
+	// (`nj` decodes with the JVM default charset, and StringU32 already encodes
+	// that way).
+	//
+	// `om_0` case 2070 shows it in chat at severity 5 AND force-maximises the chat
+	// panel plus force-opens chatDialog - it interrupts the player deliberately, so
+	// it is for operational notices ("server restarting"), not chatter.
+	OpServerMessage = 2070 // S2C nj
 	// Chat error signals. All five carry an EMPTY payload: `om_0` ignores the
 	// decoded message entirely and shows a fixed string from its own i18n table,
 	// so the opcode IS the message. Without them the client shows nothing at all
