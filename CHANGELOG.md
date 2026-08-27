@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/StarLoco/StarLoco-Arena/compare/v0.5.0...v0.5.1) (2026-08-27)
+
+
+### Documentation
+
+* **opcodes:** explain every unimplemented C2S, and correct the 28617/28618 misfiling ([e6bece6](https://github.com/StarLoco/StarLoco-Arena/commit/e6bece6e1212c1d88a2e079ce082232bae24dbc5))
+
 ## [0.5.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.4.0...v0.5.0) (2026-08-27)
 
 
