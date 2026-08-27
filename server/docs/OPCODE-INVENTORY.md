@@ -322,7 +322,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 8112 | S2C | E | CloseCombatMessage (aAD) | close-combat result |
 | 8120 | S2C | E | RunningEffectActionMessage (amb_0) | damage/heal/effect chat lines |
 | 8121 | S2C | I | AttachScriptedEffect (rq_2) | **attaches** an effect to a fighter as a buff — it never executes one. Executing (incl. **117 MapDestruction**) goes via 8120 (B-050) |
-| 8122 | S2C | - | (zq_1) | unidentified (fight family) |
+| 8122 | S2C | - | DetachBuff (zq_1) | `[i64 buffId][i64 fighterId]` - the removal counterpart to 8121: `of_1` does `ee_2.PJ().dL(buffId)` and raises `"hasBuff"`. Needed alongside 8121 for buff expiry (item 11); keyed by a buff id the server does not yet mint |
 | 8151 | C2S | H | GiveUpFightRequestMessage (as_1) | `handleGiveUp` (forfeit) |
 | 8200 | S2C | E | FightActionSequenceExecute (ayj_0) | action flush barrier |
 | 8250 | S2C | - | (wc_2) | unidentified (fight family) |

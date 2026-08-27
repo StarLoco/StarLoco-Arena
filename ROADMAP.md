@@ -1163,8 +1163,31 @@ is a signing certificate or SignPath); no published Docker image.
     and raises `"hasBuff"` — it attaches without executing. So the remaining work
     is to emit 8121 per active buff after CREATE_FIGHT on a reconnect or spectate
     join. The server already holds everything needed (`activeBuff`: actionID,
-    effectID, resource, delta, turnsLeft, infinite, statBuff); the fiddly part left
-    is the effect blob, which is the same six-part encoding as 8120.
+    effectID, resource, delta, turnsLeft, infinite, statBuff).
+
+    Wire, read off `rq_2.a` and `of_1`:
+
+    ```
+    8121 = [i32 mh_2 actionId][i16 blobLen][blob][akv_0]
+    akv_0 = [i64 aj][i16 NC][i8 ND(bool)]      // toString "@T{NC}{+/-}({aj})"
+    8122 = [i64 buffId][i64 fighterId]         // the REMOVE counterpart
+    ```
+
+    Three things that make this cheaper than it looks, and one that does not:
+
+    - The blob is the **same six-part encoding as 8120**, and the target is carried
+      inside it — `zT.ajR()` (the field `h()` sets) must be non-null or the attach
+      is skipped silently. `buildRunningEffect` already assembles exactly those
+      parts, so the blob half is reuse, not new work.
+    - **8122** (`zq_1`) is the matching removal: `ee_2.PJ().dL(buffId)` plus the
+      same `"hasBuff"` notify. Restoring buffs is only half a feature without it —
+      expiry has to be expressible too, and it is keyed by a **buff id**, which the
+      server does not currently mint.
+    - **`akv_0`'s three fields are NOT yet established.** The shape is certain, the
+      meaning is a guess (a turn count and a sign, most likely a duration marker).
+      Emitting it wrongly would mis-render a buff's remaining turns rather than
+      fail loudly, so it must be read before it is written — the same class of
+      silent-wrongness that made 8120 the wrong channel in the first place.
 12. ~~**Buff stacking rules** — merge / refresh / cap instead of blind append.~~ —
     **withdrawn: the premise is false, and acting on it would have introduced a
     resource leak.** The client stacks. Buffs are filed in the per-fighter
