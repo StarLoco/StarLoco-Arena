@@ -1140,7 +1140,7 @@ is a signing certificate or SignPath); no published Docker image.
     ("reach turn N") covers all 9 shipped conditions. Subtypes 1/2/3 remain
     decoded-but-unimplemented: no shipped record uses them, so there would be
     nothing to validate an implementation against.
-11. 🟡 **Buff icons on reconnect/spectate** — **partly done (B-083), and the
+11. [x] **Buff icons on reconnect/spectate** — **partly done (B-083), and the
     premise was half wrong.** The CREATE_FIGHT fighter blob's two id lists are
     *not* both buff channels: the first resolves through `akp_1`, the **sphere
     board** registry (`dq_1` → `contentLoader.sphereBoard`), and the client
@@ -1165,29 +1165,32 @@ is a signing certificate or SignPath); no published Docker image.
     join. The server already holds everything needed (`activeBuff`: actionID,
     effectID, resource, delta, turnsLeft, infinite, statBuff).
 
-    Wire, read off `rq_2.a` and `of_1`:
+    **DONE.** `resyncBuffs` re-attaches every live buff from `sendFightResync`, so
+    a reconnecting player or a joining spectator now sees the icons the fighters
+    are actually carrying.
 
     ```
-    8121 = [i32 mh_2 actionId][i16 blobLen][blob][akv_0]
-    akv_0 = [i64 aj][i16 NC][i8 ND(bool)]      // toString "@T{NC}{+/-}({aj})"
-    8122 = [i64 buffId][i64 fighterId]         // the REMOVE counterpart
+    8121 = [i32 mh_2 actionId][i16 blobLen][blob][i64 fighterId][i16 expiry][i8 flag]
     ```
 
-    Three things that make this cheaper than it looks, and one that does not:
+    The blob is the **same six-part encoding as 8120** — factored out as
+    `buildEffectBlob` so the two cannot drift — and the target rides inside it:
+    `zT.ajR()` must resolve or the attach is skipped in silence.
 
-    - The blob is the **same six-part encoding as 8120**, and the target is carried
-      inside it — `zT.ajR()` (the field `h()` sets) must be non-null or the attach
-      is skipped silently. `buildRunningEffect` already assembles exactly those
-      parts, so the blob half is reuse, not new work.
-    - **8122** (`zq_1`) is the matching removal: `ee_2.PJ().dL(buffId)` plus the
-      same `"hasBuff"` notify. Restoring buffs is only half a feature without it —
-      expiry has to be expressible too, and it is keyed by a **buff id**, which the
-      server does not currently mint.
-    - **`akv_0`'s three fields are NOT yet established.** The shape is certain, the
-      meaning is a guess (a turn count and a sign, most likely a duration marker).
-      Emitting it wrongly would mis-render a buff's remaining turns rather than
-      fail loudly, so it must be read before it is written — the same class of
-      silent-wrongness that made 8120 the wrong channel in the first place.
+    The trap was `akv_0`'s middle field. It is **not** a remaining turn count but an
+    **absolute expiry mark** against that fighter's own timeline counter: `aGT`
+    builds it as `alh_1.aAy() + duration` and reads what is left back as
+    `expiry - aAy()`. Sending the remaining count — the obvious choice, and exactly
+    what the server stores — would have made every restored buff read as already
+    expired on any fighter that had taken a turn. Negative means infinite
+    (`akv_0.isInfinite()` is `NC < 0`). `FightFighter.turnsTaken` mirrors `aAy()`,
+    bumped in `beginTurn` where the client bumps its own.
+
+    No removal message is needed: because the expiry is absolute, the **client ages
+    the buff itself**. That also sidesteps 8122 (`zq_1`, `[i64 buffId][i64
+    fighterId]`), which the server could not drive anyway — buff ids come from the
+    client-local counter `ahT()`, so the server never sees them. Same shape as
+    item 14's 5203 uids.
 12. ~~**Buff stacking rules** — merge / refresh / cap instead of blind append.~~ —
     **withdrawn: the premise is false, and acting on it would have introduced a
     resource leak.** The client stacks. Buffs are filed in the per-fighter

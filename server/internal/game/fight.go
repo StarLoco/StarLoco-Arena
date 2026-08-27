@@ -93,8 +93,19 @@ type FightFighter struct {
 	// aimed at this fighter is redirected to its caster, then the flag clears.
 	spellReturn bool
 	// CastHistory enforces each spell's cast-frequency limits (min interval / max
-	// per turn / max per target) for this fighter — see spell_cast_history.go.
+	// per turn / max per target) for this fighter - see spell_cast_history.go.
 	CastHistory spellCastHistory
+	// turnsTaken mirrors the CLIENT's per-fighter timeline counter (`alh_1.NC`,
+	// read as `aAy()`, bumped by `aAw()` from `aGT.dt()` when this fighter's turn
+	// comes round).
+	//
+	// It exists because a buff's duration is put on the wire as an ABSOLUTE expiry
+	// mark against that counter, not as a remaining count: the client computes
+	// what is left as `expiry - aAy()`. Reconstructing a buff for a reconnecting
+	// client therefore needs the same number the client would have counted, and
+	// the table-turn number is not it - a fighter that has not yet acted this
+	// round is one behind.
+	turnsTaken int32
 	// Poisons are active recurring DoTs on this fighter, ticked each new table turn
 	// (see tickPoisons).
 	Poisons []*activePoison

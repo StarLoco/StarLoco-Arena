@@ -428,6 +428,9 @@ func (f *Fight) startFirstTurn() {
 // gets the full turnClock to act.
 func (f *Fight) beginTurn(ff *FightFighter) {
 	refillFighter(ff)
+	// Mirror the client's own per-fighter timeline counter (alh_1.aAw), which it
+	// bumps at exactly this point. Buff expiry is expressed against it.
+	ff.turnsTaken++
 	ff.CastHistory.onNewTurn() // reset this fighter's per-turn cast counters
 	turn, _ := buildFighterTurnBegin(f.nextActionUID(), ff.WireID)
 	f.broadcast(turn)

@@ -103,6 +103,28 @@ func buildSpellCast(uid int32, casterWireID int64, spellID int32, target Pos, cr
 // re-synchronising an effect that is already part-way through (reconnect,
 // spectator join).
 func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireID, targetWireID int64, cell Pos, value, elapsedTurns int32, mustExecNow bool, opts ...effectPart) ([]byte, error) {
+	blob := buildEffectBlob(genericEffectID, casterWireID, targetWireID, cell, value, opts...)
+
+	w := protocol.NewWriter()
+	writeActionHeader(w, uid)
+	w.U8(boolByte(mustExecNow))
+	w.U8(0)             // triggered
+	w.I32(elapsedTurns) // Nx: turns ALREADY elapsed (0 for a fresh effect)
+	w.I32(runningEffectID)
+	w.U16(uint16(len(blob)))
+	w.Raw(blob)
+	return protocol.EncodeS2C(protocol.OpRunningEffect, w.Bytes())
+}
+
+// binarPart is one part of an Ankama BinarSerial blob: its type index (its
+// position in the effect's Kl() part array) and its already-serialized payload.
+// buildEffectBlob assembles the BinarSerial payload an effect message carries.
+//
+// Shared by 8120 (execute) and 8121 (attach as a buff): both decode it the same
+// way, and part 2 is what resolves to `zT.ajR()` - the target the client attaches
+// the buff to. If that part is missing or unresolvable the attach is skipped in
+// silence, so the two messages must not drift apart.
+func buildEffectBlob(genericEffectID int32, casterWireID, targetWireID int64, cell Pos, value int32, opts ...effectPart) []byte {
 	part0 := protocol.NewWriter().
 		I64(casterWireID).
 		I64(targetWireID).
@@ -119,21 +141,9 @@ func buildRunningEffect(uid, runningEffectID, genericEffectID int32, casterWireI
 		}
 	}
 	sort.Slice(parts, func(i, j int) bool { return parts[i].idx < parts[j].idx })
-	blob := writeBinarSerial(parts)
-
-	w := protocol.NewWriter()
-	writeActionHeader(w, uid)
-	w.U8(boolByte(mustExecNow))
-	w.U8(0)             // triggered
-	w.I32(elapsedTurns) // Nx: turns ALREADY elapsed (0 for a fresh effect)
-	w.I32(runningEffectID)
-	w.U16(uint16(len(blob)))
-	w.Raw(blob)
-	return protocol.EncodeS2C(protocol.OpRunningEffect, w.Bytes())
+	return writeBinarSerial(parts)
 }
 
-// binarPart is one part of an Ankama BinarSerial blob: its type index (its
-// position in the effect's Kl() part array) and its already-serialized payload.
 type binarPart struct {
 	idx  uint8
 	data []byte

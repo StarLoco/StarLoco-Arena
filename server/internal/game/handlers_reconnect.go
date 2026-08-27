@@ -115,6 +115,12 @@ func (d *Deps) sendFightResync(sess *Session, f *Fight, spectator bool) {
 			}
 		}
 	}
+	// 4b. Re-attach every live buff so its icon comes back. CREATE_FIGHT carries
+	// the persistent conditions (type 902) but has no slot for timed spell buffs,
+	// so without this a reconnecting player - or a joining spectator - sees a
+	// fighter with none of the buffs it is actually carrying.
+	d.resyncBuffs(sess, f)
+
 	// 5. Drive the client's fight state machine to the live phase, replaying the
 	// exact cue chain the advanceTo* transitions emit.
 	phase := f.Phase()
