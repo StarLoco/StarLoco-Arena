@@ -127,7 +127,7 @@ func TestPlacementMove(t *testing.T) {
 
 	// Presentation -> PLACEMENT. Stop here: this is the only phase in which
 	// 8021 is legal.
-	readyGate(a, b, testclient.OpReadyForPlacement)
+	enterPlacement(t, a, b)
 
 	const wireBase = int64(1) << 40
 	// A start cell of each side that is NOT that side's first cell (where the
@@ -190,7 +190,7 @@ func TestPlacementRejectsIllegalCellsAndPhases(t *testing.T) {
 	}()
 	defer close(stopB)
 
-	readyGate(a, b, testclient.OpReadyForPlacement)
+	enterPlacement(t, a, b)
 
 	const wireBase = int64(1) << 40
 	// Identify our fighter + side via a legal placement (the 8022 echo proves it).
@@ -244,5 +244,27 @@ func TestPlacementRejectsIllegalCellsAndPhases(t *testing.T) {
 	_ = a.Send(3, testclient.OpMoveToPlacementReq, p)
 	if f, _, _ := a.WaitFor(testclient.OpMoveToFreePlacement, time.Second); f != nil {
 		t.Error("8021 was honoured during the ACTION phase: that is a free teleport")
+	}
+}
+
+// enterPlacement takes both clients into the PLACEMENT phase and WAITS for the
+// server to say so, instead of assuming a fixed drain was long enough.
+//
+// This is the difference between a test that passes and a test that is right.
+// readyGate only sends the two readies and drains for 250ms; the phase advance
+// happens on the fight actor afterwards, so on a slower or busier machine an
+// 8021 sent straight after readyGate arrives while the fight is still in
+// PRESENTATION and is correctly refused by the placement guard - which reads as
+// "no 8022 for a legal placement" and looks like a server bug. It cost a red CI
+// on Linux while passing on Windows for months.
+//
+// 8020 StartPlacement is broadcast by advanceToPlacement, so it is the exact
+// signal, and waiting for it is also faster than the fixed sleep it replaces.
+func enterPlacement(t *testing.T, a, b *testclient.Client) {
+	t.Helper()
+	_ = a.Send(3, testclient.OpReadyForPlacement, nil)
+	_ = b.Send(3, testclient.OpReadyForPlacement, nil)
+	if _, _, err := a.WaitFor(testclient.OpStartPlacement, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("fight never entered the placement phase (8020): %v", err)
 	}
 }
