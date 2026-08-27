@@ -140,6 +140,48 @@ belongs to the coach.
 
 ## Fixed
 
+### B-126 - two e2e tests raced the fight phase, red on Linux CI only
+
+**Symptom.** After 132 commits went out, CI failed on `ubuntu-latest` while `windows-latest`
+passed. `TestPlacementMove` and `TestPlacementRejectsIllegalCellsAndPhases` reported
+*"no MoveToFreePlacement (8022) for a legal placement of our own fighter"*, burning 82s and
+242s, and the e2e package then blew its 10-minute timeout.
+
+**Root cause.** `readyGate` sends the two READY frames and drains for a fixed 250ms; the
+advance to PLACEMENT happens on the fight actor afterwards. An 8021 sent straight after can
+therefore arrive while the fight is still in PRESENTATION, where the placement guard
+(87831bb) correctly refuses it. The guard was right; the tests were racing it. On Windows
+the fixed drain happened to be long enough; on a 2-core runner it was not.
+
+**Diagnosis worth keeping.** "Linux CI is slower" was the obvious reading and it was wrong.
+Timing the suite under `docker golang:1.26` showed every other e2e test within noise of
+Windows - `TestLoginToWorld` 0.15s vs 0.09s, `TestFullFightToVictory` 1.91s vs 1.80s - and
+only the placement tests blown out at 14.6s vs 2.1s. That ruled out the environment and
+pointed at two specific tests. Reproducing on the failing platform locally is what made it
+diagnosable at all.
+
+**Fix.** `enterPlacement` waits for **8020 StartPlacement**, which `advanceToPlacement`
+broadcasts, so the tests synchronise on the event instead of on a guess. Faster too:
+`TestPlacementMove` on Linux went 14.60s -> 1.28s.
+
+### B-127 - a 3s harness timeout flaked on a loaded CI runner
+
+**Symptom.** `TestChatMarkupIsStrippedOnTheWire` failed on Windows CI with
+*"create coach: read tcp 127.0.0.1:...: i/o timeout"* - a test unrelated to any recent work,
+passing locally and on the two previous runs.
+
+**Root cause.** `testclient.defaultTimeout` was 3s for every harness wait, shared by 192
+call sites. Fine on a developer machine; not on a contended runner, where the e2e package
+took 198s against 131s locally. Any of those call sites could have been the one to lose.
+
+**Fix.** Raised to 10s. This is a ceiling on FAILURE, not a delay on success - `WaitFor`
+returns the moment the frame arrives, and the Windows suite measures 129s before and after.
+Checked first that nothing asserts on the timeout EXPIRING: the tests that assert a frame is
+absent pass their own short timeout explicitly.
+
+Raised the shared default rather than special-casing the one test that happened to flake,
+since that would have left the same trap for the next person.
+
 ### B-124 - the team panel emptied after any teleport, Zaap trip or GM /WORLD
 
 **Symptom.** After arriving anywhere - a Zaap, a GM `/TP` or `/WORLD` - the team panel
