@@ -1150,6 +1150,21 @@ is a signing certificate or SignPath); no published Docker image.
     902) and is now sent, so wounds survive a reconnect or spectate. Timed spell
     buffs still have no slot in this message; restoring those needs the
     per-effect message the client uses during normal play.
+
+    **Which message that is, is now settled — and the obvious choice is the wrong
+    one.** 8120 (`amb_0`) is not a render channel: `of_1` case 8120 builds an
+    `mv_0` and either `run()`s it immediately or queues it on the effect scheduler,
+    so replaying a fighter's buffs through it on reconnect would **re-apply** every
+    one of them — doubling stat changes client-side, exactly the way writing buff
+    ids into the sphere-board list would have re-applied sphere nodes.
+
+    The right channel is **8121** (`rq_2`, currently Inactive): case 8121 builds
+    the effect, attaches it to the target's buff container (`zT.ajR().PJ().o(zT)`)
+    and raises `"hasBuff"` — it attaches without executing. So the remaining work
+    is to emit 8121 per active buff after CREATE_FIGHT on a reconnect or spectate
+    join. The server already holds everything needed (`activeBuff`: actionID,
+    effectID, resource, delta, turnsLeft, infinite, statBuff); the fiddly part left
+    is the effect blob, which is the same six-part encoding as 8120.
 12. ~~**Buff stacking rules** — merge / refresh / cap instead of blind append.~~ —
     **withdrawn: the premise is false, and acting on it would have introduced a
     resource leak.** The client stacks. Buffs are filed in the per-fighter
@@ -1243,7 +1258,8 @@ is a signing certificate or SignPath); no published Docker image.
     not walking onto Killer tiles. Still open: healing/buffing allies, summoning,
     placing traps, cooperative focus-fire, trap-tile and sudden-death awareness,
     diagonal pathfinding, difficulty tiers.
-19. 🟡 **Coach action cards in fight** — **the "no opcode" premise was wrong, and
+19. [x] **Coach action cards in fight** — **CLOSED: correct and complete as an
+    empty deck.** The "no opcode" premise was wrong, and
     the id-namespace half is now FIXED (B-088).** The deck is exposed to the UI as
     the field **`"coachSpellInventory"`** (`Te.bMP`), a list of `yp_2`
     **castables**, and selecting a `yp_2` sends **8109 SpellCastRequestMessage**
@@ -1309,7 +1325,8 @@ is a signing certificate or SignPath); no published Docker image.
     achievement panel said *"Hélas, vous n'avez pas occasionné de mort définitive
     chez les combattants adverses"* — the exact string quoted as evidence for the
     fix, shown in exactly the situation the old rule made impossible.
-22. 🟡 **Fusion** — **there is no recipe table; type 1100 is the ALTARS.** Decoded
+22. [x] **Fusion** — **built; the only thing still open is a number the client
+    cannot tell us.** There is no recipe table; type 1100 is the ALTARS. Decoded
     (4/4 fields: power / quality / slots): 30 tiered altars. The mechanic is a
     power check against a **player-chosen target**, and the client's own panel
     gives the formula (kardsPower = Σ inputs' RequiredLevel − target's

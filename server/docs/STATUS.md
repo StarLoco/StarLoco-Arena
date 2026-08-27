@@ -20,7 +20,7 @@ and **35 web admin panel** have all landed. What is left in Tier 3 is almost ent
 maintainer's own deferrals. **30 (2v2) is now DONE too** — live-verified with four retail
 clients. **32 (tournament match layer)** is now DONE: brackets, per-fixture pairing,
 byes, persistence (schema 7) and prizes have all landed and the whole flow is
-live-verified (see below). What remains is **33 (X-vs-X allies)**, which turned out
+live-verified (see below). What remains in Tier 3 is **33 (X-vs-X allies)**, which turned out
 to be unrelated to 2v2: its 26313 exists only as the client's `Test` Lua binding
 `XvsXInvitation`, with no UI anywhere. Ask before starting it.
 
