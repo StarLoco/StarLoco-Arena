@@ -448,8 +448,8 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28612 | S2C | E | TournamentSearchResult (DR) | `[i64 tid][i16 preset][i8 accepted]` - opens the client's waiting dialog (`tournamentsSearchStatusDialog`). Must be sent, or the team panel closes leaving no overlay |
 | 28614 | S2C | E | TournamentFightStarting (azj_0) | `[i64 tid]` - *"Lancement du combat"*. Closes the waiting dialog, so it goes out BEFORE CREATE_FIGHT |
 | 28616 | S2C | E | TournamentSearchError |  |
-| 28617 | C2S | - | (afg_2) | 28xxx family |
-| 28618 | S2C | - | (ahd_0) | 28xxx family |
+| 28617 | C2S | - | TournamentCarryStanding (afg_2) | `[i64 tid]` - the player answering YES to 28618's *"report my position to the next tournament of the same type?"* dialog (`ajp_0`:152 -> `gs_2`, answer 16). Reachable and player-facing; open work, NOT dead |
+| 28618 | S2C | - | TournamentUnfinished (ahd_0) | `[i64 tid]` - *"Vous avez participe a un tournoi que vous n'avez pu terminer"* + the carry-over question. The SERVER must send this to start the flow; answering it sends 28617 |
 | 28620 | S2C | E | TournamentFinale (Yq) | ADD `[i8 1][i64 id][i32 n]{i64 coachId}[i32 n]{[i32 len][utf8]}[i32 len][utf8 tournamentName]`, REMOVE `[i8 2][i64 id]`. The "Finale du tournoi X - A VS B" alert. **`Yq.a` reads BOTH arrays backwards**, so they are written in reverse or the finalists are announced swapped |
 | 28622 | S2C | - | (uw_2) | 28xxx family |
 | 28630 | S2C | E | TournamentSearchPeriod (dg_0) | `[i64 tid][i8 open]` - opens/closes a tournament's opponent-search period. Creates the client's tournament NOTIFICATION (`zN` builds a `td_0`), and clicking that is the ONLY way to select a tournament (`agz_1` -> `vk_1.ad(tid)`). Without it `hu_2` refuses Combattre with `error.noTournamentSelected` forever |
@@ -464,6 +464,67 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28650 | S2C | E | TournamentTree (IL) | `encodeTournamentTree` - `[i32 page][i32 n]{[i32 slot][i32 len][utf8 name]}[i32 unread]`. A 1-indexed binary heap: 1 winner, 2-3 finale, 4-7 semi, 8-15 quarter, 16-31 first round (`ah_1.getFieldValue`). Names are **UTF-8**, not cp1252. Upper rounds stay empty until a match layer decides them |
 
 ---
+
+
+### Why each unimplemented C2S is unimplemented
+
+A C2S opcode we do not serve is a message the client can SEND and we silently drop,
+so each one needs a reason on the record rather than a family label. Every entry
+below was checked the same way: search the decompiled client CASE-SENSITIVELY for
+`new <class>(`. A message class with no constructor cannot be sent by the retail
+client whatever its opcode implies.
+
+**'DEAD in retail' does not mean Ankama never used it.** These are real messages and
+were presumably driven by an internal build or admin tool. It means only that no
+code path in the SHIPPED 2.70 client constructs one, so a server handler could not
+be reached by a player, and could not be live-verified the way everything else here
+is. Implementing one would also make a privileged operation reachable by anyone who
+patches a client, so if any are ever added they must be gated on the account admin
+flag.
+
+| Opcode | Class | Status | Reason |
+|---|---|---|---|
+| 101 | `aFC` | dead | DEAD - no constructor anywhere in the client. |
+| 513 | `wt_1` | dead | DEAD in retail - guild RENAME, reachable only from the client Test Lua debug library. No UI, no assets (ROADMAP item 31). |
+| 551 | `mx_1` | dead | DEAD in retail - guild ICON, same Test-Lua-only path as 513. |
+| 4514 | `aII` | reachable | LIVE - built in yl_0. Overworld family; semantics not yet established. |
+| 4518 | `Ab` | reachable | LIVE - built in sr_1. Overworld family; semantics not yet established. |
+| 4519 | `aOx` | reachable | LIVE - built in yl (2 sites). Overworld family; semantics not yet established. |
+| 4523 | `anv_0` | reachable | LIVE - built in bv_0. Overworld family; semantics not yet established. |
+| 4701 | `JY` | reachable | LIVE - built in avv_0, a production class already read for the tournament work. |
+| 5204 | `ajm_2` | reachable | LIVE - built in by_0 and ST. Inventory family; likely the sibling of the 5203 problem (item 14) and blocked by the same client-local card uids. |
+| 17004 | `fu_2` | reachable | LIVE - built in acL. Calendar/event family (17002/17003 are the tournament calendar we serve). |
+| 17006 | `agh_2` | reachable | LIVE - built in alc_2. Calendar/event family. |
+| 17008 | `ald_2` | reachable | LIVE - built in avb_0. Calendar/event family. |
+| 17010 | `aFu` | reachable | LIVE - built in oz_1, the class that also drives tournament registration. Calendar/event family. |
+| 22004 | `axH` | reachable | LIVE - built in gy_1 and qq_2. Stats/achievement family. |
+| 22093 | `Tx` | reachable | LIVE - built in agn_0. Stats/achievement family. |
+| 22097 | `OB` | reachable | LIVE - built in agn_0. Stats/achievement family. |
+| 26313 | `aju_1` | dead | DEAD in retail - X-vs-X invite. Only builder is awj_0, the Lua binding XvsXInvitation in the Test library (adg_1, super("Test")). No UI. Superseded by the 60xx 2v2 family (ROADMAP item 33). |
+| 27525 | `zz_0` | reachable | LIVE - built in po_0, the production world-element action handler. |
+| 27527 | `gc_0` | reachable | LIVE - built in sL. Ladder family. |
+| 27551 | `aib_1` | reachable | LIVE - built in and_2. Ladder family. |
+| 28603 | `ayQ` | dead | DEAD in retail - tournament CREATE. No `new ayQ()` anywhere; its reply 28604 is handled only by ajp_0, whose output sink (ajp_0.a(apk_0)) is never installed. The web admin console covers this capability instead. |
+| 28605 | `bi_2` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
+| 28607 | `ago_0` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
+| 28617 | `afg_2` | reachable | REACHABLE and player-facing - see the note below. NOT part of the dead admin set. |
+| 28633 | `kx_2` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
+| 28635 | `aeC` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
+
+**28617/28618 - a correction.** These were previously filed with the dead admin
+family and that was wrong. 28618 `ahd_0` = `[i64 tid]` makes the client show
+*"Vous avez participe a un tournoi que vous n'avez pu terminer : <name>. Souhaitez
+vous que votre position soit reportee au prochain tournoi de meme type ?"*, and
+answering yes sends 28617 `afg_2` = `[i64 tid]` (`ajp_0` line 152 -> the `gs_2`
+dialog callback, which fires on answer 16). It is a player-facing 'carry my standing
+into the next tournament of the same type' flow, fully reachable - it just needs the
+SERVER to send 28618 first. Genuine open work, not dead code.
+
+The 16 marked *reachable* above have a real constructor in a production class and are
+genuine gaps; the caller is named so the next person starts from evidence rather
+than a grep. Their semantics are not yet established and that is stated rather than
+guessed.
+
 
 ## Focused views (for planning)
 
@@ -526,10 +587,10 @@ behaviour) before deciding whether the retail client needs them:
   The remainder splits in two, and the split is the point:
 
   **Dead in the retail client — do not implement.** 28603 (`ayQ` create), 28605
-  (`bi_2`), 28607 (`ago_0`), 28617 (`afg_2`), 28633 (`kx_2`), 28635 (`aeC`) are the
+  (`bi_2`), 28607 (`ago_0`), 28633 (`kx_2`), 28635 (`aeC`) are the
   tournament ADMIN family. Each message class exists and can encode, but **nothing
   in the client ever constructs one**: `new ayQ()`, `new bi_2()`, `new kx_2()`,
-  `new aeC()` and `new ago_0()` appear nowhere, and the single `new afg_2()` sits
+`new aeC()` and `new ago_0()` appear nowhere. (**28617 is NOT one of these** - it is
   inside `gs_2`, which is `ajp_0`'s own inner class. (Grep case-sensitively here:
   `ayQ` and `aeC` collide with unrelated *methods* `TradeContentCommand.ayQ()` and
   `ry_2.aeC()`, which makes them look used.)

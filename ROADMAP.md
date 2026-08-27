@@ -1821,13 +1821,28 @@ is a signing certificate or SignPath); no published Docker image.
     its prize the moment it pressed Combattre.
 
     **The 28xxx admin family is dead in the retail client and deliberately not
-    implemented.** 28603/28605/28607/28617/28633/28635 all have message classes
-    that can encode, but nothing anywhere constructs one — the only `new afg_2()`
-    is inside `ajp_0`'s own inner class. Their replies land solely in `ajp_0`, a
-    **debug-console** handler whose output sink (`ajp_0.a(apk_0)`) is never
-    installed, so even its logging is inert. Server handlers for these could not
-    be reached by any player action. Same call as item 33, on the same evidence:
-    the code exists, the caller does not. See `docs/OPCODE-INVENTORY.md`.
+**Most of the 28xxx admin family is unreachable in the retail client and
+    deliberately not implemented** — 28603/28605/28607/28633/28635 have message
+    classes that can encode, but nothing anywhere constructs one. Their replies
+    land solely in `ajp_0`, a **debug-console** handler whose output sink
+    (`ajp_0.a(apk_0)`) is never installed, so even its logging is inert. A server
+    handler could not be reached by any player action, could not be live-verified,
+    and would make a privileged operation reachable by anyone who patches a client
+    — so if they are ever added they must be gated on the account admin flag. The
+    web console already covers the same capability. See
+    `docs/OPCODE-INVENTORY.md` for the per-opcode reasons.
+
+    **Correction: 28617/28618 are NOT part of that set**, and were wrongly filed
+    with it. 28618 `ahd_0` = `[i64 tid]` makes the client ask *"Vous avez participé
+    à un tournoi que vous n'avez pu terminer… Souhaitez vous que votre position
+    soit reportée au prochain tournoi de même type ?"*, and answering yes sends
+    28617 `afg_2` (`ajp_0`:152 → the `gs_2` dialog callback, answer 16). That is a
+    player-facing carry-over feature, fully reachable — it only needs the SERVER to
+    send 28618. **Genuine open work.** The mistake came from checking whether the
+    client *constructs* 28617 and stopping there: it does, inside `ajp_0`, in
+    response to a server message. "No constructor" proves unreachability; a
+    constructor in a handler proves the opposite, and I read the first as the
+    second.
 
     **28620** (the "Finale du tournoi X — A VS B" alert) is implemented: it needs
     no scheduler, because the final is simply the fixture whose winner takes the
