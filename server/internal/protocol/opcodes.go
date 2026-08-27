@@ -442,6 +442,16 @@ const (
 	//	/p Group  — the ally coach on your side of a live fight, so it needs 2v2.
 	//	/c Clan   — guild-scoped; the client will not even SEND it without a guild.
 	OpUserTradeContentMessage = 3159 // C2S (arch 3): [u16 len][message] — afq_0
+	// Chat error signals. All five carry an EMPTY payload: `om_0` ignores the
+	// decoded message entirely and shows a fixed string from its own i18n table,
+	// so the opcode IS the message. Without them the client shows nothing at all
+	// when the server refuses a chat action.
+	OpChatErrMalformedCommand = 3206 // S2C amd_1: "error.chat.malformedCommand"
+	OpChatErrNotEnoughRights  = 3210 // S2C lx_0:  "error.chat.notEnoughPrivileges"
+	OpChatErrNotImplemented   = 3212 // S2C adm_0: "error.chat.notYetImplemented"
+	OpChatErrTargetIsYourself = 3214 // S2C as_0:  "error.chat.targetIsYourself"
+	OpChatErrNotPermitted     = 3216 // S2C avs:   "error.chat.operationNotPermited"
+
 	OpTradeContentMessage     = 3168 // S2C: [u8 len]sender [i64 id] [u16 len]message — ayy
 	OpUserGroupContentMessage = 3161 // C2S (arch 3): [i64 targetCoachId][u16 len][message] — aux_
 	OpGroupContentMessage     = 3170 // S2C: same shape as 3168 — aik_1

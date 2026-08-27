@@ -16,6 +16,10 @@ const (
 	opUserPrivate    = 3155 // C2S: [u8 len]target [u8 len]msg
 	opPrivateContent = 3154 // S2C
 	opUserNotFound   = 3204 // S2C
+
+	// Chat error signals - empty payload, the opcode IS the message (om_0 renders
+	// a fixed i18n string and ignores the body).
+	opChatErrTargetIsYourself = 3214 // S2C
 )
 
 // ignore makes `by` ignore `name`, over the wire, and waits for the ack — so the
@@ -177,4 +181,48 @@ func containsRune(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// TestWhisperToYourselfIsRefusedVisibly: the client has a dedicated error for
+// whispering yourself ("error.chat.targetIsYourself"), and before this the server
+// simply relayed the message straight back - so the player saw their own whisper
+// arrive and no explanation.
+//
+// 3214 carries an EMPTY payload: om_0 discards the decoded body and renders a
+// fixed string, so the opcode is the whole message.
+func TestWhisperToYourselfIsRefusedVisibly(t *testing.T) {
+	addr := testServer(t)
+	a, _ := dialLogin(t, addr, "self_w", "SelfW")
+	reachWorld(t, a)
+	a.DrainReceived(200 * time.Millisecond)
+
+	p := testclient.NewW().Str8("SelfW").Str8("hello me").Bytes()
+	_ = a.Send(4, opUserPrivate, p)
+
+	f, _, err := a.WaitFor(opChatErrTargetIsYourself, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no 3214 for a self-whisper: the client shows nothing at all: %v", err)
+	}
+	if n := len(f.Payload); n != 0 {
+		t.Errorf("3214 payload = %d bytes, want 0 (om_0 ignores the body)", n)
+	}
+}
+
+// TestWhisperToSomeoneElseStillWorks guards the obvious over-correction: the
+// self-check must compare against the SENDER's own name, not refuse every
+// whisper.
+func TestWhisperToSomeoneElseStillWorks(t *testing.T) {
+	addr := testServer(t)
+	a, _ := dialLogin(t, addr, "w_from", "WFrom")
+	reachWorld(t, a)
+	b, _ := dialLogin(t, addr, "w_to", "WTo")
+	reachWorld(t, b)
+	a.DrainReceived(200 * time.Millisecond)
+	b.DrainReceived(200 * time.Millisecond)
+
+	p := testclient.NewW().Str8("WTo").Str8("hi there").Bytes()
+	_ = a.Send(4, opUserPrivate, p)
+	if _, _, err := b.WaitFor(opPrivateContent, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("a normal whisper was not delivered: %v", err)
+	}
 }

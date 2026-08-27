@@ -183,12 +183,12 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 3199 | C2S | H | `ak` | **Clan chat send** (`/c`), arch 2: `[u16 len][msg][i64 guildId]`. The client SELF-GATES on having a guild - with none it emits no packet at all - which is why this looked dead before item 31. Now live: the supplied guild id is re-validated against the sender's actual guild |
 | 3202 | S2C | I | ChannelNotFound (qv_0) | **unreachable** - it answers 3151, which the retail client cannot send (`ChannelContentCommand` is referenced by nothing). Vestigial with the rest of the channel family |
 | 3204 | S2C | E | UserNotFoundMessage (ve_1) | emitted on PM to unknown name |
-| 3206 | S2C | - | MalformedCommandMessage (amd_1) | error class, unused |
+| 3206 | S2C | I | MalformedCommandMessage (`amd_1`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.malformedCommand"* |
 | 3208 | S2C | - | MemberNotFoundMessage (ez_2) | error class, unused |
-| 3210 | S2C | - | NotEnoughPrivilegesMessage (lx_0) | error class, unused |
-| 3212 | S2C | - | NotYetImplementedMessage (adm_0) | error class, unused |
-| 3214 | S2C | - | TargetIsYourselfMessage (as_0) | error class, unused |
-| 3216 | S2C | - | OperationNotPermitedMessage (avs) | error class, unused |
+| 3210 | S2C | I | NotEnoughPrivilegesMessage (`lx_0`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.notEnoughPrivileges"* |
+| 3212 | S2C | I | NotYetImplementedMessage (`adm_0`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.notYetImplemented"* |
+| 3214 | S2C | E | TargetIsYourselfMessage (as_0) | EMPTY payload - `om_0` ignores the body and shows *"error.chat.targetIsYourself"*. Sent when a coach whispers ITSELF; before this the whisper was relayed straight back and the player saw no explanation. Emitted via `sendChatError` |
+| 3216 | S2C | I | OperationNotPermitedMessage (`avs`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.operationNotPermited"* |
 
 ### 4000 – 4902 — wallet, actors, overworld & fight movement, direction
 
@@ -493,6 +493,14 @@ one-offs, because their semantics are genuinely unknown and each needs its consu
 before a byte is sent. Guessing there is how the 8120-vs-8121 mistake happened.
 
 
+
+> **Blind spot in the invariant test.** `TestOpcodeInventoryMarksEveryEmittedFrame`
+> scans `EncodeS2C` call sites for a LITERAL opcode. A helper that takes the opcode
+> as a variable — like `sendChatError(opcode uint16)` — is invisible to it, so 3214
+> was emitted while still marked `-` and the test stayed green. Rows sent that way
+> have to be updated by hand. Worth knowing before trusting a green run to mean
+> "the table matches the code".
+
 ### Why each unimplemented C2S is unimplemented
 
 A C2S opcode we do not serve is a message the client can SEND and we silently drop,
@@ -578,7 +586,7 @@ chunk of work: one handler class, one feature area.
 
 | Family | Consumer | Opcodes | Notes |
 |---|---|---|---|
-| Social / friends | `om_0` | 2070, 3128, 3130, 3132, 3134, 3136, 3138, 3142, 3206, 3210, 3212, 3214, 3216 | The largest single block (13). `om_0` is the friends/presence handler already read for B-120/B-121 (cases 3144/3148/3150), so its decode conventions are known. |
+| Social / friends | `om_0` | **2070**, 3206, 3210, 3212, 3214, 3216 | **CORRECTED** - this was listed as 13 opcodes. On reading the case bodies, **3128/3130/3132/3134/3136/3138/3142 are decode-and-discard**: each casts the message and `return false`, exactly the empty-body trap this document warns about, so sending them does nothing. The rest are real: 3206-3216 are the empty-payload chat errors (3214 now sent), and 2070 shows a server message via `zc_0`. |
 | Fight | `of_1` | 4900, 4901, 4902, 8122, 8250 | `of_1` is the in-fight handler (8120/8121 live here). **8122** is the buff DETACH counterpart to 8121 - see item 11; it is keyed by a client-local buff id, so check that before planning it. |
 | Team presets / fighters | `dx_2` | 6014, 6020, 6022, 6029, 6032 | Same family as the 6030/6031 preset list we already serve. 6032 also reaches `ce_1`. |
 | Challenge / duel | `ft_1` | 2307, 2309, 4309, 23112, 26312, 26314 | 26312/26314 are the X-vs-X pair; 26313's C2S half is Test-Lua-only (item 33), so confirm reachability before building these. |

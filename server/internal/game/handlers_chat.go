@@ -32,6 +32,11 @@ func handlePrivateMessageRecv(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
+	// Whispering yourself: the client has a dedicated error for this, and showed
+	// nothing before because the message was simply relayed straight back.
+	if strings.EqualFold(target, s.Coach.Name) {
+		return s.sendChatError(protocol.OpChatErrTargetIsYourself)
+	}
 	online := s.deps.World.GetByName(target)
 	if online == nil {
 		return s.sendUserNotFound(target)
@@ -413,4 +418,18 @@ func buildPrivateMessage(name string, id int64, msg string) ([]byte, error) {
 		I64(id).
 		StringU8(sanitizeChatText(msg, maxPrivateMsg))
 	return protocol.EncodeS2C(protocol.OpPrivateContentMessage, w.Bytes())
+}
+
+// sendChatError sends one of the empty-payload chat error signals (3206-3216).
+//
+// The opcode IS the message: `om_0` discards the decoded body and renders a fixed
+// string from its own i18n table, so there is nothing to encode. Sending one is
+// the difference between the client telling the player why a chat action was
+// refused and it showing nothing whatsoever.
+func (s *Session) sendChatError(opcode uint16) error {
+	frame, err := protocol.EncodeS2C(opcode, nil)
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
 }
