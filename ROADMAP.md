@@ -1804,13 +1804,28 @@ is a signing certificate or SignPath); no published Docker image.
     ahead — `zN` renders `1 + (start-now)/60000` minutes, so a past start shows a
     negative countdown.
 
-    Still open: **28646** ("the period opens now, valid N minutes") and the
-    **settlement** that gives the schedule teeth — declaring the absentees forfeit
-    once a window closes, which is what lets a tournament progress when only one
-    finalist is online. 28646 is blocked on a specific hazard rather than effort:
-    `zN` case 28646 adds its `td_0` **without** the duplicate guard case 28630 has,
-    so emitting both for one tournament leaves two identical alert rows — 28630
-    would have to stop being the selection mechanism first.
+    A closed window is now **settled**: whoever was searching takes the fixture,
+    whoever was not is declared forfeit (28648 both ways). That is what lets a
+    tournament progress when the two halves of a fixture are never online
+    together. Three rules make it fair rather than merely automatic — being in the
+    ready set is not enough, the coach must actually be **present** (nothing clears
+    that set on disconnect, so readying then logging off would otherwise win
+    fixtures while absent); **neither** side searching decides nothing, because
+    picking a winner would hand it to whoever was seeded lower; and a forfeit
+    winner follows the **byes** above the fixture, so with a short draw a forfeit
+    can be the tournament win and still pay out.
+
+    Settlement runs lazily from the totem/list request rather than on a ticker: a
+    tournament only needs to be current when somebody opens it, and the operation
+    is idempotent by construction (it only fills empty parent slots), so no
+    "already settled" flag is stored and no goroutine needs a lifecycle. The
+    outcome does not depend on who triggered it.
+
+    Still open: **28646** ("the period opens now, valid N minutes"), blocked on a
+    specific hazard rather than effort — `zN` case 28646 adds its `td_0` **without**
+    the duplicate guard case 28630 has, so emitting both for one tournament leaves
+    two identical alert rows. 28630 would have to stop being the selection
+    mechanism first.
 33. **X-vs-X challenge with allies** (26313/26314).
 34. [x] **Versioned schema migrations** - DONE, though not by deleting
     `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen

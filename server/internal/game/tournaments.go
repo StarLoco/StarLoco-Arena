@@ -353,6 +353,89 @@ func (m *TournamentManager) BracketSlots(tid int64) map[int32]uint {
 	return m.bracketSlotsLocked(tid, slots)
 }
 
+// ForfeitResult is one fixture settled because only one side turned up.
+type ForfeitResult struct {
+	Winner uint
+	Loser  uint
+	Slot   int32 // the slot the winner took
+}
+
+// SettleClosedPeriod advances every undecided fixture in which exactly one side
+// was actually searching, and returns what it decided.
+//
+// This is what lets a tournament progress when the two halves of a fixture are
+// never online together: retail's rule is that a search period closes and whoever
+// was not looking for an opponent is declared forfeit.
+//
+// `present` must report whether a coach can really fight right now. Being in the
+// ready set is NOT enough on its own: nothing clears that set on disconnect, so
+// readying up and then logging off would otherwise be a way to win fixtures while
+// absent - the exact behaviour the forfeit rule exists to punish.
+//
+// Neither side searching decides nothing. There is no fair winner to pick, and
+// picking one would hand the tournament to whoever happened to be seeded lower.
+//
+// Idempotent by construction: it only touches fixtures whose parent slot is still
+// empty, so running it again after a period settles is a no-op. That is why no
+// "already settled" flag is stored anywhere.
+func (m *TournamentManager) SettleClosedPeriod(tid int64, present func(uint) bool) []ForfeitResult {
+	if present == nil {
+		return nil
+	}
+	first := m.firstRoundSlots(tid)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.bracketSlotsLocked(tid, first)
+	readySet := m.ready[tid]
+
+	var out []ForfeitResult
+	// Deepest first, and only from the even side of each pair so a fixture is
+	// considered once.
+	for slot := int32(bracketSlots) - 2; slot >= 2; slot -= 2 {
+		a, okA := slots[slot]
+		b, okB := slots[slot^1]
+		if !okA || !okB {
+			continue // not a contested fixture; an empty side is a bye, not a forfeit
+		}
+		parent := slot / 2
+		if _, decided := slots[parent]; decided {
+			continue
+		}
+		aIn := readySet[a] && present(a)
+		bIn := readySet[b] && present(b)
+		if aIn == bIn {
+			continue
+		}
+		winner, loser := a, b
+		if bIn {
+			winner, loser = b, a
+		}
+		if m.advanced[tid] == nil {
+			if m.advanced == nil {
+				m.advanced = map[int64]map[int32]uint{}
+			}
+			m.advanced[tid] = map[int32]uint{}
+		}
+		m.advanced[tid][parent] = winner
+		if m.store != nil {
+			if err := m.store.SetSlot(tid, parent, winner); err != nil {
+				delete(m.advanced[tid], parent) // do not diverge from the store
+				continue
+			}
+		}
+		delete(readySet, a)
+		delete(readySet, b)
+		// The winner may now ride byes further up; report where it actually landed.
+		landed := parent
+		if s, ok := topSlotOf(m.bracketSlotsLocked(tid, first), winner); ok {
+			landed = s
+		}
+		out = append(out, ForfeitResult{Winner: winner, Loser: loser, Slot: landed})
+	}
+	return out
+}
+
 // FixtureDecidesTournament reports whether the winner of the pair that decides
 // `parent` goes on to win the whole tournament without playing again - that is,
 // every round above `parent` is a bye.

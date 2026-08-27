@@ -1,6 +1,8 @@
 package game
 
 import (
+	"time"
+
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
@@ -122,6 +124,14 @@ func handleTournamentListRequest(s *Session, _ *protocol.C2SFrame) error {
 	if err := s.Send(frame); err != nil {
 		return err
 	}
+	// Settle any window that has closed since anyone last looked. Done lazily
+	// here rather than on a ticker: a tournament only has to be up to date when
+	// somebody opens it, and the settlement is idempotent.
+	now := time.Now()
+	for i := range ts {
+		s.deps.settleTournamentPeriod(ts[i].WireID(), now)
+	}
+
 	// AFTER the list: the search-period notification names its tournament by
 	// looking it up in the registry this message just filled.
 	s.announceTournamentSearchPeriods()
