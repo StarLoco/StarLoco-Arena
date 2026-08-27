@@ -1207,7 +1207,7 @@ is a signing certificate or SignPath); no published Docker image.
     disables). The widening *replaces* the timeout: relaxing the requirement
     ends the search in a match rather than in a give-up, which matters on a
     server with few players online.
-17. ✅ **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is
+17. [x] **Spell `TargetMasks`** — **done (B-081)**. **`MaxActive`** is
     decoded-not-enforced **on purpose**: the scope question that blocked it is
     answered, it needs no wire work, and it turns out it cannot change an outcome
     in the shipped data. 6 spells carry it (8, 15, 46, 141, 167, 173 — buff
@@ -1685,7 +1685,9 @@ is a signing certificate or SignPath); no published Docker image.
     mode, so carrying it through is a single distinct tag.
 
     Nothing blocking is left.
-31. 🟡 **Guilds / clans** — **core loop DONE and live-verified.** The premise
+31. [x] **Guilds / clans** — **DONE and live-verified**, including clan islands.
+    The only unbuilt opcodes (513 rename, 551 icon) are deliberate exclusions with
+    evidence, not backlog — see the end of this entry. The premise
     held: the client's clan feature is fully wired and reachable (handler `lh_1`
     registered on login, 13 C2S classes with production callers, the guild tab
     one click from the HUD). What blocked it was the server writing an empty
@@ -1843,7 +1845,23 @@ is a signing certificate or SignPath); no published Docker image.
     the duplicate guard case 28630 has, so emitting both for one tournament leaves
     two identical alert rows. 28630 would have to stop being the selection
     mechanism first.
-33. **X-vs-X challenge with allies** (26313/26314).
+33. [x] **X-vs-X challenge with allies** (26313/26314) — **CLOSED: dead in this
+    build, and superseded.** Nothing to implement.
+
+    26313 `aju_1` is `[i8 mode=14][i64 target][u8 n][i64 allyId × n]`, answered by
+    26314 `ahV`. Its **only** builder is `awj_0`, which is the Lua binding
+    `XvsXInvitation` in `adg_1` — a class whose own constructor is
+    `super("Test")`, registered at `zh_1:152` alongside the other debug libraries.
+    There is no UI anywhere that reaches it.
+
+    It is also not the multi-coach feature it looks like: **item 30 (2v2) is built
+    on the 60xx team family** (6024/6025/6026/6027/6028), which is what the 2VS2
+    tab actually sends, and that is live-verified with four retail clients. The two
+    are unrelated in both directions — 2v2 never touches 26313, and 26313 would not
+    produce a 2v2.
+
+    Same call, and same evidence shape, as the tournament admin family: the message
+    class exists, the caller does not.
 34. [x] **Versioned schema migrations** - DONE, though not by deleting
     `AutoMigrate`, and the reason is the three supported dialects. Hand-frozen
     `CREATE TABLE` SQL would exist three times and drift three ways, so the
