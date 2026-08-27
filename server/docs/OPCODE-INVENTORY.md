@@ -466,6 +466,33 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 ---
 
 
+
+### Where to start (highest value first)
+
+Coverage today: **331 rows - 104 C2S handled, 122 S2C emitted, 5 inactive, 100
+unimplemented**. Of those 100, **16 are unreachable from the retail client** (10 C2S with
+no constructor, 6 S2C with no live consumer) and are recorded above as deliberate
+non-work. The remaining ~84 are real, and these are the ones worth doing first:
+
+1. **Social / friends (`om_0`, 13 S2C: 2070, 3128-3216).** The largest single block, all
+   in one handler whose conventions we already know from B-120/B-121. Player-visible,
+   and the friend list is load-bearing for 2v2 invites.
+2. **8122 buff detach (`of_1`).** Completes item 11. Check first whether the buff id is
+   the client-local `ahT()` counter - if it is, the server cannot address a buff and the
+   opcode is unusable, exactly like item 14's 5203 uids.
+3. **Search-flow siblings (`vu_1` 23102-23108, `wp_0` 23002-23008).** These sit inside
+   flows already served, so each is likely a small reply that finishes an existing
+   feature rather than new work.
+4. **Team presets (`dx_2`, 6014/6020/6022/6029/6032).** Same family as the 6030/6031
+   list we serve; the codec already exists.
+5. **Guild replies (`lh_1`, 512/552/554).** Item 31 is otherwise complete; confirm each
+   is not another Test-Lua-only path (513/551 were) before building.
+
+Left for last on purpose: the low system opcodes (100-204) and the single-consumer
+one-offs, because their semantics are genuinely unknown and each needs its consumer read
+before a byte is sent. Guessing there is how the 8120-vs-8121 mistake happened.
+
+
 ### Why each unimplemented C2S is unimplemented
 
 A C2S opcode we do not serve is a message the client can SEND and we silently drop,
@@ -524,6 +551,54 @@ The 16 marked *reachable* above have a real constructor in a production class an
 genuine gaps; the caller is named so the next person starts from evidence rather
 than a grep. Their semantics are not yet established and that is stated rather than
 guessed.
+
+
+
+### Why each unimplemented S2C is unimplemented
+
+Same evidence test as the C2S table, inverted: an S2C we never send is only a gap if
+something in the client would CONSUME it. Each opcode below was searched for as
+`case <opcode>:` across the decompiled client, excluding `gz_1` (the opcode->class
+factory, which mentions every opcode and proves nothing). The handler class is named so
+the next person starts from the consumer rather than from a grep.
+
+**Send nothing here - there is no consumer.**
+
+| Opcode | Consumer | Why not |
+|---|---|---|
+| 3208 | *none* | No `case 3208` anywhere. The client would drop it. |
+| 28604 | `ajp_0` | Tournament-create reply. `ajp_0` is the debug console whose output sink (`ajp_0.a(apk_0)`) is never installed, so the reply is inert even if sent. |
+| 28606 | `ajp_0` | Same inert console path. |
+| 28634 | `ajp_0` | Same inert console path. |
+| 28636 | `ajp_0` | Same inert console path. |
+| 28622 | `ds_2` | Has a `case`, but the body is empty (`bl2 = false; break;`) and the static list it decodes into is only reachable via `uw_2.ahZ()`, which nothing calls. A case label is not a consumer. |
+
+**Real gaps, grouped by the client class that consumes them.** Each group is a coherent
+chunk of work: one handler class, one feature area.
+
+| Family | Consumer | Opcodes | Notes |
+|---|---|---|---|
+| Social / friends | `om_0` | 2070, 3128, 3130, 3132, 3134, 3136, 3138, 3142, 3206, 3210, 3212, 3214, 3216 | The largest single block (13). `om_0` is the friends/presence handler already read for B-120/B-121 (cases 3144/3148/3150), so its decode conventions are known. |
+| Fight | `of_1` | 4900, 4901, 4902, 8122, 8250 | `of_1` is the in-fight handler (8120/8121 live here). **8122** is the buff DETACH counterpart to 8121 - see item 11; it is keyed by a client-local buff id, so check that before planning it. |
+| Team presets / fighters | `dx_2` | 6014, 6020, 6022, 6029, 6032 | Same family as the 6030/6031 preset list we already serve. 6032 also reaches `ce_1`. |
+| Challenge / duel | `ft_1` | 2307, 2309, 4309, 23112, 26312, 26314 | 26312/26314 are the X-vs-X pair; 26313's C2S half is Test-Lua-only (item 33), so confirm reachability before building these. |
+| Guild / clan | `lh_1` | 512, 552, 554 | 512 also reaches `avo_0`. Replies for the guild ops item 31 deliberately skipped (513 rename / 551 icon are Test-Lua-only), so check each before implementing. |
+| Combat search (classic) | `vu_1` | 23102, 23104, 23106, 23108 | Siblings of the 23101/23103 ready/search pair we serve. |
+| Evolution search | `wp_0` | 23002, 23004, 23006, 23008 | Siblings of the evolution search flow already implemented. |
+| Ladder | `pl_2`, `pq_1` | 27526, 27528, 27552 | 108 also lands in `pl_2`. Sub-boards beyond the 1v1/clan ones we serve. |
+| Overworld / instance | `no_2` | 4601, 4700, 22092 | 4510 reaches `no_2` and `qg_2`. |
+| Overworld (misc) | `qg_2` | 4104, 4106, 4510 | |
+| Tournament notifications | `zN` | 17005, 25000, 28646 | **28646** ("search period opens now, N minutes") is blocked on a known hazard, not effort: `zN` case 28646 adds its `td_0` WITHOUT the duplicate guard case 28630 has, so emitting both for one tournament leaves two identical alert rows. 28630 must stop being the selection mechanism first. |
+| Tournament (player) | `ajp_0` | 28618 | **NOT dead** despite the `ajp_0` handler: it raises a real dialog whose answer sends 28617. See the C2S table. |
+| System / connection | `fp_0`, `alz_2`, `tu_1` | 100, 102, 103, 105, 106, 108, 202, 204 | Low opcodes; 202/204 sit beside INTERACTIVE_ELEMENT_SPAWN (200) so are likely the element family. Semantics not established. |
+| Misc, single consumer | `add_0` / `pe_2` / `rl_2` / `aog_1` / `WE` / `do_2` | 2401, 2411 / 4000 / 5000 / 4800 / 8400 / 4311 | One-offs; each needs its consumer read before anything is sent. |
+
+**How to pick one up.** Open the consumer class, find `case <opcode>:`, and read what it
+does with the decoded message - that gives both the wire layout (from the message class
+it casts to) and the UI effect. Two traps this document exists to prevent: a `case` with
+an empty body is not a consumer (28622), and a message class with no `new` anywhere
+cannot be sent by the retail client at all (the C2S table). Grep CASE-SENSITIVELY - the
+obfuscated names differ only by case and a default PowerShell `Select-String` will lie.
 
 
 ## Focused views (for planning)
