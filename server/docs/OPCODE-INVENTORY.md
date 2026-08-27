@@ -99,14 +99,14 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 509 | C2S | H | GuildCreate (atM), arch 3 | `handleGuildCreate` - live-verified |
 | 510 | S2C | E | GuildRecord (arl_0) | the guild sheet |
 | 511 | C2S | H | GuildDestroy (awR) | `handleGuildDestroy` - leader only, rank re-derived server-side |
-| 512 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
+| 512 | S2C | E | GuildMembers | the clan member list (item 31) |
 | 513 | C2S | - | (wt_1) | unidentified |
 | 515 | C2S | H | GuildSetRank (abn_2) | `handleGuildSetRank` - leader-only, validated server-side |
 | 517 | C2S | H | GuildGet (auZ) | `handleGuildGet` |
 | 519 | C2S | H | GuildMembersGet (add_2) | `handleGuildMembers` - live-verified |
 | 539 | C2S | H | MailSend (F) | `handleMailSend` � full mail record |
 | 551 | C2S | - | (mx_1) | unidentified |
-| 552 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
+| 552 | S2C | E | GuildMembership | the 0x20 membership blob (item 31) |
 | 553 | C2S | H | GuildRankAdd (abo_0) | `handleGuildRankAdd` |
 | 554 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
 | 555 | C2S | H | GuildRankModify (Nr) | `handleGuildRankModify` |
@@ -367,18 +367,18 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 22099 | C2S | H | FighterUseItemOn (bw) | `handleFighterUseItemOn` — resurrection: gated on the card carrying a real resurrection effect (action 13), rolls its decoded % (rand 1..100 <= pct), consumes the card either way, revives only on success |
 | 23000 | C2S | H | FighterSetState (Jc) | `handleFighterSetState` � titular/bench/graveyard/legendary |
 | 23001 | C2S | H | EvolutionSearchCancel (abn_0) | `handleEvolutionSearchCancel` |
-| 23002 | S2C | - | (wf_2) | fight-setup family |
+| 23002 | S2C | E | EvolutionSearchCancelResult (wf_2) | `[i8 accepted]` - closes `evolutionSearchStatusDialog` |
 | 23003 | C2S | H | EvolutionSearchRequest (ajw_0) | `handleEvolutionSearchRequest` |
-| 23004 | S2C | - | (amh_0) | fight-setup family |
-| 23006 | S2C | - | (azl_0) | fight-setup family |
-| 23008 | S2C | - | (KL) | fight-setup family |
+| 23004 | S2C | E | EvolutionSearchResult (amh_0) | `[i16 preset][i8 accepted]` - opens the search overlay |
+| 23006 | S2C | E | EvolutionFightStarting (azl_0) | empty - *"Lancement du combat"*, closes the overlay before CREATE_FIGHT |
+| 23008 | S2C | E | EvolutionSearchError (KL) | `[i8 code]` - 1 impossibleToStartOpponentsSearch, 2 badTeam, 3 ... |
 | 23009 | C2S | H | SphereBuy / Kanodo (aow_2), arch 3 | `handleSphereBuy` - `[i64 fighterId][i32 sphereId][i32 cardTemplateId]`. No reply and no rejection path, so every rule is re-derived server-side |
 | 23101 | C2S | H | ClassicSearchCancel (bm_1) | `handleClassicSearchCancel` |
-| 23102 | S2C | - | (ada_1) | fight-setup family |
+| 23102 | S2C | E | ClassicSearchCancelResult (ada_1) | `[i8 accepted]` - closes `classicSearchStatusDialog` |
 | 23103 | C2S | H | (atj_0) | `handleClassicReadyForFight` ("Combattre" ready-up) |
-| 23104 | S2C | - | (aLi) | fight-setup family |
-| 23106 | S2C | - | (ads_2) | fight-setup family |
-| 23108 | S2C | - | (M) | fight-setup family |
+| 23104 | S2C | E | ClassicSearchResult (aLi) | `[i16 teamId][i8 accepted]` - opens the search overlay |
+| 23106 | S2C | E | ClassicFightStarting (ads_2) | empty - *"Lancement du combat"*, closes the overlay before CREATE_FIGHT |
+| 23108 | S2C | E | ClassicSearchError (M) | `[i8 code]` - same code table as 23008 |
 | 23110 | S2C | E | (tb_2) | `MatchFound` ("do you accept?") |
 | 23112 | S2C | - | (aku_1) | fight-setup family |
 | 23114 | C2S | H | (acz_2) | `handleMatchAccept` |
@@ -469,10 +469,10 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 
 ### Where to start (highest value first)
 
-Coverage today: **331 rows - 104 C2S handled, 122 S2C emitted, 5 inactive, 100
+Coverage today: **331 rows - 104 C2S handled, 136 S2C emitted, 7 inactive, 84
 unimplemented**. Of those 100, **24 are unreachable or inert** (10 C2S with no constructor; 10 S2C whose consumer is a no-op; 4 S2C reaching only the inert debug console) (10 C2S with
 no constructor, 10 S2C whose consumer is a no-op, 4 S2C reaching only the inert debug
-console) and are recorded below as deliberate non-work. The remaining **~76 are real**, and
+console) and are recorded below as deliberate non-work. The remaining **~60 are real**, and
 these are worth doing first:
 
 1. **Chat errors (`om_0`, 3206/3210/3216).** 3214 is done; the other three are
@@ -481,9 +481,7 @@ these are worth doing first:
 2. **8122 buff detach (`of_1`).** Completes item 11. Check first whether the buff id is
    the client-local `ahT()` counter - if it is, the server cannot address a buff and the
    opcode is unusable, exactly like item 14's 5203 uids.
-3. **Search-flow siblings (`vu_1` 23102-23108, `wp_0` 23002-23008).** These sit inside
-   flows already served, so each is likely a small reply that finishes an existing
-   feature rather than new work.
+3. ~~Search-flow siblings~~ - **already implemented**; the rows were stale (see below).
 4. **Team presets (`dx_2`, 6014/6020/6022/6029/6032).** Same family as the 6030/6031
    list we serve; the codec already exists.
 5. **Guild replies (`lh_1`, 512/552/554).** Item 31 is otherwise complete; confirm each
@@ -501,6 +499,21 @@ before a byte is sent. Guessing there is how the 8120-vs-8121 mistake happened.
 > was emitted while still marked `-` and the test stayed green. Rows sent that way
 > have to be updated by hand. Worth knowing before trusting a green run to mean
 > "the table matches the code".
+
+
+> **The `-` status was unreliable for anything sent INDIRECTLY, and 10 rows were wrong.**
+> `TestOpcodeInventoryMarksEveryEmittedFrame` scans `EncodeS2C` sites for a literal opcode,
+> so it never saw opcodes passed as a parameter (`sendChatError`) or held in a struct field
+> (`searchFamily{result: ...}`). Both classic and evolution search handshakes
+> (23002/23004/23006/23008, 23102/23104/23106/23108) and two guild replies (512, 552) had
+> been implemented for a long time and still read as "not implemented" - which inflated the
+> backlog and put finished work at the top of the start list above.
+>
+> `TestNoUnimplementedRowIsActuallyWired` now fails if a row marked `-` or `I` has its
+> protocol constant referenced anywhere in `internal/game`. It proves the row needs
+> re-checking rather than proving a frame is sent, which is the right failure mode for a
+> document people plan from. It matches on a word boundary: the first version reported
+> `OpCoachEquipmentUpdate` as used because `OpCoachEquipmentUpdateRequest` contains it.
 
 ### Why each unimplemented C2S is unimplemented
 
@@ -609,9 +622,7 @@ chunk of work: one handler class, one feature area.
 | Fight | `of_1` | 4900, 4901, 4902, 8122, 8250 | `of_1` is the in-fight handler (8120/8121 live here). **8122** is the buff DETACH counterpart to 8121 - see item 11; it is keyed by a client-local buff id, so check that before planning it. |
 | Team presets / fighters | `dx_2` | 6014, 6020, 6022, 6029, 6032 | Same family as the 6030/6031 preset list we already serve. 6032 also reaches `ce_1`. |
 | Challenge / duel | `ft_1` | 2307, 2309, 4309, 23112, 26312, 26314 | 26312/26314 are the X-vs-X pair; 26313's C2S half is Test-Lua-only (item 33), so confirm reachability before building these. |
-| Guild / clan | `lh_1` | 512, 552, 554 | 512 also reaches `avo_0`. Replies for the guild ops item 31 deliberately skipped (513 rename / 551 icon are Test-Lua-only), so check each before implementing. |
-| Combat search (classic) | `vu_1` | 23102, 23104, 23106, 23108 | Siblings of the 23101/23103 ready/search pair we serve. |
-| Evolution search | `wp_0` | 23002, 23004, 23006, 23008 | Siblings of the evolution search flow already implemented. |
+| Guild / clan | `lh_1` | 554 | 512/552 turned out to be ALREADY IMPLEMENTED (item 31) and were stale rows. 554 is the remaining one; 513 rename / 551 icon are Test-Lua-only. |
 | Ladder | `pl_2`, `pq_1` | 27526, 27528, 27552 | 108 also lands in `pl_2`. Sub-boards beyond the 1v1/clan ones we serve. |
 | Overworld / instance | `no_2` | 4601, 4700, 22092 | 4510 reaches `no_2` and `qg_2`. |
 | Overworld (misc) | `qg_2` | 4104, 4106, 4510 | |
