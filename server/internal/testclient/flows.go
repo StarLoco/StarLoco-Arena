@@ -189,7 +189,16 @@ const (
 	OpTeamPresetList    = 6030
 )
 
-const defaultTimeout = 3 * time.Second
+// defaultTimeout is how long a test flow waits for an expected frame.
+//
+// It is a CEILING on failure, not a delay on success: WaitFor returns the moment
+// the frame arrives, so raising this costs a passing run nothing and only buys
+// headroom on a loaded machine. It was 3s, which was enough locally and not on a
+// shared CI runner - "create coach: read tcp ...: i/o timeout" showed up there
+// while every local run and the two previous CI runs passed. Nothing in the
+// suite asserts on this EXPIRING (the tests that check a frame is absent pass
+// their own short timeout), so there is no test made slower by the larger value.
+const defaultTimeout = 10 * time.Second
 
 // DefaultTimeout is the standard wait used by test flows.
 const DefaultTimeout = defaultTimeout
