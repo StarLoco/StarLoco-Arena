@@ -183,9 +183,9 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 3199 | C2S | H | `ak` | **Clan chat send** (`/c`), arch 2: `[u16 len][msg][i64 guildId]`. The client SELF-GATES on having a guild - with none it emits no packet at all - which is why this looked dead before item 31. Now live: the supplied guild id is re-validated against the sender's actual guild |
 | 3202 | S2C | I | ChannelNotFound (qv_0) | **unreachable** - it answers 3151, which the retail client cannot send (`ChannelContentCommand` is referenced by nothing). Vestigial with the rest of the channel family |
 | 3204 | S2C | E | UserNotFoundMessage (ve_1) | emitted on PM to unknown name |
-| 3206 | S2C | I | MalformedCommandMessage (`amd_1`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.malformedCommand"* |
+| 3206 | S2C | E | MalformedCommandMessage (`amd_1`) | EMPTY payload. Sent for a bare `/` GM command, which used to return silently |
 | 3208 | S2C | - | MemberNotFoundMessage (ez_2) | error class, unused |
-| 3210 | S2C | I | NotEnoughPrivilegesMessage (`lx_0`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.notEnoughPrivileges"* |
+| 3210 | S2C | E | NotEnoughPrivilegesMessage (`lx_0`) | EMPTY payload. Sent when a non-admin issues a `/` command; replaces an invented, untranslated English string |
 | 3212 | S2C | I | NotYetImplementedMessage (`adm_0`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.notYetImplemented"* |
 | 3214 | S2C | E | TargetIsYourselfMessage (as_0) | EMPTY payload - `om_0` ignores the body and shows *"error.chat.targetIsYourself"*. Sent when a coach whispers ITSELF; before this the whisper was relayed straight back and the player saw no explanation. Emitted via `sendChatError` |
 | 3216 | S2C | I | OperationNotPermitedMessage (`avs`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.operationNotPermited"* |
@@ -470,13 +470,14 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 ### Where to start (highest value first)
 
 Coverage today: **331 rows - 104 C2S handled, 122 S2C emitted, 5 inactive, 100
-unimplemented**. Of those 100, **16 are unreachable from the retail client** (10 C2S with
-no constructor, 6 S2C with no live consumer) and are recorded above as deliberate
-non-work. The remaining ~84 are real, and these are the ones worth doing first:
+unimplemented**. Of those 100, **24 are unreachable or inert** (10 C2S with no constructor; 10 S2C whose consumer is a no-op; 4 S2C reaching only the inert debug console) (10 C2S with
+no constructor, 10 S2C whose consumer is a no-op, 4 S2C reaching only the inert debug
+console) and are recorded below as deliberate non-work. The remaining **~76 are real**, and
+these are worth doing first:
 
-1. **Social / friends (`om_0`, 13 S2C: 2070, 3128-3216).** The largest single block, all
-   in one handler whose conventions we already know from B-120/B-121. Player-visible,
-   and the friend list is load-bearing for 2v2 invites.
+1. **Chat errors (`om_0`, 3206/3210/3216).** 3214 is done; the other three are
+   empty-payload one-liners needing only a call site, and each replaces a silent refusal
+   with a real explanation to the player. Cheapest real wins on the board.
 2. **8122 buff detach (`of_1`).** Completes item 11. Check first whether the buff id is
    the client-local `ahT()` counter - if it is, the server cannot address a buff and the
    opcode is unusable, exactly like item 14's 5203 uids.
@@ -579,7 +580,25 @@ the next person starts from the consumer rather than from a grep.
 | 28606 | `ajp_0` | Same inert console path. |
 | 28634 | `ajp_0` | Same inert console path. |
 | 28636 | `ajp_0` | Same inert console path. |
+| 5000 | `rl_2` | `case` present, body is a cast and a return - no side effect. Found by the mechanical sweep, not by eye. |
 | 28622 | `ds_2` | Has a `case`, but the body is empty (`bl2 = false; break;`) and the static list it decodes into is only reachable via `uw_2.ahZ()`, which nothing calls. A case label is not a consumer. |
+
+
+**The empty-body check is now mechanical, and it should have been from the start.** Every
+unimplemented S2C had its `case` body extracted and scored: lines that are only a cast, a
+`return`, a `break` or a brace do not count. Result over the 74:
+
+- **10 have a no-op consumer** - 3128/3130/3132/3134/3136/3138/3142 (`om_0`), 3208 (no
+  handler at all), 5000 (`rl_2`), and 28622 (`ds_2`).
+- **4 more are inert in practice** - 28604/28606/28634/28636 have real bodies but write
+  only through `ajp_0.cE()`, whose sink is never installed.
+- **60 are genuinely consumed** and are the real backlog.
+
+The sweep caught 5000, which I had filed under "misc, single consumer" purely because it
+had a handler. It also shows the check's limit: **28622 scores as substantive** because its
+body assigns a local flag (`bl2 = false;`) before breaking, which has no effect. So the
+score is a filter, not a verdict - it narrows what to read, and the body still has to be
+read. That is the honest version of the rule I kept restating and not applying.
 
 **Real gaps, grouped by the client class that consumes them.** Each group is a coherent
 chunk of work: one handler class, one feature area.
@@ -599,7 +618,7 @@ chunk of work: one handler class, one feature area.
 | Tournament notifications | `zN` | 17005, 25000, 28646 | **28646** ("search period opens now, N minutes") is blocked on a known hazard, not effort: `zN` case 28646 adds its `td_0` WITHOUT the duplicate guard case 28630 has, so emitting both for one tournament leaves two identical alert rows. 28630 must stop being the selection mechanism first. |
 | Tournament (player) | `ajp_0` | 28618 | **NOT dead** despite the `ajp_0` handler: it raises a real dialog whose answer sends 28617. See the C2S table. |
 | System / connection | `fp_0`, `alz_2`, `tu_1` | 100, 102, 103, 105, 106, 108, 202, 204 | Low opcodes; 202/204 sit beside INTERACTIVE_ELEMENT_SPAWN (200) so are likely the element family. Semantics not established. |
-| Misc, single consumer | `add_0` / `pe_2` / `rl_2` / `aog_1` / `WE` / `do_2` | 2401, 2411 / 4000 / 5000 / 4800 / 8400 / 4311 | One-offs; each needs its consumer read before anything is sent. |
+| Misc, single consumer | `add_0` / `pe_2` / `aog_1` / `WE` / `do_2` | 2401, 2411 / 4000 / 4800 / 8400 / 4311 | One-offs; each needs its consumer read before anything is sent. |
 
 **How to pick one up.** Open the consumer class, find `case <opcode>:`, and read what it
 does with the decoded message - that gives both the wire layout (from the message class

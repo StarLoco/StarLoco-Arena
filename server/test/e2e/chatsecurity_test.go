@@ -20,6 +20,8 @@ const (
 	// Chat error signals - empty payload, the opcode IS the message (om_0 renders
 	// a fixed i18n string and ignores the body).
 	opChatErrTargetIsYourself = 3214 // S2C
+	opChatErrNotEnoughRights  = 3210 // S2C
+	opChatErrMalformedCommand = 3206 // S2C
 )
 
 // ignore makes `by` ignore `name`, over the wire, and waits for the ack — so the
@@ -224,5 +226,49 @@ func TestWhisperToSomeoneElseStillWorks(t *testing.T) {
 	_ = a.Send(4, opUserPrivate, p)
 	if _, _, err := b.WaitFor(opPrivateContent, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("a normal whisper was not delivered: %v", err)
+	}
+}
+
+// TestNonAdminGMCommandGetsThePrivilegeError: a '/'-command from a normal account
+// used to get an invented English private message from "Server". The client has
+// its own localised string for exactly this, so send that instead.
+func TestNonAdminGMCommandGetsThePrivilegeError(t *testing.T) {
+	addr := testServer(t)
+	// The FIRST account on a fresh database is made admin (handlers_connection.go),
+	// and every test gets a fresh database - so burn one login before testing the
+	// non-admin path, or the "non-admin" is silently an admin.
+	first, _ := dialLogin(t, addr, "adm_first", "AdmFirst")
+	reachWorld(t, first)
+	a, _ := dialLogin(t, addr, "nonadm", "NonAdm")
+	reachWorld(t, a)
+	a.DrainReceived(200 * time.Millisecond)
+
+	_ = a.Send(3, opUserVicinity, testclient.NewW().StrU16("/WHERE").Bytes())
+	f, _, err := a.WaitFor(opChatErrNotEnoughRights, testclient.DefaultTimeout)
+	if err != nil {
+		t.Fatalf("no 3210 for a non-admin GM command: %v", err)
+	}
+	if n := len(f.Payload); n != 0 {
+		t.Errorf("3210 payload = %d bytes, want 0", n)
+	}
+}
+
+// TestBareSlashIsAnsweredNotIgnored: "/" on its own returned nil, so the player
+// typed a command and the server said nothing at all.
+func TestBareSlashIsAnsweredNotIgnored(t *testing.T) {
+	st, addr := testServerWithStore(t)
+	// Promote BEFORE logging in: the session caches the account at login.
+	acc, err := st.Accounts.CreateAccount("adm_u", "pw", true)
+	if err != nil {
+		t.Fatalf("create admin account: %v", err)
+	}
+	_ = acc
+	a, _ := dialLogin(t, addr, "adm_u", "AdmU")
+	reachWorld(t, a)
+	a.DrainReceived(200 * time.Millisecond)
+
+	_ = a.Send(3, opUserVicinity, testclient.NewW().StrU16("/").Bytes())
+	if _, _, err := a.WaitFor(opChatErrMalformedCommand, testclient.DefaultTimeout); err != nil {
+		t.Fatalf("no 3206 for a bare slash: the server answers nothing: %v", err)
 	}
 }

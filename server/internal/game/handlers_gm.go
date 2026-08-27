@@ -17,11 +17,15 @@ import (
 // on the account's IsAdmin flag.
 func handleGMCommand(s *Session, line string) error {
 	if s.Account == nil || !s.Account.IsAdmin {
-		return s.gmFeedback("You are not an administrator.")
+		// The client has its own localised string for this
+		// ("error.chat.notEnoughPrivileges"); the invented English one it used to
+		// get was both untranslated and less recognisable to a player.
+		return s.sendChatError(protocol.OpChatErrNotEnoughRights)
 	}
 	fields := strings.Fields(strings.TrimPrefix(line, "/"))
 	if len(fields) == 0 {
-		return nil
+		// A bare "/" used to return silently, which looks like the server hung.
+		return s.sendChatError(protocol.OpChatErrMalformedCommand)
 	}
 	verb := strings.ToUpper(fields[0])
 	args := fields[1:]
