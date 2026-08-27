@@ -89,13 +89,41 @@ func (c *Client) WaitFor(opcode uint16, timeout time.Duration) (*Frame, []*Frame
 
 // DrainReceived reads whatever frames are immediately available (short timeout),
 // used to flush the server's push burst after an action.
+// DrainReceived reads frames until the connection goes quiet for `quiet`, or
+// until an overall cap elapses.
+//
+// The cap is the important half and it was missing. Without it this loops for as
+// long as the server keeps sending frames closer together than `quiet` - a fight
+// broadcasting phase changes, or a handler answering a burst of requests - so a
+// call meant to "drain for 250ms" can block forever. That is an unbounded wait on
+// the test's main goroutine, and it showed up as TestPlacementRejectsIllegal-
+// CellsAndPhases hanging for 8m55s on a Linux runner and taking the whole e2e
+// package past its 10-minute timeout, intermittently and only under load.
+//
+// Draining is best-effort by nature - callers use it to discard traffic they do
+// not care about - so hitting the cap returns what was read rather than failing.
 func (c *Client) DrainReceived(quiet time.Duration) []*Frame {
 	var frames []*Frame
-	for {
+	deadline := time.Now().Add(drainCap(quiet))
+	for time.Now().Before(deadline) {
 		f, err := c.Recv(quiet)
 		if err != nil {
 			return frames
 		}
 		frames = append(frames, f)
 	}
+	return frames
+}
+
+// drainCap bounds a drain at 20 quiet-periods, with a floor and ceiling so that
+// both the 30ms polling drains and the 250ms gate drains stay sane.
+func drainCap(quiet time.Duration) time.Duration {
+	cap := quiet * 20
+	if cap < time.Second {
+		cap = time.Second
+	}
+	if cap > 5*time.Second {
+		cap = 5 * time.Second
+	}
+	return cap
 }
