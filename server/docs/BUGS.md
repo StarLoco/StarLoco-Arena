@@ -205,6 +205,76 @@ absent pass their own short timeout explicitly.
 Raised the shared default rather than special-casing the one test that happened to flake,
 since that would have left the same trap for the next person.
 
+### B-126 - the sign-up and sign-in limits became ONE server-wide bucket behind a proxy
+
+**Symptom.** On a server whose portal sits behind a reverse proxy (here nginx-less:
+Cloudflare Tunnel -> the portal), the eleventh account created in any hour was refused
+for **everybody**, and likewise the twenty-first sign-in attempt in fifteen minutes. The
+limits are meant to be per visitor; they had become global. Found while deploying, before
+launch, rather than by a room full of players failing to register.
+
+**Root cause.** `clientIP` keys both limiters on `r.RemoteAddr` and deliberately ignores
+`X-Forwarded-For` - correctly, for a directly-reachable portal, since anyone could
+otherwise forge the header and mint a fresh allowance per request. But behind a proxy
+every visitor arrives as the proxy, so `newLimiter(10, time.Hour)` and
+`newLimiter(20, 15*time.Minute)` collapse onto a single key.
+
+This cannot be dodged by configuration: with Cloudflare in front, the real client address
+only ever exists in a header, so the portal is either told or blind.
+
+**Fix.** `web.trusted_proxies` (IPs or CIDRs), **empty by default** so no existing
+deployment changes behaviour. When - and only when - a request genuinely arrives from a
+listed peer, the client is taken as the right-most `X-Forwarded-For` entry that is not
+itself a trusted proxy; hops to its right were appended by infrastructure we control,
+everything to its left is caller-supplied and ignored. A malformed hop stops the walk
+rather than being skipped over, so a forged entry cannot be reached past a bad one.
+Unparseable config is rejected at startup, because a typo would silently reinstate the
+shared bucket this exists to fix.
+
+Tests: `TestClientIPTrustsOnlyConfiguredProxies` (unit, 7 cases - including that an
+untrusted peer cannot forge an address, that a trusted proxy IS believed, chain
+resolution, and CIDR form) and `TestParseTrustedProxiesRejectsGarbage`. Verified live:
+the production server logs `web: trusting forwarded client addresses from reverse
+proxies proxies=[...]` at startup.
+
+### B-125 - coach creation disconnected the player outright on postgres
+
+**Symptom.** On a PostgreSQL server, confirming a new coach's name dropped the connection
+instantly, every time. Nobody could get past character creation; SQLite was unaffected,
+so it did not reproduce in development at all. Server log:
+
+```
+dispatch error opcode=2049 err="ERROR: collation \"nocase\" for encoding \"UTF8\"
+does not exist (SQLSTATE 42704)"
+```
+
+**Root cause.** `CoachRepo.GetByName` and `CoachRepo.Create` both filtered with
+`name = ? COLLATE NOCASE`. `NOCASE` is a **SQLite-only** collation - postgres has no such
+thing and errors rather than ignoring it. Creation runs its case-insensitive uniqueness
+check first, so it threw before the coach row was ever written (the transaction rolled
+back cleanly, which is why no half-made coaches were left behind).
+
+The knowledge was already in the codebase and simply never reached this file:
+`account_admin.go` carries the comment *"LOWER() on both sides rather than COLLATE
+NOCASE: the latter is SQLite-only and this has to work on postgres and mysql too."*
+
+**Why the suite did not catch it.** The store tests run on SQLite, where the statement is
+perfectly valid. The full suite - including e2e - passed green while coach creation was
+broken for every postgres and mysql operator, which is exactly who
+`deploy/docker-compose.postgres.yml` invites. A green suite here does **not** prove the
+server works on the database it will be deployed on.
+
+**Fix.** `LOWER(name) = LOWER(?)` at both sites. Plus a guard that does not depend on
+which database the tests use: `TestNoSQLiteOnlySQLInStringLiterals` parses the store
+package and fails if SQLite-only SQL (`COLLATE NOCASE`, `AUTOINCREMENT`,
+`INSERT OR REPLACE`, `IFNULL(`, `strftime(`, ...) appears in a **string literal** -
+comments are exempt, so entries like this one can still name the constructs. The
+`PRAGMA`s in `store.go` are untouched: they are already guarded by `if isSQLite`.
+
+Tests: `unit` (the guard, mutation-checked - planting the bug back fails on both lines
+with file/line, removing it passes) and `live` - a real retail client created a coach
+against the production postgres server after the fix.
+
 ### B-124 - the team panel emptied after any teleport, Zaap trip or GM /WORLD
 
 **Symptom.** After arriving anywhere - a Zaap, a GM `/TP` or `/WORLD` - the team panel
