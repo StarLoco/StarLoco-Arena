@@ -28,7 +28,55 @@ const P = {
   clientLog: "E:\\Projets\\DofusArena2-06\\client\\compiled\\game\\output.log",
   mainClass: "com.ankamagames.dofusarena.client.DofusArenaClient",
   agentPort: 8099,
+  userPrefs: "E:\\Projets\\DofusArena2-06\\client\\compiled\\game\\userPreferences.properties",
+  clientConfig: "E:\\Projets\\DofusArena2-06\\client\\compiled\\game\\config.properties",
 };
+
+// ---- server targets -------------------------------------------------------
+// game/config.properties declares the servers the login dialog offers:
+//
+//   proxyGroup_1=Localhost      proxyAddresses_1=127.0.0.1:5555
+//   proxyGroup_2=ArenaReborn    proxyAddresses_2=game.arenareborn.com:443
+//
+// The client preselects one from the "lastServer" USER PREFERENCE, which is
+// ZERO-based (yy_0 writes `NM.getIndex() - 1`, and DofusArenaClientInstance
+// does `list.get(n)`). Do not confuse it with `lastProxyGroupIndex` in
+// config.properties, which apN writes ONE-based - they are different keys and
+// setting the wrong one silently connects you to the wrong server.
+const TARGETS = {
+  localhost: { prefIndex: 0, group: "Localhost", local: true },
+  arenareborn: { prefIndex: 1, group: "ArenaReborn", local: false },
+};
+
+// selectServer points the client at a target before it launches. It rewrites
+// only the one line, preserving the file's CRLF endings and every other
+// preference (the client rewrites this file itself on exit, so clobbering it
+// would lose the user's graphics and audio settings).
+function selectServer(name) {
+  const t = TARGETS[name];
+  if (!t) throw new Error("unknown server target: " + name);
+
+  const eol = /\r\n/.test(readFileSync(P.userPrefs, "latin1")) ? "\r\n" : "\n";
+  let prefs = readFileSync(P.userPrefs, "latin1").split(/\r?\n/);
+  let found = false;
+  prefs = prefs.map((l) => {
+    if (/^lastServer=/.test(l)) { found = true; return "lastServer=" + t.prefIndex; }
+    return l;
+  });
+  if (!found) prefs.push("lastServer=" + t.prefIndex);
+  writeFileSync(P.userPrefs, prefs.join(eol), "latin1");
+
+  // Keep config.properties' 1-based cousin consistent, so a human opening the
+  // file sees the same server the client will actually preselect.
+  try {
+    const cfgEol = /\r\n/.test(readFileSync(P.clientConfig, "latin1")) ? "\r\n" : "\n";
+    const cfg = readFileSync(P.clientConfig, "latin1").split(/\r?\n/)
+      .map((l) => (/^lastProxyGroupIndex=/.test(l) ? "lastProxyGroupIndex=" + (t.prefIndex + 1) : l));
+    writeFileSync(P.clientConfig, cfg.join(cfgEol), "latin1");
+  } catch {}
+
+  return t;
+}
 const SERVER_EXE = join(tmpdir(), "arena-server.exe");
 const SERVER_LOG = join(mkdtempSync(join(tmpdir(), "arena-mcp-")), "server.log");
 const AGENT = `http://127.0.0.1:${P.agentPort}`;
@@ -116,29 +164,40 @@ server.tool(
   "arena_up",
   "Boot the autonomous test session: (optionally rebuild and) start the Go server + the retail client with the control agent injected, wait for the login screen, and move the client window off-screen. Non-intrusive: no physical mouse/keyboard, window off the visible desktop.",
   {
-    rebuild: z.boolean().default(true).describe("Rebuild the Go server binary from source first (picks up your code changes)."),
+    rebuild: z.boolean().default(true).describe("Rebuild the Go server binary from source first (picks up your code changes). Ignored when server='arenareborn'."),
     waitSeconds: z.number().default(22).describe("Seconds to wait for the client to reach the login screen."),
+    server: z.enum(["localhost", "arenareborn"]).default("localhost").describe("Which server the client connects to. 'localhost' builds and starts the local Go server (127.0.0.1:5555). 'arenareborn' starts NO local server and points the client at the live production server (game.arenareborn.com:443)."),
   },
-  async ({ rebuild, waitSeconds }) => {
+  async ({ rebuild, waitSeconds, server: target }) => {
     killChildren();
-    killPort5555();
     await sleep(800);
 
-    if (rebuild) {
-      const b = buildServer();
-      if (!b.ok) return { content: [{ type: "text", text: "SERVER BUILD FAILED:\n" + b.out }] };
-    } else if (!existsSync(SERVER_EXE)) {
-      const b = buildServer();
-      if (!b.ok) return { content: [{ type: "text", text: "SERVER BUILD FAILED:\n" + b.out }] };
-    }
+    const t = selectServer(target);
 
-    // Start the Go server (log to a file we can tail).
-    writeFileSync(SERVER_LOG, "");
-    const srvFd = openSync(SERVER_LOG, "a");
-    srvProc = spawn(SERVER_EXE, ["--config", "configs/config.sqlite.yaml"], {
-      cwd: P.serverDir, windowsHide: true, stdio: ["ignore", srvFd, srvFd],
-    });
-    await sleep(2500);
+    // Only the local target owns a Go server. Pointing the client at production
+    // must NOT build, start or kill anything locally - and must not free port
+    // 5555, which would kill a dev server the user is deliberately running.
+    if (t.local) {
+      killPort5555();
+      await sleep(400);
+
+      if (rebuild || !existsSync(SERVER_EXE)) {
+        const b = buildServer();
+        if (!b.ok) return { content: [{ type: "text", text: "SERVER BUILD FAILED:\n" + b.out }] };
+      }
+
+      // Start the Go server (log to a file we can tail).
+      writeFileSync(SERVER_LOG, "");
+      const srvFd = openSync(SERVER_LOG, "a");
+      srvProc = spawn(SERVER_EXE, ["--config", "configs/config.sqlite.yaml"], {
+        cwd: P.serverDir, windowsHide: true, stdio: ["ignore", srvFd, srvFd],
+      });
+      await sleep(2500);
+    } else {
+      // No local server: make that explicit in the log the tools tail, so an
+      // empty server log reads as "remote target" rather than "server crashed".
+      writeFileSync(SERVER_LOG, "(no local server: client targets " + t.group + ")\n");
+    }
 
     // Truncate the client error log so this session is isolated.
     try { writeFileSync(P.clientLog, ""); } catch {}
@@ -178,7 +237,10 @@ server.tool(
     // Move off-screen so it doesn't occupy the user's desktop.
     try { await agentText("/offscreen?on=1"); } catch {}
     const health = await agentText("/health");
-    return { content: [{ type: "text", text: "Session up (off-screen, non-intrusive).\nagent: " + health + "\nserver: " + tail(SERVER_LOG, "listening|starting|ERROR", 5) }] };
+    const where = t.local
+      ? "target: Localhost (127.0.0.1:5555, local Go server started)"
+      : "target: ArenaReborn (game.arenareborn.com:443, LIVE - no local server started)";
+    return { content: [{ type: "text", text: "Session up (off-screen, non-intrusive).\n" + where + "\nagent: " + health + "\nserver: " + tail(SERVER_LOG, "listening|starting|ERROR|no local server", 5) }] };
   }
 );
 
@@ -192,8 +254,16 @@ server.tool(
   async ({ user, pass }) => {
     await agentText(`/login?user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`, { timeout: 20000 });
     await sleep(8000);
-    const srv = tail(SERVER_LOG, "auth attempt|entered world|no coach|prompting", 8);
-    return { content: [{ type: "text", text: "login submitted.\nserver: " + srv }] };
+    // With server='arenareborn' there is no local Go server, so this tail is a
+    // placeholder rather than evidence. Say so instead of returning a blank
+    // "server:" line that reads like the login silently failed - the real log
+    // is on the production host (docker compose logs arena).
+    const remote = /no local server/.test(tail(SERVER_LOG, null, 3));
+    const srv = remote
+      ? "(remote target - server-side log is on the host: docker compose logs arena)"
+      : tail(SERVER_LOG, "auth attempt|entered world|no coach|prompting", 8);
+    const cli = tail(P.clientLog, "ERROR|Exception|pathfind|refus|Invalid", 6);
+    return { content: [{ type: "text", text: "login submitted.\nserver: " + srv + "\nclient errors: " + cli }] };
   }
 );
 
