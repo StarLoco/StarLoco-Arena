@@ -35,6 +35,14 @@ COPY configs/ /app/configs/
 # Mount your own copy over ARENA_DATA_DIR=/data to use different data instead.
 COPY --from=build /src/data-dist /app/data-dist
 
+# Bug-report screenshots are written here at runtime (web.bug_report_dir).
+# Create it in the IMAGE and own it as the unprivileged user: docker seeds a
+# named volume from the image's contents on first mount, ownership included, and
+# a volume that does not exist in the image is created root-owned - which the
+# server (uid 10001) then cannot write to, so every screenshot fails with
+# "permission denied" while the report itself still saves.
+RUN mkdir -p /app/bugreports && chown arena:arena /app/bugreports
+
 # The DB (sqlite) or connection (postgres/mysql) is configured via config/env.
 USER arena
 

@@ -54,7 +54,7 @@ const TARGETS = {
   },
   arenareborn: {
     prefIndex: 1, group: "ArenaReborn", local: false,
-    bugReportURL: "https://arenareborn.com/",
+    bugReportURL: "http://game.arenareborn.com/",
   },
 };
 
