@@ -124,7 +124,7 @@ func (r *CoachRepo) Get(id uint) (*domain.Coach, error) {
 		Preload("Ignored.Ignored").
 		Preload("Wallet").
 		// Stats carries the coach's achievement criteria, which the 2052 descriptor
-		// must echo back — it is the only channel by which criteria reach the
+		// must echo back â€” it is the only channel by which criteria reach the
 		// client, so without this preload every criterion is silently lost on
 		// relog (both the ones the client reports via 22003 and the ones the
 		// server sets on challenge victories).
@@ -142,7 +142,10 @@ func (r *CoachRepo) Get(id uint) (*domain.Coach, error) {
 // GetByName loads a coach by (case-insensitive) name.
 func (r *CoachRepo) GetByName(name string) (*domain.Coach, error) {
 	var c domain.Coach
-	err := r.db.Where("name = ? COLLATE NOCASE", name).First(&c).Error
+	// LOWER() on both sides rather than COLLATE NOCASE: the latter is
+	// SQLite-only, and on postgres it fails outright with
+	// `collation "nocase" for encoding "UTF8" does not exist`.
+	err := r.db.Where("LOWER(name) = LOWER(?)", name).First(&c).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
@@ -157,10 +160,11 @@ func (r *CoachRepo) Create(accountID uint, name string, hair, skin, sex uint8) (
 	name = strings.TrimSpace(name)
 	coach := &domain.Coach{Name: name, Hair: hair, Skin: skin, Sex: sex, PosX: 1, PosY: 1}
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// Uniqueness (case-insensitive) check.
+		// Uniqueness (case-insensitive) check. LOWER() rather than
+		// COLLATE NOCASE, which is SQLite-only - see GetByName above.
 		var count int64
 		if err := tx.Model(&domain.Coach{}).
-			Where("name = ? COLLATE NOCASE", name).Count(&count).Error; err != nil {
+			Where("LOWER(name) = LOWER(?)", name).Count(&count).Error; err != nil {
 			return err
 		}
 		if count > 0 {
@@ -179,7 +183,7 @@ func (r *CoachRepo) Create(accountID uint, name string, hair, skin, sex uint8) (
 }
 
 // WatchersAsFriend returns the ids of coaches who have targetID in their friend
-// list with notifications enabled — i.e. the coaches to notify when targetID
+// list with notifications enabled â€” i.e. the coaches to notify when targetID
 // comes online or goes offline.
 func (r *CoachRepo) WatchersAsFriend(targetID uint) ([]uint, error) {
 	var ids []uint
@@ -202,7 +206,7 @@ func (r *CoachRepo) WatchersAsFriend(targetID uint) ([]uint, error) {
 }
 
 // WatchersAsIgnore returns the ids of coaches who have targetID on their ignore
-// list — the coaches to notify when targetID comes online or goes offline.
+// list â€” the coaches to notify when targetID comes online or goes offline.
 func (r *CoachRepo) WatchersAsIgnore(targetID uint) ([]uint, error) {
 	var ids []uint
 	err := r.db.Model(&domain.CoachIgnored{}).
@@ -294,7 +298,7 @@ var ErrCardNotOwned = errors.New("store: card not owned")
 
 // ConsumeAndGrant removes one unit of each input template from a coach's
 // unequipped (Pos==0) inventory and, if grantTemplate != 0, grants one unit of
-// it — atomically. Returns ErrCardNotOwned (rolling back) if any input isn't
+// it â€” atomically. Returns ErrCardNotOwned (rolling back) if any input isn't
 // owned in sufficient quantity. Used by the Fusion Lab. inputs may contain
 // duplicates (each occurrence consumes one unit).
 func (r *CoachRepo) ConsumeAndGrant(coachID uint, inputs []int32, grantTemplate int32) error {
@@ -396,7 +400,7 @@ func (r *CoachRepo) UpsertStat(coachID uint, statID int16, value int32) error {
 // Grow-only by construction: it only ever inserts. Calling it with the coach's
 // current inventory is therefore enough to keep the tome correct without hooking
 // every single grant site (shop, fight winnings, challenge rewards, mail, fusion)
-// — a card that passes through the inventory at any point it is observed gets
+// â€” a card that passes through the inventory at any point it is observed gets
 // recorded, and one that leaves is never withdrawn.
 func (r *CoachRepo) SyncTome(coachID uint, templateIDs []int32) (map[int32]bool, error) {
 	have := make(map[int32]bool)
@@ -490,7 +494,7 @@ func (r *CoachRepo) RecordAchievements(coachID uint, ids []int16) ([]int16, erro
 }
 
 // DeleteCoach permanently removes a coach and every piece of data associated
-// with it, in a single transaction. Handles opcode 27529 ("Détruire le coach").
+// with it, in a single transaction. Handles opcode 27529 ("DÃ©truire le coach").
 //
 // Deleted/cleared:
 //   - the owning account's coach link (set to NULL, so the account returns to
@@ -686,7 +690,7 @@ func (r *CoachRepo) Save(c *domain.Coach) error {
 		// Standing is the coach's EVOLUTION experience, and it is NOT the same
 		// thing as Strength: post-fight META adds to it (postfight_apply.go) and
 		// the client derives the coach's evolution LEVEL from it. Omitting it
-		// here meant every point earned was thrown away on relog — the column
+		// here meant every point earned was thrown away on relog â€” the column
 		// existed and was updated in memory, it was simply never written.
 		"standing":           c.Standing,
 		"stat_fights":        c.StatFights,
