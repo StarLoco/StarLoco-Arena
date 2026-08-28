@@ -19,7 +19,7 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
-//go:embed static/app.css static/favicon.svg static/fonts/*.woff2
+//go:embed static/app.css static/favicon.svg static/logo.png static/logo-large.png static/fonts/*.woff2
 var staticFS embed.FS
 
 // templateFuncs are the helpers available inside every template. They are
@@ -105,6 +105,19 @@ func buildFuncs(cat catalog, lang string) template.FuncMap {
 	}
 	tr := func(key string) string { return cat.t(lang, key) }
 	funcs["t"] = tr
+
+	// path prefixes an internal link with this page's language, so every link
+	// keeps the reader inside one locale and crawlers see a complete, separate
+	// site per language instead of one language linking into another.
+	funcs["path"] = func(p string) string {
+		if p == "" || p == "/" {
+			return "/" + lang + "/"
+		}
+		if !strings.HasPrefix(p, "/") {
+			p = "/" + p
+		}
+		return "/" + lang + p
+	}
 
 	// slotLabel names a card position: 0 is the bag, anything else is an
 	// equipped slot (the wire numbers them from 0, the column from 1).
@@ -325,6 +338,13 @@ type baseData struct {
 	Languages     []string
 	LanguageNames map[string]string
 	CurrentPath   string
+	// BaseURL is the absolute origin ("https://arenareborn.com"), needed
+	// because hreflang and canonical must be absolute URLs. Empty when it
+	// cannot be determined, in which case those tags are simply omitted rather
+	// than emitted wrong.
+	BaseURL string
+	// NoIndex keeps operator-only pages out of search results.
+	NoIndex bool
 }
 
 func (b *baseData) base() *baseData { return b }
@@ -354,6 +374,7 @@ func (s *Server) newBase(w http.ResponseWriter, r *http.Request, title, navKey s
 		Languages:           Languages,
 		LanguageNames:       LanguageNames,
 		CurrentPath:         currentPath(r),
+		BaseURL:             s.baseURL(r),
 	}
 
 	sess, ok := s.readSession(r)
@@ -397,6 +418,9 @@ func currentPath(r *http.Request) string {
 		return "/"
 	}
 	p := r.URL.EscapedPath()
+	if v, ok := r.Context().Value(pathContextKey{}).(string); ok && v != "" {
+		p = v // locale already stripped by localeRoutes
+	}
 	if p == "" {
 		p = "/"
 	}

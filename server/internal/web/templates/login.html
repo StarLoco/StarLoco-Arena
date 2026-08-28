@@ -11,7 +11,7 @@
     {{if .Error}}<div class="notice notice-error">{{.Error}}</div>{{end}}
 
     <div class="card">
-      <form method="post" action="/login">
+      <form method="post" action="{{path "/login"}}">
         <div class="form-row">
           <label for="login">{{t "login.account"}}</label>
           <input type="text" id="login" name="login" value="{{.FormLogin}}"
@@ -26,7 +26,7 @@
     </div>
 
     {{if .RegistrationEnabled}}
-      <p class="center mt-3 small">{{t "login.noaccount"}} <a href="/register">{{t "login.createone"}}</a>.</p>
+      <p class="center mt-3 small">{{t "login.noaccount"}} <a href="{{path "/register"}}">{{t "login.createone"}}</a>.</p>
     {{end}}
   </div>
 </section>

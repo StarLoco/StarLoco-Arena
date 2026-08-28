@@ -45,8 +45,35 @@ func newTestServer(t *testing.T, tweak func(*config.WebConfig)) (*Server, *store
 	return s, st
 }
 
-// get fetches a page with no session.
+// get fetches a page with no session, following local redirects the way a
+// browser would.
+//
+// Following matters now that every page lives under a language prefix: a plain
+// GET /ladder answers 302 -> /en/ladder, so a test that only looked at the
+// first response would assert on the redirect rather than the page. Redirects
+// to another site are never followed, and the chain is bounded.
 func get(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	h := s.Handler()
+	var rec *httptest.ResponseRecorder
+	for i := 0; i < 4; i++ {
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code < 300 || rec.Code > 399 {
+			return rec
+		}
+		loc := rec.Header().Get("Location")
+		if !strings.HasPrefix(loc, "/") || strings.HasPrefix(loc, "//") {
+			return rec // off-site or empty: report it as-is
+		}
+		path = loc
+	}
+	return rec
+}
+
+// getRaw fetches without following anything, for tests that are specifically
+// about a redirect.
+func getRaw(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -158,16 +185,31 @@ func TestHomePageIsReachableWhileSignedIn(t *testing.T) {
 		t.Fatalf("register: status = %d, want 303; body: %s", reg.Code, reg.Body)
 	}
 
+	// "/" now sends everyone to their language; what matters is that it goes
+	// to the LANDING page and not to /account.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	for _, c := range reg.Result().Cookies() {
 		req.AddCookie(c)
 	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
+	if rec.Code < 300 || rec.Code > 399 {
+		t.Fatalf("GET / = %d, want a redirect to the localised landing page", rec.Code)
+	}
+	loc := rec.Header().Get("Location")
+	if lang, rest := splitLocale(loc); lang == "" || rest != "/" {
+		t.Fatalf("GET / redirected to %q; want the localised landing page "+
+			"(a redirect to /account makes the logo and Home link unusable)", loc)
+	}
 
+	req = httptest.NewRequest(http.MethodGet, loc, nil)
+	for _, c := range reg.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET / while signed in = %d, want 200 "+
-			"(a redirect makes the header logo and the Home link unusable)", rec.Code)
+		t.Fatalf("GET %s while signed in = %d, want 200", loc, rec.Code)
 	}
 }
 

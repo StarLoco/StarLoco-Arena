@@ -53,7 +53,7 @@ func (p *portal) get(path string) page {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
-	return page{Code: resp.StatusCode, Body: string(body), URL: resp.Request.URL.Path}
+	return page{Code: resp.StatusCode, Body: string(body), URL: stripTestLocale(resp.Request.URL.Path)}
 }
 
 func (p *portal) post(path string, form url.Values) page {
@@ -64,7 +64,17 @@ func (p *portal) post(path string, form url.Values) page {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
-	return page{Code: resp.StatusCode, Body: string(body), URL: resp.Request.URL.Path}
+	return page{Code: resp.StatusCode, Body: string(body), URL: stripTestLocale(resp.Request.URL.Path)}
+}
+
+// stripTestLocale drops the /en, /fr, ... prefix the site now puts on every
+// page URL, so assertions can say which PAGE was reached without also asserting
+// which language it happened to render in.
+func stripTestLocale(p string) string {
+	if lang, rest := splitLocale(p); lang != "" {
+		return rest
+	}
+	return p
 }
 
 var csrfRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)

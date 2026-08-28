@@ -13,7 +13,7 @@
         {{if .Detail.Account.IsAdmin}}<span class="chip chip-admin">{{t "account.administrator"}}</span>{{end}}
         {{if .Detail.Account.Connected}}<span class="chip chip-online">{{t "account.onlinenow"}}</span>{{end}}
         {{if not .Impersonating}}
-          <a class="btn btn-ghost" href="/account/password">{{t "account.changepw"}}</a>
+          <a class="btn btn-ghost" href="{{path "/account/password"}}">{{t "account.changepw"}}</a>
         {{end}}
       </div>
     </div>

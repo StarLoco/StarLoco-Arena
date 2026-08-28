@@ -39,9 +39,9 @@
 
     {{if gt .LastPage 1}}
     <div class="pager">
-      {{if gt .Page 1}}<a class="btn btn-ghost" href="/ladder?page={{sub .Page 1}}">← {{t "pager.prev"}}</a>{{end}}
+      {{if gt .Page 1}}<a class="btn btn-ghost" href="{{path "/ladder"}}?page={{sub .Page 1}}">← {{t "pager.prev"}}</a>{{end}}
       <span>{{t "pager.page"}} {{.Page}} {{t "pager.of"}} {{.LastPage}}</span>
-      {{if lt .Page .LastPage}}<a class="btn btn-ghost" href="/ladder?page={{add .Page 1}}">{{t "pager.next"}} →</a>{{end}}
+      {{if lt .Page .LastPage}}<a class="btn btn-ghost" href="{{path "/ladder"}}?page={{add .Page 1}}">{{t "pager.next"}} →</a>{{end}}
     </div>
     {{end}}
 

@@ -238,14 +238,16 @@ func (s *Server) Handler() http.Handler {
 	// dialog - so enumerating them is exact rather than a workaround. The
 	// bug-report route can keep its wildcard because it is POST-only and so
 	// cannot collide with the static handler.
+	mux.HandleFunc("GET /robots.txt", s.handleRobots)
+	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
 	mux.HandleFunc("GET /lang", s.handleSetLanguage)
 	mux.HandleFunc("GET /discord", s.handleDiscord)
-	for _, lang := range []string{"fr", "en", "es", "de"} {
-		mux.HandleFunc("GET /"+lang+"/discord", s.handleDiscord)
-		mux.HandleFunc("GET /"+lang+"/register", s.handleLangRegister)
-	}
 
-	return securityHeaders(mux)
+	// localeRoutes sits OUTSIDE the mux: it rewrites /fr/ladder to /ladder plus
+	// a language before any route is matched, so every page keeps one handler
+	// and one registration while still having a distinct URL per language for
+	// crawlers to index.
+	return securityHeaders(s.localeRoutes(mux))
 }
 
 // serverName is the branding shown in the header and the page titles.

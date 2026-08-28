@@ -21,7 +21,7 @@
 
     {{if .RegistrationEnabled}}
     <div class="card">
-      <form method="post" action="/register">
+      <form method="post" action="{{path "/register"}}">
         <div class="form-row">
           <label for="login">{{t "login.account"}}</label>
           <input type="text" id="login" name="login" value="{{.FormLogin}}"
@@ -43,7 +43,7 @@
       </form>
     </div>
 
-    <p class="center mt-3 small">{{t "register.already"}} <a href="/login">{{t "register.signin"}}</a>.</p>
+    <p class="center mt-3 small">{{t "register.already"}} <a href="{{path "/login"}}">{{t "register.signin"}}</a>.</p>
     {{else}}
       <div class="card center">
         <p class="mb-0">{{t "register.closed"}}</p>

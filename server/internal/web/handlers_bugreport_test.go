@@ -229,7 +229,7 @@ func TestBugScreenshotRequiresAdmin(t *testing.T) {
 	postBugReport(t, s, body, ctype)
 
 	for _, path := range []string{"/admin/bugs", "/admin/bugs/1", "/admin/bugs/1/screenshot"} {
-		rec := get(t, s, path)
+		rec := getRaw(t, s, path)
 		if rec.Code == http.StatusOK {
 			t.Errorf("%s served without a session (code %d)", path, rec.Code)
 		}
@@ -301,7 +301,7 @@ func TestLoginScreenLinks(t *testing.T) {
 			c.DiscordURL = "https://discord.gg/example"
 		})
 		for _, path := range []string{"/discord", "/fr/discord", "/en/discord"} {
-			rec := get(t, s, path)
+			rec := getRaw(t, s, path)
 			if rec.Code != http.StatusFound {
 				t.Errorf("%s: status = %d, want 302", path, rec.Code)
 			}
@@ -313,7 +313,7 @@ func TestLoginScreenLinks(t *testing.T) {
 
 	t.Run("unset invite falls back to the home page, not a dead end", func(t *testing.T) {
 		s, _ := newTestServer(t, func(c *config.WebConfig) { c.DiscordURL = "" })
-		rec := get(t, s, "/fr/discord")
+		rec := getRaw(t, s, "/fr/discord")
 		if rec.Code < 300 || rec.Code > 399 {
 			t.Fatalf("status = %d, want a redirect", rec.Code)
 		}
@@ -322,14 +322,15 @@ func TestLoginScreenLinks(t *testing.T) {
 		}
 	})
 
-	t.Run("register plaque reaches the sign-up page", func(t *testing.T) {
+	t.Run("register plaque serves the sign-up page in that language", func(t *testing.T) {
 		s, _ := newTestServer(t, nil)
-		rec := get(t, s, "/fr/register")
-		if rec.Code < 300 || rec.Code > 399 {
-			t.Fatalf("status = %d, want a redirect", rec.Code)
+		cat, _ := loadCatalog()
+		rec := getRaw(t, s, "/fr/register")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (the locale URL serves the page itself)", rec.Code)
 		}
-		if loc := rec.Header().Get("Location"); loc != "/register" {
-			t.Errorf("Location = %q, want /register", loc)
+		if want := cat.t(LangFR, "register.title"); !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("page is not in French: expected %q", want)
 		}
 	})
 }

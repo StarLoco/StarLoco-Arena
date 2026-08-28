@@ -141,7 +141,7 @@ func TestPagesRenderInTheChosenLanguage(t *testing.T) {
 	cat, _ := loadCatalog()
 
 	for _, lang := range Languages {
-		req := httptest.NewRequest(http.MethodGet, "/?lang="+lang, nil)
+		req := httptest.NewRequest(http.MethodGet, "/"+lang+"/", nil)
 		rec := httptest.NewRecorder()
 		s.Handler().ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
@@ -154,12 +154,85 @@ func TestPagesRenderInTheChosenLanguage(t *testing.T) {
 	}
 }
 
+// TestLocaleURLsAreCrawlable pins the reason the language is in the URL at all.
+//
+// Cookie-and-Accept-Language negotiation is invisible to a crawler: it sends no
+// language preference and keeps no cookies, so the whole site would collapse to
+// one indexable version and hreflang would have nothing to point at. These are
+// the properties a search or answer engine actually needs.
+func TestLocaleURLsAreCrawlable(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	cat, _ := loadCatalog()
+
+	t.Run("each language has its own URL", func(t *testing.T) {
+		for _, lang := range Languages {
+			rec := getRaw(t, s, "/"+lang+"/ladder")
+			if rec.Code != http.StatusOK {
+				t.Errorf("/%s/ladder = %d, want 200", lang, rec.Code)
+				continue
+			}
+			if want := cat.t(lang, "ladder.title"); !strings.Contains(rec.Body.String(), want) {
+				t.Errorf("/%s/ladder does not contain %q", lang, want)
+			}
+		}
+	})
+
+	t.Run("unprefixed pages redirect so each page has ONE url per language", func(t *testing.T) {
+		for _, p := range []string{"/", "/ladder", "/status", "/login", "/register"} {
+			rec := getRaw(t, s, p)
+			if rec.Code < 300 || rec.Code > 399 {
+				t.Errorf("%s = %d, want a redirect to a locale URL "+
+					"(otherwise the page exists at two URLs and competes with itself)", p, rec.Code)
+				continue
+			}
+			loc := rec.Header().Get("Location")
+			if lang, _ := splitLocale(loc); lang == "" {
+				t.Errorf("%s redirected to %q, which carries no locale", p, loc)
+			}
+		}
+	})
+
+	t.Run("every page declares canonical and hreflang for all languages", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/fr/ladder", nil)
+		req.Host = "arenareborn.com"
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		body := rec.Body.String()
+
+		if !strings.Contains(body, `<link rel="canonical" href="http://arenareborn.com/fr/ladder">`) {
+			t.Error("no canonical URL for the page being rendered")
+		}
+		for _, lang := range Languages {
+			want := `hreflang="` + lang + `" href="http://arenareborn.com/` + lang + `/ladder"`
+			if !strings.Contains(body, want) {
+				t.Errorf("missing alternate for %s (%s)", lang, want)
+			}
+		}
+		if !strings.Contains(body, `hreflang="x-default"`) {
+			t.Error("no x-default alternate")
+		}
+		if !strings.Contains(body, `<html lang="fr">`) {
+			t.Error(`html lang attribute does not match the rendered language`)
+		}
+	})
+
+	t.Run("the switcher is a real crawlable link, not a redirect", func(t *testing.T) {
+		rec := getRaw(t, s, "/de/status")
+		body := rec.Body.String()
+		for _, lang := range []string{"en", "fr", "es"} {
+			if !strings.Contains(body, `href="/`+lang+`/status"`) {
+				t.Errorf("no direct link to the %s version of this page", lang)
+			}
+		}
+	})
+}
+
 // Switching stores the choice, and must not be usable as an open redirector:
 // "next" is attacker-supplied.
 func TestLanguageSwitchIsSafeAndSticky(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 
-	rec := get(t, s, "/lang?lang=de&next=%2Fladder")
+	rec := getRaw(t, s, "/lang?lang=de&next=%2Fladder")
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", rec.Code)
 	}
@@ -171,7 +244,7 @@ func TestLanguageSwitchIsSafeAndSticky(t *testing.T) {
 	}
 
 	for _, evil := range []string{"https://evil.example", "//evil.example", "http://evil.example/x"} {
-		rec := get(t, s, "/lang?lang=fr&next="+evil)
+		rec := getRaw(t, s, "/lang?lang=fr&next="+evil)
 		if loc := rec.Header().Get("Location"); loc != "/" {
 			t.Errorf("next=%q redirected to %q; must refuse anything off-site", evil, loc)
 		}

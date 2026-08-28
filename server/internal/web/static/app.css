@@ -836,3 +836,33 @@ td strong, th strong { color: var(--text-primary); }
 }
 .lang-switch a:hover { opacity: 1; text-decoration: underline; }
 .lang-current { color: var(--accent, #e8a33d); font-weight: 600; }
+/* ---------------------------------------------------------------- Branding */
+/* The wordmark is the logo itself, so the brand link is just the image. */
+.brand-logo {
+  display: block;
+  height: auto;
+  width: 140px;
+  max-width: 100%;
+}
+.brand-logo-sm { width: 112px; }
+
+.hero-title { margin-bottom: 1rem; }
+.hero-logo {
+  display: block;
+  width: min(440px, 82vw);
+  height: auto;
+  margin: 0 0 .25rem;
+  filter: drop-shadow(0 8px 28px rgba(0, 0, 0, .55));
+}
+
+/* Kept in the DOM for screen readers and search engines, painted nowhere:
+   the logo image already shows the name. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}

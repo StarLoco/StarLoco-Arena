@@ -16,9 +16,12 @@
     </div>
 
     <div class="eyebrow reveal reveal-1">{{t "index.eyebrow"}}</div>
-    <h1 class="reveal reveal-1">
-      DofusArena
-      <span class="hero-accent">2.70</span>
+    {{/* The logo carries the name, so the h1 stays for screen readers and
+         search engines but is not painted twice. */}}
+    <h1 class="reveal reveal-1 hero-title">
+      <img class="hero-logo" src="/static/logo-large.png?v={{.AssetVersion}}"
+           alt="{{.ServerName}} — DofusArena 2.70" width="440" height="295">
+      <span class="visually-hidden">{{.ServerName}} — DofusArena 2.70</span>
     </h1>
     <p class="lede reveal reveal-2">
       {{t "index.lede"}}
@@ -26,14 +29,14 @@
 
     <div class="btn-row mt-3 reveal reveal-3">
       {{if .LoggedIn}}
-        <a class="btn btn-primary btn-lg" href="/account">{{t "index.cta.account"}}</a>
+        <a class="btn btn-primary btn-lg" href="{{path "/account"}}">{{t "index.cta.account"}}</a>
       {{else if .RegistrationEnabled}}
-        <a class="btn btn-primary btn-lg" href="/register">{{t "index.cta.create"}}</a>
+        <a class="btn btn-primary btn-lg" href="{{path "/register"}}">{{t "index.cta.create"}}</a>
       {{end}}
       {{if .ClientDownloadURL}}
         <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "index.cta.download"}}</a>
       {{else}}
-        <a class="btn btn-secondary btn-lg" href="/status">{{t "index.cta.status"}}</a>
+        <a class="btn btn-secondary btn-lg" href="{{path "/status"}}">{{t "index.cta.status"}}</a>
       {{end}}
     </div>
 
@@ -127,9 +130,9 @@
         </p>
         <div class="btn-row" style="justify-content:center">
           {{if .RegistrationEnabled}}
-            <a class="btn btn-primary btn-lg" href="/register">{{t "index.cta.create"}}</a>
+            <a class="btn btn-primary btn-lg" href="{{path "/register"}}">{{t "index.cta.create"}}</a>
           {{else}}
-            <a class="btn btn-secondary btn-lg" href="/login">{{t "nav.signin"}}</a>
+            <a class="btn btn-secondary btn-lg" href="{{path "/login"}}">{{t "nav.signin"}}</a>
           {{end}}
         </div>
       </div>

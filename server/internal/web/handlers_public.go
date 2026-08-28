@@ -1,6 +1,8 @@
 package web
 
 import (
+	"encoding/xml"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,6 +30,69 @@ type indexData struct {
 // and the header logo unusable for anybody logged in: both point at "/", so
 // both silently landed back on /account and the landing page became unreachable
 // without signing out.
+// publicPages are the crawlable pages, listed per language in the sitemap.
+// Anything requiring a session is deliberately absent: a crawler can never see
+// it, so listing it would only advertise URLs that answer with a redirect.
+var publicPages = []string{"/", "/ladder", "/status", "/login", "/register"}
+
+// handleRobots points crawlers at the sitemap and keeps them out of the parts
+// of the site that are operator-only or per-visitor.
+func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
+	var b strings.Builder
+	b.WriteString("User-agent: *\n")
+	b.WriteString("Disallow: /admin\n")
+	b.WriteString("Disallow: /account\n")
+	b.WriteString("Disallow: /lang\n")
+	b.WriteString("Allow: /\n")
+	if base := s.baseURL(r); base != "" {
+		b.WriteString("\nSitemap: " + base + "/sitemap.xml\n")
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = io.WriteString(w, b.String())
+}
+
+// handleSitemap lists every public page in every language, each entry carrying
+// xhtml:link alternates. That is what tells a search engine the four language
+// URLs are translations of one page rather than four competing duplicates.
+func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
+	base := s.baseURL(r)
+	if base == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ` +
+		`xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n")
+	for _, page := range publicPages {
+		p := page
+		if p == "/" {
+			p = "/"
+		}
+		for _, lang := range Languages {
+			b.WriteString("  <url>\n")
+			b.WriteString("    <loc>" + xmlEscape(base+"/"+lang+p) + "</loc>\n")
+			for _, alt := range Languages {
+				b.WriteString(`    <xhtml:link rel="alternate" hreflang="` + alt +
+					`" href="` + xmlEscape(base+"/"+alt+p) + `"/>` + "\n")
+			}
+			b.WriteString(`    <xhtml:link rel="alternate" hreflang="x-default" href="` +
+				xmlEscape(base+"/en"+p) + `"/>` + "\n")
+			b.WriteString("  </url>\n")
+		}
+	}
+	b.WriteString("</urlset>\n")
+
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	_, _ = io.WriteString(w, b.String())
+}
+
+func xmlEscape(s string) string {
+	var b strings.Builder
+	_ = xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+
 // handleDiscord sends visitors to the community Discord.
 //
 // It exists as a redirect rather than a raw invite link because the game
@@ -43,13 +108,6 @@ func (s *Server) handleDiscord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, target, http.StatusFound)
-}
-
-// handleLangRegister serves the /<lang>/register the client's "Creer un compte"
-// plaque links to. The client builds its URLs as base + language + path
-// (avv_0.showUrl), so the language segment is unavoidable and simply ignored.
-func (s *Server) handleLangRegister(w http.ResponseWriter, r *http.Request) {
-	redirect(w, r, "/register")
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

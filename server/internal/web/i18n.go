@@ -1,10 +1,12 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"sort"
 	"strings"
 )
@@ -103,6 +105,146 @@ func normaliseLang(s string) string {
 	return ""
 }
 
+// langContextKey carries the language taken from the URL prefix.
+type langContextKey struct{}
+
+// pathContextKey carries the request path with the locale prefix removed, so
+// the language switcher and the hreflang tags can rebuild the same page in
+// another language.
+type pathContextKey struct{}
+
+// unlocalisedPrefixes are paths that must NOT get a language prefix: assets,
+// machine endpoints, and the admin console (operator-only, English).
+var unlocalisedPrefixes = []string{
+	"/static/", "/favicon.ico", "/health", "/admin", "/lang",
+	"/discord", "/bug-report", "/impersonate/", "/robots.txt", "/sitemap.xml",
+}
+
+func isUnlocalised(p string) bool {
+	for _, pre := range unlocalisedPrefixes {
+		if p == pre || strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	// The game client posts bug reports to /<its language>/bug-report; the
+	// language there is the CLIENT's, not the site's.
+	return strings.HasSuffix(p, "/bug-report")
+}
+
+// splitLocale peels a leading "/fr" or "/fr/..." off a path. It returns the
+// language and the remaining path ("/" when the prefix was the whole path).
+func splitLocale(p string) (lang, rest string) {
+	if len(p) < 3 || p[0] != '/' {
+		return "", p
+	}
+	seg := p[1:]
+	if i := strings.Index(seg, "/"); i >= 0 {
+		seg = seg[:i]
+	}
+	l := normaliseLang(seg)
+	if l == "" || l != strings.ToLower(seg) { // only exact "fr", never "fr-CH"
+		return "", p
+	}
+	rest = p[1+len(seg):]
+	if rest == "" {
+		rest = "/"
+	}
+	return l, rest
+}
+
+// localeRoutes puts the language in the URL, which is the whole point: a
+// cookie-and-Accept-Language scheme is invisible to crawlers (they send no
+// language preference and keep no cookies), so the entire site would collapse
+// to a single indexable version and hreflang would have nothing to point at.
+//
+// It rewrites /fr/ladder to /ladder + "French" before the mux sees it, so every
+// page keeps ONE handler and one route registration.
+//
+//   - "/fr/ladder"  -> serves /ladder in French
+//   - "/ladder"     -> 302 to the visitor's best language, so each page has a
+//     single canonical URL per language instead of an
+//     unprefixed duplicate of one of them
+//   - "/static/..." -> untouched
+func (s *Server) localeRoutes(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+
+		if isUnlocalised(p) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if lang, rest := splitLocale(p); lang != "" {
+			// Remember the language actually being read, so a later visit to
+			// "/" lands on it.
+			if c, err := r.Cookie(langCookieName); err != nil || c.Value != lang {
+				http.SetCookie(w, &http.Cookie{
+					Name: langCookieName, Value: lang, Path: "/",
+					HttpOnly: true, Secure: s.cfg.SecureCookies,
+					SameSite: http.SameSiteLaxMode, MaxAge: 365 * 24 * 60 * 60,
+				})
+			}
+			r2 := r.Clone(context.WithValue(
+				context.WithValue(r.Context(), langContextKey{}, lang),
+				pathContextKey{}, rest))
+			r2.URL.Path = rest
+			next.ServeHTTP(w, r2)
+			return
+		}
+
+		// No locale in the URL. Redirect GETs so a page never exists at two
+		// URLs; let anything else through so a form post cannot be lost.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		target := "/" + s.resolveLang(r) + strings.TrimSuffix(p, "/")
+		if target == "/"+s.resolveLang(r) {
+			target += "/"
+		}
+		if q := r.URL.RawQuery; q != "" {
+			target += "?" + q
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+	})
+}
+
+// baseURL is the absolute origin to build canonical and hreflang URLs from.
+//
+// hreflang REQUIRES absolute URLs, so this has to be right or the tags are
+// worse than useless. The host comes from the request (which is what the
+// visitor actually typed), and the scheme from the forwarded header when a
+// trusted proxy set one - behind a TLS-terminating proxy the connection we see
+// is plain http even though the visitor is on https, so trusting r.TLS alone
+// would advertise http:// canonicals for an https site.
+func (s *Server) baseURL(r *http.Request) string {
+	if r == nil || r.Host == "" {
+		return ""
+	}
+	scheme := "http"
+	switch {
+	case r.TLS != nil:
+		scheme = "https"
+	case s.isTrustedPeer(r) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"):
+		scheme = "https"
+	case s.cfg.SecureCookies:
+		// Secure cookies are only usable over https, so an operator who turned
+		// them on has told us the site is served over https.
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// isTrustedPeer reports whether the request came from a configured reverse
+// proxy, and so whether its forwarding headers may be believed.
+func (s *Server) isTrustedPeer(r *http.Request) bool {
+	if len(s.trustedProxies) == 0 {
+		return false
+	}
+	addr, err := netip.ParseAddr(peerIP(r))
+	return err == nil && s.isTrustedProxy(addr)
+}
+
 // resolveLang decides which language to render a request in:
 //
 //  1. an explicit ?lang= choice (which the handler also stores in a cookie),
@@ -116,6 +258,10 @@ func normaliseLang(s string) string {
 func (s *Server) resolveLang(r *http.Request) string {
 	if r == nil {
 		return s.defaultLang()
+	}
+	// A locale already taken from the URL path is authoritative.
+	if l, ok := r.Context().Value(langContextKey{}).(string); ok && l != "" {
+		return l
 	}
 	if l := normaliseLang(r.URL.Query().Get("lang")); l != "" {
 		return l
