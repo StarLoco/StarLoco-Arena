@@ -22,6 +22,52 @@ var blobRe = regexp.MustCompile(`(?s)<div class="blob[^"]*"\s+style="([^"]*)"`)
 // openTagRe finds any opening tag carrying a class attribute.
 var openTagRe = regexp.MustCompile(`<(section|div|footer|main|header)[^>]*class="([^"]*)"`)
 
+// anyTagRe finds every opening or closing tag of the container elements we
+// track, so enclosingClasses can keep a real stack rather than guessing.
+var anyTagRe = regexp.MustCompile(`<(/?)(section|div|footer|main|header)([^>]*)>`)
+
+// classOfRe pulls the class attribute out of a tag's attribute text.
+var classOfRe = regexp.MustCompile(`class="([^"]*)"`)
+
+// enclosingClasses returns the classes of the elements that genuinely CONTAIN
+// the byte at pos, outermost first.
+//
+// The obvious shortcut — "the last opening tag before this point" — is wrong,
+// because a decorative sibling that opens and closes before the blob
+// (`<div class="hero-scrim"></div>`) looks exactly like a parent. That is a
+// sibling, not an ancestor, so the check has to track open and close tags and
+// pop, which is what this does.
+//
+// Templates put conditional markup inside {{if}}, so the tags in the file are
+// not guaranteed to balance; an unmatched close is ignored rather than
+// panicking, which at worst makes the check more conservative.
+func enclosingClasses(text string, pos int) []string {
+	var stack []string
+	for _, m := range anyTagRe.FindAllStringSubmatchIndex(text, -1) {
+		if m[0] >= pos {
+			break
+		}
+		closing := text[m[2]:m[3]] == "/"
+		attrs := text[m[6]:m[7]]
+		if closing {
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			continue
+		}
+		// A tag that closes itself on the same line encloses nothing.
+		if strings.HasSuffix(strings.TrimSpace(attrs), "/") {
+			continue
+		}
+		var class string
+		if c := classOfRe.FindStringSubmatch(attrs); c != nil {
+			class = c[1]
+		}
+		stack = append(stack, class)
+	}
+	return stack
+}
+
 // clippingClasses are the container classes app.css declares `overflow: hidden`
 // on. TestClippingClassesReallyClip keeps this list honest against the CSS, so
 // the two cannot drift apart.
@@ -53,28 +99,22 @@ func TestEveryBlobIsInsideAClippingContainer(t *testing.T) {
 			found++
 			style := text[m[2]:m[3]]
 
-			// Nearest enclosing container: the last opening tag with a class
-			// before this blob that is not the blob itself.
-			var host string
-			for _, tag := range openTagRe.FindAllStringSubmatchIndex(text[:m[0]], -1) {
-				classes := text[tag[4]:tag[5]]
-				if strings.HasPrefix(classes, "blob") || classes == "grid-texture" {
-					continue
-				}
-				host = classes
-			}
-
+			// Any real ancestor that clips is enough: the blob cannot escape a
+			// clipping box even if the elements nested inside it do not clip.
+			ancestors := enclosingClasses(text, m[0])
 			clips := false
-			for _, c := range strings.Fields(host) {
-				if clippingClasses[c] {
-					clips = true
-					break
+			for _, host := range ancestors {
+				for _, c := range strings.Fields(host) {
+					if clippingClasses[c] {
+						clips = true
+						break
+					}
 				}
 			}
 			if !clips {
-				t.Errorf("%s: a blob (%s) sits in %q, which does not clip — "+
+				t.Errorf("%s: a blob (%s) sits in %v, none of which clips — "+
 					"it will hang past the edge and give the page a horizontal scrollbar",
-					page.Name(), style, host)
+					page.Name(), style, ancestors)
 			}
 		}
 	}

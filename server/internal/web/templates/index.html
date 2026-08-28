@@ -1,54 +1,78 @@
 {{define "content"}}
 
-<section class="hero">
+<section class="hero hero-shot">
+  {{/* The arena art sits behind everything, masked and scrimmed so it reads as
+       texture rather than as a picture competing with the text. It is
+       decorative, so it is a background rather than an <img>: nothing to
+       announce to a screen reader, and it never delays the headline. */}}
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="hero-scrim" aria-hidden="true"></div>
   <div class="grid-texture" aria-hidden="true"></div>
   <div class="blob blob-accent" style="width:520px;height:520px;right:-140px;top:-200px" aria-hidden="true"></div>
   <div class="blob blob-yellow" style="width:380px;height:380px;left:-120px;bottom:-180px" aria-hidden="true"></div>
 
-  <div class="container hero-inner">
-    <div class="badge-pill reveal">
-      <span class="dot{{if not .PlayersOnline}} dot-off{{end}}" aria-hidden="true"></span>
-      {{if .PlayersOnline}}
-        {{.PlayersOnline}} {{t "index.online.some"}}
-      {{else}}
-        {{t "index.online.none"}}
-      {{end}}
+  <div class="container hero-inner hero-split">
+    <div class="hero-copy">
+      <div class="badge-pill reveal">
+        <span class="dot{{if not .PlayersOnline}} dot-off{{end}}" aria-hidden="true"></span>
+        {{if .PlayersOnline}}
+          {{.PlayersOnline}} {{t "index.online.some"}}
+        {{else}}
+          {{t "index.online.none"}}
+        {{end}}
+      </div>
+
+      <div class="eyebrow reveal reveal-1">{{t "index.eyebrow"}}</div>
+      {{/* The logo art lives in the column on the right, so here the heading is
+           real text: it is the h1 a crawler reads, and on a phone it is what
+           shows above the fold. */}}
+      {{/* A branded install reads "Arena Reborn / DofusArena 2.70". The shipped
+           default server name is already "DofusArena", so in that case the
+           second line is just the version, otherwise the headline would say
+           "DofusArena DofusArena 2.70". */}}
+      <h1 class="hero-title reveal reveal-1">
+        {{.ServerName}}
+        {{if eq .ServerName "DofusArena"}}
+          <span class="hero-accent">2.70</span>
+        {{else}}
+          <span class="hero-accent">DofusArena 2.70</span>
+        {{end}}
+      </h1>
+      <p class="lede reveal reveal-2">
+        {{t "index.lede"}}
+      </p>
+
+      <div class="btn-row mt-3 reveal reveal-3">
+        {{if .LoggedIn}}
+          <a class="btn btn-primary btn-lg" href="{{path "/account"}}">{{t "index.cta.account"}}</a>
+        {{else if .RegistrationEnabled}}
+          <a class="btn btn-primary btn-lg" href="{{path "/register"}}">{{t "index.cta.create"}}</a>
+        {{end}}
+        {{if .ClientDownloadURL}}
+          <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "index.cta.download"}}</a>
+        {{else}}
+          <a class="btn btn-secondary btn-lg" href="{{path "/status"}}">{{t "index.cta.status"}}</a>
+        {{end}}
+      </div>
+
+      {{/* The download ships already pointed at this server, so players are never
+           asked to type an address. */}}
+      <p class="small muted mt-3 mb-0 reveal reveal-4">
+        {{if .LoggedIn}}
+          {{t "index.ready.member"}}
+        {{else}}
+          {{t "index.ready.guest"}}
+        {{end}}
+      </p>
     </div>
 
-    <div class="eyebrow reveal reveal-1">{{t "index.eyebrow"}}</div>
-    {{/* The logo carries the name, so the h1 stays for screen readers and
-         search engines but is not painted twice. */}}
-    <h1 class="reveal reveal-1 hero-title">
+    {{/* Decorative: the name is already in the h1, so alt="" keeps a screen
+         reader from reading it twice. fetchpriority=high because this is the
+         largest thing above the fold. */}}
+    <div class="hero-art reveal reveal-2" aria-hidden="true">
       <img class="hero-logo" src="/static/logo-large.png?v={{.AssetVersion}}"
-           alt="{{.ServerName}} — DofusArena 2.70" width="440" height="295">
-      <span class="visually-hidden">{{.ServerName}} — DofusArena 2.70</span>
-    </h1>
-    <p class="lede reveal reveal-2">
-      {{t "index.lede"}}
-    </p>
-
-    <div class="btn-row mt-3 reveal reveal-3">
-      {{if .LoggedIn}}
-        <a class="btn btn-primary btn-lg" href="{{path "/account"}}">{{t "index.cta.account"}}</a>
-      {{else if .RegistrationEnabled}}
-        <a class="btn btn-primary btn-lg" href="{{path "/register"}}">{{t "index.cta.create"}}</a>
-      {{end}}
-      {{if .ClientDownloadURL}}
-        <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "index.cta.download"}}</a>
-      {{else}}
-        <a class="btn btn-secondary btn-lg" href="{{path "/status"}}">{{t "index.cta.status"}}</a>
-      {{end}}
+           alt="" width="560" height="376" fetchpriority="high" decoding="async">
     </div>
-
-    {{/* The download ships already pointed at this server, so players are never
-         asked to type an address. */}}
-    <p class="small muted mt-3 mb-0 reveal reveal-4">
-      {{if .LoggedIn}}
-        {{t "index.ready.member"}}
-      {{else}}
-        {{t "index.ready.guest"}}
-      {{end}}
-    </p>
   </div>
 </section>
 

@@ -212,11 +212,14 @@ main { flex: 1 0 auto; position: relative; }
   border-bottom: 1px solid var(--border);
 }
 
+/* min-height, not height: the nav is allowed to wrap onto a second line on
+   narrow screens, and a fixed height would clip whatever wrapped. */
 .header-inner {
   display: flex;
   align-items: center;
   gap: 1rem;
-  height: 68px;
+  min-height: 76px;
+  padding-block: 0.5rem;
 }
 
 .brand {
@@ -837,14 +840,17 @@ td strong, th strong { color: var(--text-primary); }
 .lang-switch a:hover { opacity: 1; text-decoration: underline; }
 .lang-current { color: var(--accent, #e8a33d); font-weight: 600; }
 /* ---------------------------------------------------------------- Branding */
-/* The wordmark is the logo itself, so the brand link is just the image. */
+/* The wordmark is the logo itself, so the brand link is just the image.
+   It is sized by HEIGHT and never by width: the lockup is stacked ("Arena"
+   over "REBORN", ~3:2), so constraining the width lets it grow taller than
+   the header bar and the top and bottom of the art get cut off. */
 .brand-logo {
   display: block;
-  height: auto;
-  width: 140px;
+  height: 52px;
+  width: auto;
   max-width: 100%;
 }
-.brand-logo-sm { width: 112px; }
+.brand-logo-sm { height: 44px; }
 
 .hero-title { margin-bottom: 1rem; }
 .hero-logo {
@@ -865,4 +871,152 @@ td strong, th strong { color: var(--text-primary); }
   clip-path: inset(50%);
   overflow: hidden;
   white-space: nowrap;
+}
+/* ------------------------------------------------- Header, small screens */
+/* The header had NO responsive rules: .nav is flex-wrap:wrap, so on a phone
+   the links wrapped onto a second row inside a fixed-height bar and were
+   clipped. The bar now grows, and below 820px the brand sits on its own row
+   with the nav centred underneath it. No JS, no hamburger to get wrong. */
+@media (max-width: 820px) {
+  .header-inner {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    padding-block: 0.75rem;
+  }
+  .brand { margin: 0 auto; }
+  .nav {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+    row-gap: 0.35rem;
+  }
+  .navlink { padding: 0.45rem 0.7rem; font-size: 0.9rem; }
+  .brand-logo { height: 46px; }
+}
+
+@media (max-width: 480px) {
+  .navlink { padding: 0.4rem 0.55rem; font-size: 0.85rem; }
+  .nav-sep { display: none; }
+  .brand-logo { height: 40px; }
+  .brand-logo-sm { height: 38px; }
+}
+/* ------------------------------------------------------------- Hero layout */
+/* Copy on the left, logo on the right, arena art behind both. */
+.hero-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  align-items: center;
+  gap: 2.5rem;
+}
+.hero-copy { min-width: 0; }
+
+.hero-shot { isolation: isolate; }
+
+/* The arena photo. Two masks stack: a horizontal one so the art dissolves
+   before it reaches the text column, and a vertical one so it never collides
+   with the header above or the stat band below. */
+.hero-bg {
+  position: absolute;
+  inset: -2px;
+  z-index: 0;
+  /* Plain url() first as the fallback, then image-set so modern browsers
+     take the WebP (75 KB against 137 KB for the same picture). */
+  background-image: url("/static/arena-bg.jpg");
+  background-image: image-set(
+    url("/static/arena-bg.webp") type("image/webp"),
+    url("/static/arena-bg.jpg") type("image/jpeg"));
+  background-size: cover;
+  background-position: 62% 42%;
+  opacity: 0.5;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent 0%, rgba(0,0,0,.35) 32%, #000 68%),
+    linear-gradient(to bottom, transparent 0%, #000 22%, #000 62%, transparent 96%);
+  mask-image:
+    linear-gradient(to right, transparent 0%, rgba(0,0,0,.35) 32%, #000 68%),
+    linear-gradient(to bottom, transparent 0%, #000 22%, #000 62%, transparent 96%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  animation: hero-drift 46s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Small screens get the 800px file: a phone never needs the 1600px one, and
+   this is the single biggest byte saving on the page. */
+@media (max-width: 820px) {
+  .hero-bg {
+    background-image: url("/static/arena-bg-sm.jpg");
+    background-image: image-set(
+      url("/static/arena-bg-sm.webp") type("image/webp"),
+      url("/static/arena-bg-sm.jpg") type("image/jpeg"));
+    opacity: 0.34;
+    background-position: 60% 38%;
+  }
+}
+
+/* A scrim between art and text. Contrast is not negotiable: the buttons and
+   the lede have to stay readable over whatever pixels land behind them. */
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(100deg,
+      var(--bg-primary) 0%,
+      rgba(10, 8, 6, 0.94) 34%,
+      rgba(10, 8, 6, 0.62) 56%,
+      rgba(10, 8, 6, 0.38) 100%),
+    radial-gradient(120% 90% at 78% 45%, rgba(255, 160, 40, 0.10), transparent 60%);
+}
+
+/* Very slow, very small: enough to feel alive, not enough to notice moving. */
+@keyframes hero-drift {
+  from { transform: scale(1.06) translate3d(0, 0, 0); }
+  to   { transform: scale(1.13) translate3d(-1.6%, -1.2%, 0); }
+}
+
+.hero-art {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+.hero-logo {
+  display: block;
+  width: min(100%, 460px);
+  height: auto;
+  filter: drop-shadow(0 18px 42px rgba(0, 0, 0, .65))
+          drop-shadow(0 0 26px rgba(255, 149, 0, .16));
+  animation: hero-float 7s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes hero-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -12px, 0); }
+}
+
+/* Stack on narrow screens, art first so the page still opens on the logo. */
+@media (max-width: 900px) {
+  .hero-split {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    text-align: center;
+  }
+  .hero-art { order: -1; }
+  .hero-logo { width: min(78%, 360px); }
+  .hero-copy .eyebrow, .hero-copy .btn-row { justify-content: center; }
+  .hero-copy .lede { margin-inline: auto; }
+  .hero-scrim {
+    background:
+      linear-gradient(180deg, rgba(10,8,6,.86) 0%, rgba(10,8,6,.72) 45%, var(--bg-primary) 100%),
+      radial-gradient(100% 60% at 50% 30%, rgba(255,160,40,.10), transparent 65%);
+  }
+}
+
+/* Motion is decoration; anyone who asked for less gets a still image. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-bg { animation: none; transform: scale(1.06); }
+  .hero-logo { animation: none; }
 }
