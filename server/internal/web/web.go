@@ -84,7 +84,10 @@ type Server struct {
 	// suspicious, whereas mistyping a password ten times in an evening is not.
 	limiter      *limiter
 	loginLimiter *limiter
-	started      time.Time
+	// bugLimiter caps bug-report submissions. That endpoint carries no
+	// credential at all (the client sends none), so it needs its own ceiling.
+	bugLimiter *limiter
+	started    time.Time
 
 	// trustedProxies are the reverse proxies allowed to tell us, via
 	// X-Forwarded-For, who the real visitor is. Empty means "believe nobody",
@@ -144,7 +147,11 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 		// Brute-force guard. Passwords are bcrypt-hashed, so an online guess
 		// already costs ~100ms of CPU; this stops that CPU being the whole
 		// server's.
-		loginLimiter:   newLimiter(20, 15*time.Minute),
+		loginLimiter: newLimiter(20, 15*time.Minute),
+		// Generous for a player hitting a genuinely broken feature repeatedly,
+		// low enough that an unauthenticated endpoint which writes a row and a
+		// file cannot be used to fill the disk.
+		bugLimiter:     newLimiter(20, time.Hour),
 		started:        time.Now(),
 		trustedProxies: trusted,
 	}, nil
@@ -200,9 +207,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/tournaments/{id}", s.requireAdmin(s.handleAdminTournamentSave))
 	mux.HandleFunc("POST /admin/tournaments/{id}/delete", s.requireAdmin(s.handleAdminTournamentDelete))
 	mux.HandleFunc("POST /admin/tournaments/{id}/toggle", s.requireAdmin(s.handleAdminTournamentToggle))
+	mux.HandleFunc("GET /admin/bugs", s.requireAdmin(s.handleAdminBugs))
+	mux.HandleFunc("GET /admin/bugs/{id}", s.requireAdmin(s.handleAdminBugDetail))
+	mux.HandleFunc("GET /admin/bugs/{id}/screenshot", s.requireAdmin(s.handleAdminBugScreenshot))
+	mux.HandleFunc("POST /admin/bugs/{id}/resolve", s.requireAdmin(s.handleAdminBugResolve))
+	mux.HandleFunc("POST /admin/bugs/{id}/delete", s.requireAdmin(s.handleAdminBugDelete))
 	mux.HandleFunc("GET /admin/monitoring", s.requireAdmin(s.handleAdminMonitoring))
 	mux.HandleFunc("GET /admin/monitoring/pprof/{profile}", s.requireAdmin(s.handleAdminPprof))
 	mux.HandleFunc("POST /impersonate/stop", s.handleImpersonateStop)
+
+	// The retail client's bug dialog posts to <bugReportURL><lang>/bug-report,
+	// building that path itself (aOG.a), so the language segment is whatever
+	// the player's client is set to and has to be a wildcard.
+	mux.HandleFunc("POST /{lang}/bug-report", s.handleBugReport)
 
 	return securityHeaders(mux)
 }

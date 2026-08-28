@@ -81,6 +81,7 @@ func baselineModels() []any {
 		&domain.MailCard{},
 		&domain.Tournament{},
 		&domain.TournamentRegistration{},
+		&domain.BugReport{},
 	}
 }
 
@@ -178,6 +179,17 @@ var migrations = []migration{
 		Name:    "tournament_search_period",
 		Up: func(tx *gorm.DB) error {
 			return tx.AutoMigrate(&domain.Tournament{})
+		},
+	},
+	{
+		// Bug reports from the retail client's own dialog. Additive, but a
+		// numbered step for the usual reason: an existing database is already
+		// recorded at its version and never re-runs the baseline, so without
+		// this the table simply would not exist in production.
+		Version: 9,
+		Name:    "bug_reports",
+		Up: func(tx *gorm.DB) error {
+			return tx.AutoMigrate(&domain.BugReport{})
 		},
 	},
 }

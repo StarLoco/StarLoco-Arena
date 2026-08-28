@@ -89,6 +89,18 @@ type WebConfig struct {
 	// for a plain-HTTP server makes logging in silently impossible, because the
 	// browser accepts the cookie and then refuses to send it back.
 	SecureCookies bool `yaml:"secure_cookies"`
+	// BugReportsEnabled accepts submissions from the retail client's own bug
+	// dialog at POST /<lang>/bug-report, and shows them in the admin console.
+	// The endpoint is necessarily UNAUTHENTICATED - the client sends no
+	// credentials with it - so it is rate limited, size capped, and can be
+	// turned off entirely here.
+	BugReportsEnabled bool `yaml:"bug_reports_enabled"`
+	// BugReportDir is where submitted screenshots are written. Relative paths
+	// resolve against the working directory, like the database. Screenshots are
+	// full-size JPEGs and are deliberately kept OUT of the database: MySQL's
+	// default BLOB caps at 64 KB, and anything in the database lands in every
+	// backup. Empty disables screenshot storage (reports are still recorded).
+	BugReportDir string `yaml:"bug_report_dir"`
 	// TrustedProxies lists the peer addresses whose X-Forwarded-For header may
 	// be believed, as IPs or CIDRs ("127.0.0.1", "10.0.0.0/8"). It is EMPTY by
 	// default, and while it is empty no proxy header is trusted at all — the
@@ -157,6 +169,8 @@ func Default() Config {
 			MinLoginLength:      3,
 			MinPasswordLength:   6,
 			ClientDownloadURL:   defaultClientDownloadURL,
+			BugReportsEnabled:   true,
+			BugReportDir:        "bugreports",
 		},
 		UpdateCheck: UpdateCheckConfig{
 			Enabled:        true,
@@ -273,6 +287,12 @@ func (c *Config) applyEnv() {
 	}
 	if v, ok := envBool("ARENA_WEB_SECURE_COOKIES"); ok {
 		c.Web.SecureCookies = v
+	}
+	if v, ok := envBool("ARENA_WEB_BUG_REPORTS_ENABLED"); ok {
+		c.Web.BugReportsEnabled = v
+	}
+	if v := os.Getenv("ARENA_WEB_BUG_REPORT_DIR"); v != "" {
+		c.Web.BugReportDir = v
 	}
 	// Comma-separated, so a container can set it without a config file.
 	if v := os.Getenv("ARENA_WEB_TRUSTED_PROXIES"); v != "" {

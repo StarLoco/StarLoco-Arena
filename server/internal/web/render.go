@@ -278,6 +278,10 @@ type baseData struct {
 	IsAdmin       bool
 	Impersonating bool
 	RealName      string
+
+	// OpenBugs badges the admin nav with the unresolved bug-report count. It is
+	// only looked up for admins, so a public page never pays for the query.
+	OpenBugs int64
 }
 
 func (b *baseData) base() *baseData { return b }
@@ -325,6 +329,12 @@ func (s *Server) newBase(w http.ResponseWriter, r *http.Request, title, navKey s
 		}
 	} else {
 		b.IsAdmin = acc.IsAdmin
+	}
+
+	if b.IsAdmin && s.cfg.BugReportsEnabled {
+		if n, err := s.store.BugReports.CountOpen(); err == nil {
+			b.OpenBugs = n
+		}
 	}
 	return b
 }

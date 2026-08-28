@@ -27,6 +27,22 @@
       </div>
     </div>
 
+    {{if .OpenBugs}}
+    <a class="card mb-4" href="/admin/bugs" style="display:block;text-decoration:none">
+      <div class="flex-between">
+        <div>
+          <div class="card-title mb-0">
+            {{thousands .OpenBugs}} open bug report{{if ne .OpenBugs 1}}s{{end}}
+          </div>
+          <p class="small muted mb-0 mt-1">
+            Sent by players from the game's own bug dialog, with screenshots.
+          </p>
+        </div>
+        <span class="btn btn-primary">Review</span>
+      </div>
+    </a>
+    {{end}}
+
     <div class="flex-between mb-3">
       <h2 class="mb-0" style="font-size:1.35rem">Newest accounts</h2>
       <div class="flex-gap">

@@ -101,6 +101,23 @@ web:
   #   trusted_proxies: ["127.0.0.1", "::1"]
   # trusted_proxies: []
 
+  # The game client has a built-in bug reporter (the "Rapport de bug" dialog,
+  # or the /bugreport console command). It sends the report - with a screenshot,
+  # the client log and where the player was standing - to whatever address is in
+  # the client's own bugReportURL setting. Point that at this website and the
+  # reports show up under Admin -> Bug reports.
+  #
+  # In the client's game/config.properties:
+  #   bugReportURL=https://your-site.example/
+  # (the client appends the language and "/bug-report" itself)
+  # bug_reports_enabled: true
+
+  # Where submitted screenshots are written. Relative paths are resolved next to
+  # the server, like the database file. They are kept out of the database on
+  # purpose: they are full-size JPEGs, and anything in the database ends up in
+  # every backup. Set to "" to record reports without keeping screenshots.
+  # bug_report_dir: "bugreports"
+
 
 # -----------------------------------------------------------------------------
 #  Game data - the card, spell and map files copied out of the game client.

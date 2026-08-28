@@ -1,0 +1,133 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow">Console</div>
+    <div class="flex-between">
+      <h1 class="mb-0">{{.Report.Title}}</h1>
+      <a class="btn btn-ghost" href="/admin/bugs">&larr; All reports</a>
+    </div>
+    {{template "admin_tabs" .}}
+
+    <div class="flex-gap mb-3">
+      <span class="chip">#{{.Report.ID}}</span>
+      {{if .Report.Type}}<span class="chip">{{.Report.Type}}</span>{{end}}
+      {{if .Report.Resolved}}<span class="chip chip-online">Resolved</span>{{else}}<span class="chip chip-admin">Open</span>{{end}}
+      <span class="small muted">{{formatDate .Report.CreatedAt}}</span>
+    </div>
+
+    <div class="flex-gap mb-4">
+      <form method="post" action="/admin/bugs/{{.Report.ID}}/resolve">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <input type="hidden" name="resolved" value="{{if .Report.Resolved}}0{{else}}1{{end}}">
+        <button class="btn btn-primary" type="submit">
+          {{if .Report.Resolved}}Reopen{{else}}Mark as resolved{{end}}
+        </button>
+      </form>
+      <form method="post" action="/admin/bugs/{{.Report.ID}}/delete"
+            onsubmit="return confirm('Delete this bug report and its screenshot?')">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="btn btn-ghost" type="submit">Delete</button>
+      </form>
+    </div>
+
+    {{if .HasScreenshot}}
+    <div class="card mb-4">
+      <div class="card-title">Screenshot</div>
+      <a href="/admin/bugs/{{.Report.ID}}/screenshot" target="_blank" rel="noopener">
+        <img src="/admin/bugs/{{.Report.ID}}/screenshot"
+             alt="Screenshot submitted with this bug report"
+             style="max-width:100%;height:auto;border-radius:8px;display:block">
+      </a>
+      <p class="small muted mt-2 mb-0">Click to open full size.</p>
+    </div>
+    {{end}}
+
+    <div class="card mb-4">
+      <div class="card-title">What the player reported</div>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr>
+              <th style="width:220px">What happened</th>
+              <td>{{if .Report.Seen}}<pre class="pre-wrap">{{.Report.Seen}}</pre>{{else}}<span class="muted">&mdash;</span>{{end}}</td>
+            </tr>
+            <tr>
+              <th>What they expected</th>
+              <td>{{if .Report.Awaited}}<pre class="pre-wrap">{{.Report.Awaited}}</pre>{{else}}<span class="muted">&mdash;</span>{{end}}</td>
+            </tr>
+            <tr>
+              <th>How to reproduce</th>
+              <td>{{if .Report.Reproduce}}<pre class="pre-wrap">{{.Report.Reproduce}}</pre>{{else}}<span class="muted">&mdash;</span>{{end}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-title">Who and where</div>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr>
+              <th style="width:220px">Coach</th>
+              <td>{{if .Report.CoachName}}{{.Report.CoachName}}{{else}}<span class="muted">none</span>{{end}}</td>
+            </tr>
+            <tr>
+              <th>Account</th>
+              <td>
+                {{if .Report.AccountID}}
+                  <a href="/admin/accounts/{{.Report.AccountID}}">{{.Report.AccountName}}</a>
+                {{else if .Report.AccountName}}
+                  {{.Report.AccountName}}
+                  <span class="small muted">(claimed &mdash; no matching account)</span>
+                {{else}}<span class="muted">unknown</span>{{end}}
+              </td>
+            </tr>
+            <tr>
+              <th>World</th>
+              <td>{{if .Report.WorldName}}{{.Report.WorldName}}{{else}}<span class="muted">&mdash;</span>{{end}}
+                  <span class="small muted">({{.Report.WorldX}}, {{.Report.WorldY}})</span></td>
+            </tr>
+            <tr>
+              <th>Client</th>
+              <td>{{if .Report.ClientVersion}}{{.Report.ClientVersion}}{{else}}<span class="muted">&mdash;</span>{{end}}
+                  <span class="small muted">
+                    {{.Report.ScreenWidth}}&times;{{.Report.ScreenHeight}}{{if .Report.Fullscreen}}, fullscreen{{end}},
+                    lang {{if .Report.Lang}}{{.Report.Lang}}{{else}}?{{end}}
+                  </span></td>
+            </tr>
+            <tr>
+              <th>Sent from</th>
+              <td class="small muted">{{.Report.RemoteAddr}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {{if .Report.SystemInfo}}
+    <details class="card mb-4">
+      <summary class="card-title" style="cursor:pointer">System information</summary>
+      <pre class="pre-wrap small mt-2 mb-0">{{.Report.SystemInfo}}</pre>
+    </details>
+    {{end}}
+
+    {{if .Report.Log}}
+    <details class="card mb-4">
+      <summary class="card-title" style="cursor:pointer">Client log</summary>
+      <pre class="pre-wrap small mt-2 mb-0">{{.Report.Log}}</pre>
+    </details>
+    {{end}}
+
+    {{if .Report.Replay}}
+    <details class="card mb-4">
+      <summary class="card-title" style="cursor:pointer">Replay data</summary>
+      <pre class="pre-wrap small mt-2 mb-0">{{.Report.Replay}}</pre>
+    </details>
+    {{end}}
+  </div>
+</section>
+{{end}}

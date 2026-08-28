@@ -1,0 +1,75 @@
+{{define "content"}}
+<section class="section">
+  <div class="grid-texture" aria-hidden="true"></div>
+
+  <div class="container">
+    <div class="eyebrow">Console</div>
+    <h1>Bug reports</h1>
+    {{template "admin_tabs" .}}
+
+    <div class="flex-between mb-3">
+      <p class="small muted mb-0">
+        {{thousands .Total}} {{if .OnlyOpen}}open{{else}}total{{end}}
+        report{{if ne .Total 1}}s{{end}}, sent from the game's own bug dialog.
+      </p>
+      {{if .OnlyOpen}}
+        <a class="btn btn-ghost" href="/admin/bugs?all=1">Show resolved too</a>
+      {{else}}
+        <a class="btn btn-ghost" href="/admin/bugs">Show open only</a>
+      {{end}}
+    </div>
+
+    {{if .Reports}}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th class="num">#</th><th>Title</th><th>Type</th><th>From</th>
+          <th>Where</th><th>Sent</th><th></th>
+        </tr></thead>
+        <tbody>
+        {{range .Reports}}
+          <tr>
+            <td class="num muted">{{.ID}}</td>
+            <td>
+              <strong>{{.Title}}</strong>
+              {{if .Resolved}}<span class="chip">Resolved</span>{{end}}
+              {{if .ScreenshotFile}}<span class="chip" title="Has a screenshot">IMG</span>{{end}}
+            </td>
+            <td class="small">{{if .Type}}{{.Type}}{{else}}<span class="muted">&mdash;</span>{{end}}</td>
+            <td class="small">
+              {{if .CoachName}}{{.CoachName}}{{else}}<span class="muted">no coach</span>{{end}}
+              {{if .AccountName}}<br><span class="muted">{{.AccountName}}</span>{{end}}
+            </td>
+            <td class="small muted">{{if .WorldName}}{{.WorldName}}{{else}}&mdash;{{end}}</td>
+            <td class="small muted nowrap">{{formatDate .CreatedAt}}</td>
+            <td><a class="btn btn-ghost" href="/admin/bugs/{{.ID}}">View</a></td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if gt .Pages 1}}
+    <div class="pager">
+      {{if gt .Page 1}}<a class="btn btn-ghost" href="/admin/bugs?page={{.PrevPage}}{{if not .OnlyOpen}}&all=1{{end}}">&larr; Previous</a>{{end}}
+      <span>Page {{.Page}} of {{.Pages}}</span>
+      {{if lt .Page .Pages}}<a class="btn btn-ghost" href="/admin/bugs?page={{.NextPage}}{{if not .OnlyOpen}}&all=1{{end}}">Next &rarr;</a>{{end}}
+    </div>
+    {{end}}
+
+    {{else}}
+      <div class="card">
+        <div class="empty">
+          {{if .OnlyOpen}}
+            No open bug reports.
+          {{else}}
+            No bug reports yet. They arrive when a player uses the game's
+            &ldquo;Rapport de bug&rdquo; dialog, provided the client's
+            <code>bugReportURL</code> points at this site.
+          {{end}}
+        </div>
+      </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

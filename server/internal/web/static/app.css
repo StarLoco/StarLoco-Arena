@@ -803,3 +803,18 @@ td strong, th strong { color: var(--text-primary); }
     transition-duration: .01ms !important;
   }
 }
+
+/* Preformatted blocks inside bug reports: client logs and player descriptions
+   arrive with their own newlines and can contain very long lines (stack traces,
+   file paths), so wrap rather than force the page to scroll sideways. */
+.pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem;
+  line-height: 1.5;
+  max-height: 26rem;
+  overflow-y: auto;
+}

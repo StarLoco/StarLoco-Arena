@@ -270,3 +270,66 @@ type GuildDemonReputation struct {
 }
 
 func (GuildDemonReputation) TableName() string { return "guild_demon_reputations" }
+
+// BugReport is one submission from the retail client's built-in bug dialog
+// ("Rapport de bug", console command /bugreport). The client does NOT send it
+// over the game protocol: it POSTs a multipart/form-data body to
+// `<bugReportURL><lang>/bug-report` and expects a body whose first line is
+// exactly "OK" (client aOG.a). Field names below are that form's, verbatim.
+//
+// The screenshot is deliberately NOT a column. It is a full-size JPEG, and:
+//   - MySQL's default BLOB caps at 64 KB, which a screenshot exceeds, so an
+//     in-table column would work on postgres/sqlite and silently truncate or
+//     fail on mysql - the same dialect trap as B-125;
+//   - it would land in every nightly pg_dump, so a few hundred reports would
+//     bloat every backup by hundreds of MB.
+//
+// It is written to disk instead (web.bug_report_dir) and referenced by name.
+type BugReport struct {
+	ID        uint      `gorm:"primaryKey"`
+	CreatedAt time.Time `gorm:"index"`
+
+	// What the player typed. Type is the client's own i18n label, e.g.
+	// "Affichage / Map / Son" - it is free text on the wire, not an enum.
+	Title     string `gorm:"size:255;not null"`
+	Type      string `gorm:"size:120"`
+	Seen      string `gorm:"type:text"` // bug[seen_comportment]
+	Awaited   string `gorm:"type:text"` // bug[awaited_comportment]
+	Reproduce string `gorm:"type:text"` // bug[way_to_reproduce]
+
+	// Who reported it. The names are what the CLIENT claimed; AccountID is
+	// resolved server-side by looking the name up, and is 0 when it does not
+	// match a real account (the endpoint is unauthenticated - see the handler).
+	AccountID   uint   `gorm:"index"`
+	AccountName string `gorm:"size:64;index"`
+	CoachName   string `gorm:"size:64"`
+	CoachRef    int64  // user[character][id]
+	WorldX      int32
+	WorldY      int32
+	WorldName   string `gorm:"size:120"`
+	Lang        string `gorm:"size:16"`
+
+	// Client environment, for reproducing it.
+	ClientVersion string `gorm:"size:120"`
+	ScreenWidth   int32
+	ScreenHeight  int32
+	Fullscreen    bool
+	// SystemInfo is the config[...] block (OS, VM, memory, GPU) flattened to
+	// one "key=value" per line. The per-thread entries are dropped: the client
+	// sends five fields for EVERY live thread, which is hundreds of useless
+	// rows, and none of it survives triage.
+	SystemInfo string `gorm:"type:text"`
+
+	// Attachments. Text is truncated (tail-kept) to stay inside the smallest
+	// TEXT the supported dialects share; ScreenshotFile is a name inside
+	// web.bug_report_dir, empty when none was sent or it could not be stored.
+	Log            string `gorm:"type:text"`
+	Replay         string `gorm:"type:text"`
+	ScreenshotFile string `gorm:"size:255"`
+
+	// Triage.
+	Resolved   bool   `gorm:"not null;default:false;index"`
+	RemoteAddr string `gorm:"size:64"`
+}
+
+func (BugReport) TableName() string { return "bug_reports" }
