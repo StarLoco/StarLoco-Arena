@@ -236,6 +236,59 @@ func TestBugScreenshotRequiresAdmin(t *testing.T) {
 	}
 }
 
+// TestBugReportListenerExposesNothingElse is the whole justification for that
+// second listener existing.
+//
+// It runs on plain http because the client's Java 1.6 cannot do modern TLS. If
+// it ever served the full portal, the login form and the admin console would be
+// on an unencrypted port - so this pins that it answers the bug endpoint and
+// NOTHING else, and that a GET (rather than POST) does not reach it either.
+func TestBugReportListenerExposesNothingElse(t *testing.T) {
+	s, _ := newTestServer(t, func(c *config.WebConfig) {
+		c.BugReportsEnabled = true
+		c.BugReportDir = t.TempDir()
+	})
+	h := s.BugReportHandler()
+
+	// The one route that must work.
+	body, ctype := clientBugReportBody(t, []byte("x"))
+	req := httptest.NewRequest(http.MethodPost, "/fr/bug-report", body)
+	req.Header.Set("Content-Type", ctype)
+	req.RemoteAddr = "198.51.100.20:5555"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /fr/bug-report = %d, want 200", rec.Code)
+	}
+
+	// Everything else must be unreachable here, especially anything that could
+	// leak a credential over plain http.
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/"},
+		{http.MethodGet, "/login"},
+		{http.MethodPost, "/login"},
+		{http.MethodGet, "/register"},
+		{http.MethodPost, "/register"},
+		{http.MethodGet, "/account"},
+		{http.MethodGet, "/admin"},
+		{http.MethodGet, "/admin/bugs"},
+		{http.MethodGet, "/admin/bugs/1/screenshot"},
+		{http.MethodGet, "/status"},
+		{http.MethodGet, "/ladder"},
+		{http.MethodGet, "/static/app.css"},
+		// The bug route itself must not answer to GET.
+		{http.MethodGet, "/fr/bug-report"},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s %s returned 200 on the bug-report listener; only the "+
+				"bug endpoint may be reachable on a plain-http port",
+				tc.method, tc.path)
+		}
+	}
+}
+
 // truncateTail keeps the END, because the last lines of a client log are the
 // ones describing the crash that prompted the report.
 func TestTruncateTailKeepsTheEnd(t *testing.T) {

@@ -132,6 +132,27 @@ func run(configPath, dataOverride string) error {
 				log.Error("web portal stopped", "err", err)
 			}
 		}()
+
+		// Optional plain-http listener carrying ONLY the bug-report endpoint.
+		// The 2012 client's Java 1.6 cannot negotiate modern TLS, so an
+		// https-only site can never receive its bug reports; see
+		// web.BugReportHandler. Failing to bind is a warning, not fatal - the
+		// game and the website matter more than the bug form.
+		if addr := strings.TrimSpace(cfg.Web.BugReportAddr); addr != "" && cfg.Web.BugReportsEnabled {
+			bugLn, err := net.Listen("tcp", addr)
+			if err != nil {
+				log.Warn("bug-report listener disabled: cannot bind",
+					"addr", addr, "err", err)
+			} else {
+				log.Info("bug-report listener (plain http, bug endpoint only)", "addr", addr)
+				go func() {
+					defer func() { _ = bugLn.Close() }()
+					if err := portal.ServeBugReports(ctx, bugLn); err != nil {
+						log.Error("bug-report listener stopped", "err", err)
+					}
+				}()
+			}
+		}
 	}
 
 	if cfg.UpdateCheck.Enabled {

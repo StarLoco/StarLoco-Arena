@@ -604,10 +604,39 @@ func urlForPort(port int) string {
 	return fmt.Sprintf("http://localhost:%d", port)
 }
 
+// BugReportHandler is a deliberately tiny handler that serves ONLY the client's
+// bug-report endpoint and 404s everything else.
+//
+// It exists because the retail client bundles Java 1.6.0_07 (2008), which speaks
+// nothing newer than TLS 1.0. Any CDN or reverse proxy worth using requires
+// TLS 1.2+, so the client's bug dialog CANNOT reach an https endpoint - it dies
+// with "Received fatal alert: handshake_failure", and because the client tells
+// the player "sent" before it even opens the connection, the failure is
+// completely invisible in game.
+//
+// The only way to accept those reports is a plain-http listener. Serving the
+// whole portal there would put the login form and the admin console on an
+// unencrypted port, so this exposes exactly one route and nothing else: no
+// session is read, no cookie is set, no template is rendered.
+func (s *Server) BugReportHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /{lang}/bug-report", s.handleBugReport)
+	return securityHeaders(mux)
+}
+
+// ServeBugReports runs the plain-http bug-report listener until ctx is cancelled.
+func (s *Server) ServeBugReports(ctx context.Context, ln net.Listener) error {
+	return s.serveOn(ctx, ln, s.BugReportHandler())
+}
+
 // Serve runs the portal on ln until ctx is cancelled, then shuts it down.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	return s.serveOn(ctx, ln, s.Handler())
+}
+
+func (s *Server) serveOn(ctx context.Context, ln net.Listener, h http.Handler) error {
 	srv := &http.Server{
-		Handler: s.Handler(),
+		Handler: h,
 		// The portal is on a hostile-by-default network; bound every phase so a
 		// stuck client cannot pin a connection open indefinitely.
 		ReadHeaderTimeout: 10 * time.Second,

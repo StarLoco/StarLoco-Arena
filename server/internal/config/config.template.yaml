@@ -118,6 +118,22 @@ web:
   # every backup. Set to "" to record reports without keeping screenshots.
   # bug_report_dir: "bugreports"
 
+  # The game client is from 2012 and bundles Java 1.6, which cannot speak modern
+  # TLS at all - so if your website is https-only (behind Cloudflare, nginx, a
+  # CDN...), the in-game bug dialog simply cannot reach it. It fails silently:
+  # the client tells the player "sent" before it even opens the connection.
+  #
+  # Setting this starts a SECOND, plain-http listener that serves ONLY the
+  # bug-report endpoint - the website, its login form and the admin console are
+  # NOT reachable on it. Then point the client's bugReportURL at that address:
+  #   bug_report_addr: "0.0.0.0:80"
+  #   (client) bugReportURL=http://your-server-address/
+  #
+  # Bug text and screenshots travel unencrypted on this port. Leave it empty if
+  # your site is plain http anyway (then the normal port already works), or if
+  # you would rather not accept in-game reports at all.
+  # bug_report_addr: ""
+
 
 # -----------------------------------------------------------------------------
 #  Game data - the card, spell and map files copied out of the game client.

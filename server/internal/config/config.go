@@ -95,6 +95,19 @@ type WebConfig struct {
 	// credentials with it - so it is rate limited, size capped, and can be
 	// turned off entirely here.
 	BugReportsEnabled bool `yaml:"bug_reports_enabled"`
+	// BugReportAddr, when set, starts a SECOND listener that serves only the
+	// bug-report endpoint over plain http (e.g. "0.0.0.0:80").
+	//
+	// This exists for one reason: the retail client bundles Java 1.6.0_07
+	// (2008), which speaks no TLS newer than 1.0, so its bug dialog cannot
+	// reach an https endpoint at all - it fails with "handshake_failure", and
+	// the client claims success to the player before it even connects, so the
+	// failure is invisible in game.
+	//
+	// Only that one route is served here; the portal, its login form and the
+	// admin console are NOT reachable on this port. Leave it empty unless the
+	// main site is https-only and you want in-game reports to work anyway.
+	BugReportAddr string `yaml:"bug_report_addr"`
 	// BugReportDir is where submitted screenshots are written. Relative paths
 	// resolve against the working directory, like the database. Screenshots are
 	// full-size JPEGs and are deliberately kept OUT of the database: MySQL's
@@ -293,6 +306,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("ARENA_WEB_BUG_REPORT_DIR"); v != "" {
 		c.Web.BugReportDir = v
+	}
+	if v := os.Getenv("ARENA_WEB_BUG_REPORT_ADDR"); v != "" {
+		c.Web.BugReportAddr = v
 	}
 	// Comma-separated, so a container can set it without a config file.
 	if v := os.Getenv("ARENA_WEB_TRUSTED_PROXIES"); v != "" {
