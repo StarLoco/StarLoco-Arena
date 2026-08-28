@@ -289,6 +289,51 @@ func TestBugReportListenerExposesNothingElse(t *testing.T) {
 	}
 }
 
+// TestLoginScreenLinks pins the two routes the game client's login plaques
+// point at. Those URLs are compiled into core.jar - into the client players
+// have already downloaded - so the server must keep answering them, and the
+// Discord invite behind /discord has to stay changeable here rather than in
+// the client. The client builds base + language + path, hence both the bare
+// and language-prefixed forms.
+func TestLoginScreenLinks(t *testing.T) {
+	t.Run("discord redirects to the configured invite", func(t *testing.T) {
+		s, _ := newTestServer(t, func(c *config.WebConfig) {
+			c.DiscordURL = "https://discord.gg/example"
+		})
+		for _, path := range []string{"/discord", "/fr/discord", "/en/discord"} {
+			rec := get(t, s, path)
+			if rec.Code != http.StatusFound {
+				t.Errorf("%s: status = %d, want 302", path, rec.Code)
+			}
+			if loc := rec.Header().Get("Location"); loc != "https://discord.gg/example" {
+				t.Errorf("%s: Location = %q", path, loc)
+			}
+		}
+	})
+
+	t.Run("unset invite falls back to the home page, not a dead end", func(t *testing.T) {
+		s, _ := newTestServer(t, func(c *config.WebConfig) { c.DiscordURL = "" })
+		rec := get(t, s, "/fr/discord")
+		if rec.Code < 300 || rec.Code > 399 {
+			t.Fatalf("status = %d, want a redirect", rec.Code)
+		}
+		if loc := rec.Header().Get("Location"); loc != "/" {
+			t.Errorf("Location = %q, want /", loc)
+		}
+	})
+
+	t.Run("register plaque reaches the sign-up page", func(t *testing.T) {
+		s, _ := newTestServer(t, nil)
+		rec := get(t, s, "/fr/register")
+		if rec.Code < 300 || rec.Code > 399 {
+			t.Fatalf("status = %d, want a redirect", rec.Code)
+		}
+		if loc := rec.Header().Get("Location"); loc != "/register" {
+			t.Errorf("Location = %q, want /register", loc)
+		}
+	})
+}
+
 // truncateTail keeps the END, because the last lines of a client log are the
 // ones describing the crash that prompted the report.
 func TestTruncateTailKeepsTheEnd(t *testing.T) {

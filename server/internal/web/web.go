@@ -221,6 +221,23 @@ func (s *Server) Handler() http.Handler {
 	// the player's client is set to and has to be a wildcard.
 	mux.HandleFunc("POST /{lang}/bug-report", s.handleBugReport)
 
+	// The login screen's two plaques (avv_0.showUrl, repointed in core.jar).
+	// The client builds base + language + path, so the language-prefixed forms
+	// are served too.
+	//
+	// The four languages are listed rather than matched with "/{lang}/" on
+	// purpose: a GET wildcard there is ambiguous with "GET /static/" (both
+	// match "/static/discord") and Go's mux panics at registration. The client
+	// only ever offers these four - they are the radio buttons on its own login
+	// dialog - so enumerating them is exact rather than a workaround. The
+	// bug-report route can keep its wildcard because it is POST-only and so
+	// cannot collide with the static handler.
+	mux.HandleFunc("GET /discord", s.handleDiscord)
+	for _, lang := range []string{"fr", "en", "es", "de"} {
+		mux.HandleFunc("GET /"+lang+"/discord", s.handleDiscord)
+		mux.HandleFunc("GET /"+lang+"/register", s.handleLangRegister)
+	}
+
 	return securityHeaders(mux)
 }
 

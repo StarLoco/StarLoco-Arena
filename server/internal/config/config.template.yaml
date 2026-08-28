@@ -101,6 +101,12 @@ web:
   #   trusted_proxies: ["127.0.0.1", "::1"]
   # trusted_proxies: []
 
+  # Where /discord sends people. The game client's login screen has a
+  # "Rejoindre le Discord" button pointing at this site, so you can set or
+  # change the invite here without re-issuing the client to your players.
+  # Leave it empty and /discord simply sends them to the home page.
+  # discord_url: "https://discord.gg/xxxxxxx"
+
   # The game client has a built-in bug reporter (the "Rapport de bug" dialog,
   # or the /bugreport console command). It sends the report - with a screenshot,
   # the client log and where the player was standing - to whatever address is in

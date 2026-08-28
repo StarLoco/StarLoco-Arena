@@ -89,6 +89,11 @@ type WebConfig struct {
 	// for a plain-HTTP server makes logging in silently impossible, because the
 	// browser accepts the cookie and then refuses to send it back.
 	SecureCookies bool `yaml:"secure_cookies"`
+	// DiscordURL is where /discord sends visitors. The game client's login
+	// screen has a "Rejoindre le Discord" plaque pointing at /<lang>/discord,
+	// so this can be filled in (or changed) without touching the client the
+	// players already downloaded.
+	DiscordURL string `yaml:"discord_url"`
 	// BugReportsEnabled accepts submissions from the retail client's own bug
 	// dialog at POST /<lang>/bug-report, and shows them in the admin console.
 	// The endpoint is necessarily UNAUTHENTICATED - the client sends no
@@ -300,6 +305,9 @@ func (c *Config) applyEnv() {
 	}
 	if v, ok := envBool("ARENA_WEB_SECURE_COOKIES"); ok {
 		c.Web.SecureCookies = v
+	}
+	if v := os.Getenv("ARENA_WEB_DISCORD_URL"); v != "" {
+		c.Web.DiscordURL = v
 	}
 	if v, ok := envBool("ARENA_WEB_BUG_REPORTS_ENABLED"); ok {
 		c.Web.BugReportsEnabled = v

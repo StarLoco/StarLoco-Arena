@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/StarLoco/arena-2.70/internal/store"
 )
@@ -27,6 +28,30 @@ type indexData struct {
 // and the header logo unusable for anybody logged in: both point at "/", so
 // both silently landed back on /account and the landing page became unreachable
 // without signing out.
+// handleDiscord sends visitors to the community Discord.
+//
+// It exists as a redirect rather than a raw invite link because the game
+// client's login screen points here: those URLs are compiled into the client
+// the players have already downloaded, so the invite behind it has to be
+// changeable server-side. An unset invite falls back to the home page rather
+// than a dead end.
+func (s *Server) handleDiscord(w http.ResponseWriter, r *http.Request) {
+	target := strings.TrimSpace(s.cfg.DiscordURL)
+	if target == "" {
+		s.log.Debug("web: /discord hit but web.discord_url is not set")
+		redirect(w, r, "/")
+		return
+	}
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// handleLangRegister serves the /<lang>/register the client's "Creer un compte"
+// plaque links to. The client builds its URLs as base + language + path
+// (avv_0.showUrl), so the language segment is unavoidable and simply ignored.
+func (s *Server) handleLangRegister(w http.ResponseWriter, r *http.Request) {
+	redirect(w, r, "/register")
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	d := &indexData{baseData: s.newBase(w, r, "", "home")}
 	if n, err := s.store.Accounts.Count(); err == nil {
