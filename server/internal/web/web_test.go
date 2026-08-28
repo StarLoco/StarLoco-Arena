@@ -630,7 +630,11 @@ func TestGameAddressFallsBackToRequestHost(t *testing.T) {
 // what New calls, and a bad {{template}} reference only fails at execute time,
 // which is why this walks the whole set.
 func TestEveryTemplateParses(t *testing.T) {
-	set, err := parseTemplates()
+	cat, err := loadCatalog()
+	if err != nil {
+		t.Fatalf("loadCatalog: %v", err)
+	}
+	set, err := parseTemplates(buildFuncs(cat, LangEN))
 	if err != nil {
 		t.Fatalf("parseTemplates: %v", err)
 	}

@@ -9,33 +9,31 @@
     <div class="badge-pill reveal">
       <span class="dot{{if not .PlayersOnline}} dot-off{{end}}" aria-hidden="true"></span>
       {{if .PlayersOnline}}
-        {{.PlayersOnline}} player{{if ne .PlayersOnline 1}}s{{end}} online now
+        {{.PlayersOnline}} {{t "index.online.some"}}
       {{else}}
-        Server online — be the first one in
+        {{t "index.online.none"}}
       {{end}}
     </div>
 
-    <div class="eyebrow reveal reveal-1">The return of</div>
+    <div class="eyebrow reveal reveal-1">{{t "index.eyebrow"}}</div>
     <h1 class="reveal reveal-1">
       DofusArena
       <span class="hero-accent">2.70</span>
     </h1>
     <p class="lede reveal reveal-2">
-      The legendary tactical PvP game from the Dofus universe, brought back and kept alive.
-      Build a team, learn the ground, and win on skill alone — there is nothing to farm and
-      nothing to grind.
+      {{t "index.lede"}}
     </p>
 
     <div class="btn-row mt-3 reveal reveal-3">
       {{if .LoggedIn}}
-        <a class="btn btn-primary btn-lg" href="/account">My account</a>
+        <a class="btn btn-primary btn-lg" href="/account">{{t "index.cta.account"}}</a>
       {{else if .RegistrationEnabled}}
-        <a class="btn btn-primary btn-lg" href="/register">Create your account</a>
+        <a class="btn btn-primary btn-lg" href="/register">{{t "index.cta.create"}}</a>
       {{end}}
       {{if .ClientDownloadURL}}
-        <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">Download the game</a>
+        <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "index.cta.download"}}</a>
       {{else}}
-        <a class="btn btn-secondary btn-lg" href="/status">Server status</a>
+        <a class="btn btn-secondary btn-lg" href="/status">{{t "index.cta.status"}}</a>
       {{end}}
     </div>
 
@@ -43,9 +41,9 @@
          asked to type an address. */}}
     <p class="small muted mt-3 mb-0 reveal reveal-4">
       {{if .LoggedIn}}
-        Download the game, sign in, and you are ready to play.
+        {{t "index.ready.member"}}
       {{else}}
-        Create an account, download the game, and you are ready to play.
+        {{t "index.ready.guest"}}
       {{end}}
     </p>
   </div>
@@ -56,15 +54,15 @@
     <div class="stat-row">
       <div class="stat">
         <div class="stat-value">{{thousands .TotalAccounts}}</div>
-        <div class="stat-label">Registered players</div>
+        <div class="stat-label">{{t "index.stat.players"}}</div>
       </div>
       <div class="stat">
         <div class="stat-value">{{thousands .TotalFights}}</div>
-        <div class="stat-label">Battles played</div>
+        <div class="stat-label">{{t "index.stat.battles"}}</div>
       </div>
       <div class="stat">
         <div class="stat-value">{{thousands .RankedCoaches}}</div>
-        <div class="stat-label">Ranked coaches</div>
+        <div class="stat-label">{{t "index.stat.ranked"}}</div>
       </div>
     </div>
   </div>
@@ -75,9 +73,9 @@
   <div class="blob blob-accent" style="width:420px;height:420px;right:-160px;top:10%" aria-hidden="true"></div>
 
   <div class="container">
-    <div class="eyebrow">Why play here</div>
-    <h2>What makes Arena special</h2>
-    <p class="lede mb-4">The tactical depth that made DofusArena worth preserving.</p>
+    <div class="eyebrow">{{t "index.why.eyebrow"}}</div>
+    <h2>{{t "index.why.title"}}</h2>
+    <p class="lede mb-4">{{t "index.why.lede"}}</p>
 
     {{/* The four items are DIRECT children of the grid on purpose. Nesting them
          as two columns of two let each column stack independently, so 02 and 04
@@ -87,33 +85,29 @@
       <div class="feature">
         <div class="feature-num">01</div>
         <div>
-          <h3>Pure strategy</h3>
-          <p>Every decision counts. No farming, no levelling, no gear treadmill — you and your
-            opponent start on equal terms and the better tactician wins.</p>
+          <h3>{{t "index.f1.title"}}</h3>
+          <p>{{t "index.f1.body"}}</p>
         </div>
       </div>
       <div class="feature">
         <div class="feature-num">02</div>
         <div>
-          <h3>Ranked ladder</h3>
-          <p>Face opponents near your own rating and climb. Every result moves you, and the
-            <a href="/ladder">leaderboard</a> is public.</p>
+          <h3>{{t "index.f2.title"}}</h3>
+          <p>{{t "index.f2.body"}}</p>
         </div>
       </div>
       <div class="feature">
         <div class="feature-num">03</div>
         <div>
-          <h3>Your own team</h3>
-          <p>Recruit fighters, equip them, and find the synergies nobody else has spotted.
-            Teams are yours to build and rebuild at will.</p>
+          <h3>{{t "index.f3.title"}}</h3>
+          <p>{{t "index.f3.body"}}</p>
         </div>
       </div>
       <div class="feature">
         <div class="feature-num">04</div>
         <div>
-          <h3>The real thing</h3>
-          <p>This runs the original 2012 client against a server rebuilt from scratch to match
-            it exactly — not a remake, but the game as it actually was.</p>
+          <h3>{{t "index.f4.title"}}</h3>
+          <p>{{t "index.f4.body"}}</p>
         </div>
       </div>
     </div>
@@ -126,16 +120,16 @@
       <div class="grid-texture" aria-hidden="true"></div>
       <div class="blob blob-accent" style="width:360px;height:360px;left:50%;margin-left:-180px;top:-180px" aria-hidden="true"></div>
       <div style="position:relative;z-index:1">
-        <div class="eyebrow eyebrow-center">Get started</div>
-        <h2>Ready to join the battle?</h2>
+        <div class="eyebrow eyebrow-center">{{t "index.get.eyebrow"}}</div>
+        <h2>{{t "index.get.title"}}</h2>
         <p class="lede center" style="margin:0 auto 1.5rem">
-          Create an account for free, point the client at this server, and you are in.
+          {{t "index.get.lede"}}
         </p>
         <div class="btn-row" style="justify-content:center">
           {{if .RegistrationEnabled}}
-            <a class="btn btn-primary btn-lg" href="/register">Create your account</a>
+            <a class="btn btn-primary btn-lg" href="/register">{{t "index.cta.create"}}</a>
           {{else}}
-            <a class="btn btn-secondary btn-lg" href="/login">Sign in</a>
+            <a class="btn btn-secondary btn-lg" href="/login">{{t "nav.signin"}}</a>
           {{end}}
         </div>
       </div>

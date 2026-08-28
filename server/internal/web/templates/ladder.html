@@ -4,18 +4,18 @@
   <div class="blob blob-accent" style="width:420px;height:420px;left:-160px;top:-160px" aria-hidden="true"></div>
 
   <div class="container container-mid">
-    <div class="eyebrow">Ranked</div>
-    <h1>Leaderboard</h1>
+    <div class="eyebrow">{{t "ladder.eyebrow"}}</div>
+    <h1>{{t "ladder.title"}}</h1>
     <p class="lede mb-4">
-      The 1v1 ladder, best first. {{if .Total}}{{thousands .Total}} ranked coach{{if ne .Total 1}}es{{end}}.{{end}}
+      {{t "ladder.lede"}} {{if .Total}}{{thousands .Total}} {{t "ladder.count"}}{{end}}
     </p>
 
     {{if .Entries}}
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th class="num">#</th><th>Coach</th><th class="num">Rating</th><th>Level</th>
-          <th class="num">Won</th><th class="num">Lost</th><th>Streak</th>
+          <th class="num">#</th><th>{{t "ladder.coach"}}</th><th class="num">{{t "ladder.rating"}}</th><th>{{t "ladder.level"}}</th>
+          <th class="num">{{t "ladder.won"}}</th><th class="num">{{t "ladder.lost"}}</th><th>{{t "ladder.streak"}}</th>
         </tr></thead>
         <tbody>
         {{range $i, $e := .Entries}}
@@ -27,8 +27,8 @@
             <td class="num">{{$e.StatWins}}</td>
             <td class="num">{{$e.StatLosses}}</td>
             <td>
-              {{if $e.ConsecutiveWins}}<span class="chip chip-online">{{$e.ConsecutiveWins}} win(s)</span>
-              {{else if $e.ConsecutiveLosses}}<span class="chip chip-danger">{{$e.ConsecutiveLosses}} loss(es)</span>
+              {{if $e.ConsecutiveWins}}<span class="chip chip-online">{{$e.ConsecutiveWins}} {{t "ladder.wins"}}</span>
+              {{else if $e.ConsecutiveLosses}}<span class="chip chip-danger">{{$e.ConsecutiveLosses}} {{t "ladder.losses"}}</span>
               {{else}}<span class="muted">—</span>{{end}}
             </td>
           </tr>
@@ -39,16 +39,16 @@
 
     {{if gt .LastPage 1}}
     <div class="pager">
-      {{if gt .Page 1}}<a class="btn btn-ghost" href="/ladder?page={{sub .Page 1}}">← Previous</a>{{end}}
-      <span>Page {{.Page}} of {{.LastPage}}</span>
-      {{if lt .Page .LastPage}}<a class="btn btn-ghost" href="/ladder?page={{add .Page 1}}">Next →</a>{{end}}
+      {{if gt .Page 1}}<a class="btn btn-ghost" href="/ladder?page={{sub .Page 1}}">← {{t "pager.prev"}}</a>{{end}}
+      <span>{{t "pager.page"}} {{.Page}} {{t "pager.of"}} {{.LastPage}}</span>
+      {{if lt .Page .LastPage}}<a class="btn btn-ghost" href="/ladder?page={{add .Page 1}}">{{t "pager.next"}} →</a>{{end}}
     </div>
     {{end}}
 
     {{else}}
     <div class="card">
       <div class="empty">
-        Nobody is ranked yet. Play a rated 1v1 and you will be the first name here.
+        {{t "ladder.empty"}}
       </div>
     </div>
     {{end}}

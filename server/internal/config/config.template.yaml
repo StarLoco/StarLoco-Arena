@@ -101,6 +101,12 @@ web:
   #   trusted_proxies: ["127.0.0.1", "::1"]
   # trusted_proxies: []
 
+  # The website speaks the same four languages as the game client: en, fr, es,
+  # de. Visitors get whichever their browser asks for, and can switch by hand
+  # from the footer - this only decides what a browser with no usable
+  # preference sees. Empty means English.
+  # default_language: "en"
+
   # Where /discord sends people. The game client's login screen has a
   # "Rejoindre le Discord" button pointing at this site, so you can set or
   # change the invite here without re-issuing the client to your players.

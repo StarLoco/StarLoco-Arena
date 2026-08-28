@@ -818,3 +818,21 @@ td strong, th strong { color: var(--text-primary); }
   max-height: 26rem;
   overflow-y: auto;
 }
+/* Footer language switcher. The four languages the game client itself offers. */
+.lang-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .85rem;
+  align-items: center;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  font-size: .82rem;
+}
+.lang-switch a {
+  color: var(--text-muted, #9a927f);
+  text-decoration: none;
+  opacity: .85;
+}
+.lang-switch a:hover { opacity: 1; text-decoration: underline; }
+.lang-current { color: var(--accent, #e8a33d); font-weight: 600; }

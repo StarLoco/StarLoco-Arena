@@ -89,6 +89,11 @@ type WebConfig struct {
 	// for a plain-HTTP server makes logging in silently impossible, because the
 	// browser accepts the cookie and then refuses to send it back.
 	SecureCookies bool `yaml:"secure_cookies"`
+	// DefaultLanguage is what a visitor whose browser expresses no usable
+	// preference gets: "en", "fr", "es" or "de" (the four the game client
+	// itself offers). An explicit choice, and then the browser's own
+	// Accept-Language, both take priority over this. Empty means English.
+	DefaultLanguage string `yaml:"default_language"`
 	// DiscordURL is where /discord sends visitors. The game client's login
 	// screen has a "Rejoindre le Discord" plaque pointing at /<lang>/discord,
 	// so this can be filled in (or changed) without touching the client the
@@ -305,6 +310,9 @@ func (c *Config) applyEnv() {
 	}
 	if v, ok := envBool("ARENA_WEB_SECURE_COOKIES"); ok {
 		c.Web.SecureCookies = v
+	}
+	if v := os.Getenv("ARENA_WEB_DEFAULT_LANGUAGE"); v != "" {
+		c.Web.DefaultLanguage = v
 	}
 	if v := os.Getenv("ARENA_WEB_DISCORD_URL"); v != "" {
 		c.Web.DiscordURL = v

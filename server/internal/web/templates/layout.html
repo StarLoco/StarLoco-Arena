@@ -14,10 +14,10 @@
 {{if .Impersonating}}
 <div class="impersonation-bar">
   <div class="container">
-    <span>You ({{.RealName}}) are viewing this site as <strong>{{.Account.Name}}</strong>.</span>
+    <span>{{t "impersonate.viewing"}} <strong>{{.Account.Name}}</strong> ({{.RealName}}).</span>
     <form method="post" action="/impersonate/stop">
       <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-      <button type="submit">Stop impersonating</button>
+      <button type="submit">{{t "impersonate.stop"}}</button>
     </form>
   </div>
 </div>
@@ -30,21 +30,21 @@
       <span>{{.ServerName}}</span>
     </a>
     <nav class="nav">
-      <a class="navlink {{if eq .NavKey "home"}}is-current{{end}}" href="/">Home</a>
-      <a class="navlink {{if eq .NavKey "ladder"}}is-current{{end}}" href="/ladder">Leaderboard</a>
-      <a class="navlink {{if eq .NavKey "status"}}is-current{{end}}" href="/status">Status</a>
+      <a class="navlink {{if eq .NavKey "home"}}is-current{{end}}" href="/">{{t "nav.home"}}</a>
+      <a class="navlink {{if eq .NavKey "ladder"}}is-current{{end}}" href="/ladder">{{t "nav.leaderboard"}}</a>
+      <a class="navlink {{if eq .NavKey "status"}}is-current{{end}}" href="/status">{{t "nav.status"}}</a>
       {{if .LoggedIn}}
         <span class="nav-sep" aria-hidden="true"></span>
-        <a class="navlink {{if eq .NavKey "account"}}is-current{{end}}" href="/account">My account</a>
-        {{if .IsAdmin}}<a class="navlink {{if eq .NavKey "admin"}}is-current{{end}}" href="/admin">Admin</a>{{end}}
+        <a class="navlink {{if eq .NavKey "account"}}is-current{{end}}" href="/account">{{t "nav.account"}}</a>
+        {{if .IsAdmin}}<a class="navlink {{if eq .NavKey "admin"}}is-current{{end}}" href="/admin">{{t "nav.admin"}}</a>{{end}}
         <form method="post" action="/logout" style="display:inline">
           <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-          <button class="btn btn-ghost" type="submit">Sign out</button>
+          <button class="btn btn-ghost" type="submit">{{t "nav.signout"}}</button>
         </form>
       {{else}}
         <span class="nav-sep" aria-hidden="true"></span>
-        <a class="navlink {{if eq .NavKey "login"}}is-current{{end}}" href="/login">Sign in</a>
-        {{if .RegistrationEnabled}}<a class="btn btn-primary" href="/register">Create account</a>{{end}}
+        <a class="navlink {{if eq .NavKey "login"}}is-current{{end}}" href="/login">{{t "nav.signin"}}</a>
+        {{if .RegistrationEnabled}}<a class="btn btn-primary" href="/register">{{t "nav.create"}}</a>{{end}}
       {{end}}
     </nav>
   </div>
@@ -70,28 +70,41 @@
           <span class="brand-mark" aria-hidden="true">A</span>
           <span>{{.ServerName}}</span>
         </a>
-        <p class="mt-2 small mb-0">A preservation server for DofusArena 2.70, run by fans, for fans.</p>
+        <p class="mt-2 small mb-0">{{t "footer.tagline"}}</p>
       </div>
       <div>
-        <div class="footer-heading">Navigation</div>
+        <div class="footer-heading">{{t "footer.navigation"}}</div>
         <ul class="footer-links">
-          <li><a href="/">Home</a></li>
-          <li><a href="/ladder">Leaderboard</a></li>
-          <li><a href="/status">Server status</a></li>
-          {{if .LoggedIn}}<li><a href="/account">My account</a></li>{{end}}
+          <li><a href="/">{{t "nav.home"}}</a></li>
+          <li><a href="/ladder">{{t "nav.leaderboard"}}</a></li>
+          <li><a href="/status">{{t "footer.serverstatus"}}</a></li>
+          {{if .LoggedIn}}<li><a href="/account">{{t "nav.account"}}</a></li>{{end}}
         </ul>
       </div>
       <div>
-        <div class="footer-heading">Play</div>
+        <div class="footer-heading">{{t "footer.play"}}</div>
         <ul class="footer-links">
-          {{if .ClientDownloadURL}}<li><a href="{{.ClientDownloadURL}}" rel="noopener noreferrer">Download the client</a></li>{{end}}
-          {{if and .RegistrationEnabled (not .LoggedIn)}}<li><a href="/register">Create an account</a></li>{{end}}
-          {{if not .LoggedIn}}<li><a href="/login">Sign in</a></li>{{end}}
+          {{if .ClientDownloadURL}}<li><a href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "footer.download"}}</a></li>{{end}}
+          {{if and .RegistrationEnabled (not .LoggedIn)}}<li><a href="/register">{{t "nav.create"}}</a></li>{{end}}
+          {{if not .LoggedIn}}<li><a href="/login">{{t "nav.signin"}}</a></li>{{end}}
         </ul>
       </div>
     </div>
+    {{/* Language switcher. Each link carries the page it was clicked from, so
+         switching keeps the reader where they were instead of dumping them on
+         the home page. */}}
+    <div class="lang-switch" aria-label="{{t "lang.label"}}">
+      {{range .Languages}}
+        {{if eq . $.Lang}}
+          <span class="lang-current">{{index $.LanguageNames .}}</span>
+        {{else}}
+          <a href="/lang?lang={{.}}&amp;next={{$.CurrentPath}}">{{index $.LanguageNames .}}</a>
+        {{end}}
+      {{end}}
+    </div>
+
     <div class="footer-bottom">
-      <span>An unofficial, non-commercial fan server. DofusArena and Dofus are property of Ankama — all rights reserved.</span>
+      <span>{{t "footer.disclaimer"}}</span>
       <span class="nowrap">{{.ServerName}} · {{.Version}}</span>
     </div>
   </div>

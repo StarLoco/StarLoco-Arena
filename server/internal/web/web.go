@@ -76,7 +76,8 @@ type Server struct {
 	tournamentDefs *gamedata.Tournaments
 
 	codec *sessionCodec
-	tmpl  *templateSet
+	tmpl  map[string]*templateSet
+	cat   catalog
 
 	// limiter caps account creation, loginLimiter caps sign-in attempts. They
 	// are separate because the right allowance differs by an order of
@@ -118,7 +119,11 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 			"(set web.session_secret to avoid this)")
 	}
 
-	tmpl, err := parseTemplates()
+	cat, err := loadCatalog()
+	if err != nil {
+		return nil, err
+	}
+	tmpl, err := parseAllTemplates(cat)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +146,7 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 		tournamentDefs: live.TournamentDefs,
 		codec:          codec,
 		tmpl:           tmpl,
+		cat:            cat,
 		// A generous allowance for a household or guild sharing one address,
 		// but low enough that the form cannot be used to hammer the database.
 		limiter: newLimiter(10, time.Hour),
@@ -232,6 +238,7 @@ func (s *Server) Handler() http.Handler {
 	// dialog - so enumerating them is exact rather than a workaround. The
 	// bug-report route can keep its wildcard because it is POST-only and so
 	// cannot collide with the static handler.
+	mux.HandleFunc("GET /lang", s.handleSetLanguage)
 	mux.HandleFunc("GET /discord", s.handleDiscord)
 	for _, lang := range []string{"fr", "en", "es", "de"} {
 		mux.HandleFunc("GET /"+lang+"/discord", s.handleDiscord)

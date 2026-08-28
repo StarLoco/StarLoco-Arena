@@ -6,21 +6,20 @@
   <div class="container">
     <div class="flex-between mb-3">
       <div>
-        <div class="eyebrow">My account</div>
+        <div class="eyebrow">{{t "account.eyebrow"}}</div>
         <h1 class="mb-0">{{.Detail.Account.Name}}</h1>
       </div>
       <div class="flex-gap">
-        {{if .Detail.Account.IsAdmin}}<span class="chip chip-admin">Administrator</span>{{end}}
-        {{if .Detail.Account.Connected}}<span class="chip chip-online">Online now</span>{{end}}
+        {{if .Detail.Account.IsAdmin}}<span class="chip chip-admin">{{t "account.administrator"}}</span>{{end}}
+        {{if .Detail.Account.Connected}}<span class="chip chip-online">{{t "account.onlinenow"}}</span>{{end}}
         {{if not .Impersonating}}
-          <a class="btn btn-ghost" href="/account/password">Change password</a>
+          <a class="btn btn-ghost" href="/account/password">{{t "account.changepw"}}</a>
         {{end}}
       </div>
     </div>
 
     <p class="lede mb-4">
-      Everything this server stores about you. Sign in to the game with this
-      account to play.
+      {{t "account.lede"}}
     </p>
 
     {{template "account_data" .Detail}}

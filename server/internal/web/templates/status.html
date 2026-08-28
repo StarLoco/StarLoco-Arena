@@ -4,49 +4,49 @@
   <div class="blob blob-accent" style="width:420px;height:420px;right:-140px;top:-160px" aria-hidden="true"></div>
 
   <div class="container container-mid">
-    <div class="eyebrow">Live</div>
-    <h1>Server status</h1>
+    <div class="eyebrow">{{t "status.eyebrow"}}</div>
+    <h1>{{t "status.title"}}</h1>
     <p class="lede mb-4">
-      Is the server up, and is anyone playing? This page answers both, and needs no account.
+      {{t "status.lede"}}
     </p>
 
     <div class="badge-pill mb-4">
       <span class="dot" aria-hidden="true"></span>
-      Online — up {{formatUptime .UptimeSeconds}}
+      {{t "status.up"}} {{formatUptime .UptimeSeconds}}
     </div>
 
     <div class="grid grid-4 mb-4">
       <div class="tile">
         <div class="tile-value">{{.PlayersOnline}}</div>
-        <div class="tile-label">Players online</div>
+        <div class="tile-label">{{t "status.players"}}</div>
       </div>
       <div class="tile">
         <div class="tile-value">{{.ActiveFights}}</div>
-        <div class="tile-label">Fights in progress</div>
+        <div class="tile-label">{{t "status.fights"}}</div>
       </div>
       <div class="tile">
         <div class="tile-value">{{thousands .TotalAccounts}}</div>
-        <div class="tile-label">Registered accounts</div>
+        <div class="tile-label">{{t "status.accounts"}}</div>
       </div>
       <div class="tile">
         <div class="tile-value" style="font-size:1.35rem;padding-top:.35rem">{{formatUptime .UptimeSeconds}}</div>
-        <div class="tile-label">Uptime</div>
+        <div class="tile-label">{{t "status.uptime"}}</div>
       </div>
     </div>
 
     {{if .ClientDownloadURL}}
     <div class="card">
-      <div class="card-title">Connect</div>
+      <div class="card-title">{{t "status.connect"}}</div>
       <p class="mb-0">
-        The download comes ready to connect to this server &mdash;
-        <a class="accent" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">get the game</a>,
-        then sign in with your account.
+        {{t "status.connect.body"}}
+        <a class="accent" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "status.connect.link"}}</a>
+        {{t "status.connect.after"}}
       </p>
     </div>
     {{end}}
 
     <p class="small muted mt-3 mb-0">
-      Only totals are shown here — no player names, and nothing that identifies an account.
+      {{t "status.privacy"}}
     </p>
   </div>
 </section>

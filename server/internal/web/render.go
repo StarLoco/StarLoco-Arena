@@ -25,54 +25,11 @@ var staticFS embed.FS
 // templateFuncs are the helpers available inside every template. They are
 // presentation-only on purpose: anything that decides something belongs in a
 // handler where it can be tested.
+// templateFuncs are the language-independent helpers. The ones that produce
+// WORDS live in buildFuncs, which binds them to a language.
 var templateFuncs = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
 	"sub": func(a, b int) int { return a - b },
-
-	// slotLabel names a card position: 0 is the bag, anything else is an
-	// equipped slot (the wire numbers them from 0, the column from 1).
-	"slotLabel": func(pos int16) string {
-		if pos == 0 {
-			return "Bag"
-		}
-		return fmt.Sprintf("Slot %d", pos)
-	},
-
-	"sexLabel": func(sex uint8) string {
-		if sex == 1 {
-			return "Female"
-		}
-		return "Male"
-	},
-
-	// fighterStateLabel names the roster bucket a fighter sits in.
-	"fighterStateLabel": func(state uint8) string {
-		switch state {
-		case domain.FighterStateTitular:
-			return "Titular"
-		case domain.FighterStateBench:
-			return "Bench"
-		case domain.FighterStateDead:
-			return "Dead"
-		case domain.FighterStateGraveyard:
-			return "Graveyard"
-		case domain.FighterStateLegendary:
-			return "Legendary"
-		case domain.FighterStateLegBench:
-			return "Legendary bench"
-		}
-		return fmt.Sprintf("State %d", state)
-	},
-
-	// rankLabel turns a ladder rating into the level the client shows, or a
-	// dash when the coach has never been ranked.
-	"rankLabel": func(strength int32) string {
-		lvl := domain.StrengthToLevel(strength)
-		if lvl == 0 {
-			return "—"
-		}
-		return fmt.Sprintf("Level %d", lvl)
-	},
 
 	// formatUptime renders a second count compactly: "2d 4h", "13m 6s", "42s".
 	"formatUptime": func(seconds int64) string {
@@ -134,6 +91,65 @@ var templateFuncs = template.FuncMap{
 	},
 }
 
+// buildFuncs returns the func map for ONE language: the shared helpers above,
+// plus `t` and the label helpers that emit words.
+//
+// Binding the language into the funcs (rather than threading it through every
+// template model) is what lets `{{t "key"}}` work inside shared partials too -
+// a partial is rendered with a sub-model that knows nothing about the request,
+// so it could not reach a language carried on the page model.
+func buildFuncs(cat catalog, lang string) template.FuncMap {
+	funcs := make(template.FuncMap, len(templateFuncs)+6)
+	for k, v := range templateFuncs {
+		funcs[k] = v
+	}
+	tr := func(key string) string { return cat.t(lang, key) }
+	funcs["t"] = tr
+
+	// slotLabel names a card position: 0 is the bag, anything else is an
+	// equipped slot (the wire numbers them from 0, the column from 1).
+	funcs["slotLabel"] = func(pos int16) string {
+		if pos == 0 {
+			return tr("label.bag")
+		}
+		return fmt.Sprintf("%s %d", tr("label.slot"), pos)
+	}
+	funcs["sexLabel"] = func(sex uint8) string {
+		if sex == 1 {
+			return tr("label.female")
+		}
+		return tr("label.male")
+	}
+	// fighterStateLabel names the roster bucket a fighter sits in.
+	funcs["fighterStateLabel"] = func(state uint8) string {
+		switch state {
+		case domain.FighterStateTitular:
+			return tr("label.titular")
+		case domain.FighterStateBench:
+			return tr("label.bench")
+		case domain.FighterStateDead:
+			return tr("label.dead")
+		case domain.FighterStateGraveyard:
+			return tr("label.graveyard")
+		case domain.FighterStateLegendary:
+			return tr("label.legendary")
+		case domain.FighterStateLegBench:
+			return tr("label.legbench")
+		}
+		return fmt.Sprintf("%s %d", tr("label.state"), state)
+	}
+	// rankLabel turns a ladder rating into the level the client shows, or a
+	// dash when the coach has never been ranked.
+	funcs["rankLabel"] = func(strength int32) string {
+		lvl := domain.StrengthToLevel(strength)
+		if lvl == 0 {
+			return "\u2014"
+		}
+		return fmt.Sprintf("%s %d", tr("label.level"), lvl)
+	}
+	return funcs
+}
+
 // templateSet holds one fully-parsed template per page.
 //
 // Each page gets its own namespace — layout + partials + that one page —
@@ -154,7 +170,25 @@ func (ts *templateSet) execute(w interface{ Write([]byte) (int, error) }, name s
 // parseTemplates builds the per-page set. Files named layout.html or starting
 // with "_" are shared fragments and are parsed into every page rather than
 // being renderable themselves.
-func parseTemplates() (*templateSet, error) {
+// parseAllTemplates builds one fully-parsed set PER LANGUAGE.
+//
+// Templates are parsed once at startup and shared across requests, so a
+// request-scoped `t` func is not possible in a single set. Four sets of a
+// handful of small templates costs nothing and makes translation invisible to
+// every handler and every partial.
+func parseAllTemplates(cat catalog) (map[string]*templateSet, error) {
+	out := make(map[string]*templateSet, len(Languages))
+	for _, lang := range Languages {
+		set, err := parseTemplates(buildFuncs(cat, lang))
+		if err != nil {
+			return nil, fmt.Errorf("web: templates for %s: %w", lang, err)
+		}
+		out[lang] = set
+	}
+	return out, nil
+}
+
+func parseTemplates(funcs template.FuncMap) (*templateSet, error) {
 	layoutSrc, err := templatesFS.ReadFile("templates/layout.html")
 	if err != nil {
 		return nil, fmt.Errorf("web: read layout: %w", err)
@@ -179,7 +213,7 @@ func parseTemplates() (*templateSet, error) {
 		if err != nil {
 			return nil, fmt.Errorf("web: read %s: %w", page, err)
 		}
-		t := template.New(base).Funcs(templateFuncs)
+		t := template.New(base).Funcs(funcs)
 		for _, chunk := range []struct {
 			what string
 			src  []byte
@@ -282,6 +316,15 @@ type baseData struct {
 	// OpenBugs badges the admin nav with the unresolved bug-report count. It is
 	// only looked up for admins, so a public page never pays for the query.
 	OpenBugs int64
+
+	// Lang is the language this page is being rendered in, and picks which
+	// parsed template set render() uses. Languages/LanguageNames/CurrentPath
+	// drive the switcher in the layout - CurrentPath is what lets it return the
+	// reader to the page they were on rather than to the home page.
+	Lang          string
+	Languages     []string
+	LanguageNames map[string]string
+	CurrentPath   string
 }
 
 func (b *baseData) base() *baseData { return b }
@@ -307,6 +350,10 @@ func (s *Server) newBase(w http.ResponseWriter, r *http.Request, title, navKey s
 		MinPassword:         s.cfg.MinPasswordLength,
 		PlayersOnline:       s.playersOnline(),
 		ActiveFights:        s.activeFights(),
+		Lang:                s.resolveLang(r),
+		Languages:           Languages,
+		LanguageNames:       LanguageNames,
+		CurrentPath:         currentPath(r),
 	}
 
 	sess, ok := s.readSession(r)
@@ -342,9 +389,33 @@ func (s *Server) newBase(w http.ResponseWriter, r *http.Request, title, navKey s
 // render writes a page. It renders into a buffer first so that a template
 // error produces a clean 500 instead of a half-written page with a broken
 // layout — by the time Execute fails, anything already written is unrecallable.
+// currentPath is the path (plus query) the switcher should return to. Only the
+// path is kept - never a caller-supplied absolute URL - so it cannot become an
+// open redirect.
+func currentPath(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return "/"
+	}
+	p := r.URL.EscapedPath()
+	if p == "" {
+		p = "/"
+	}
+	// Drop any existing ?lang= so switching twice does not stack them.
+	q := r.URL.Query()
+	q.Del("lang")
+	if e := q.Encode(); e != "" {
+		return p + "?" + e
+	}
+	return p
+}
+
 func (s *Server) render(w http.ResponseWriter, status int, name string, data pageModel) {
+	set, ok := s.tmpl[data.base().Lang]
+	if !ok {
+		set = s.tmpl[LangEN]
+	}
 	var buf bytes.Buffer
-	if err := s.tmpl.execute(&buf, name, data); err != nil {
+	if err := set.execute(&buf, name, data); err != nil {
 		s.log.Error("web: render failed", "template", name, "err", err)
 		http.Error(w, "The page could not be rendered.", http.StatusInternalServerError)
 		return

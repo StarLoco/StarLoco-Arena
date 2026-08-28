@@ -133,14 +133,36 @@ func TestLoginFlow(t *testing.T) {
 	p := newPortal(t)
 	p.seedPlayer("player", "Rushu")
 
-	if pg := p.login("player", "wrong"); pg.Code != http.StatusUnauthorized {
-		t.Fatalf("bad password: status = %d, want 401", pg.Code)
+	badPassword := p.login("player", "wrong")
+	if badPassword.Code != http.StatusUnauthorized {
+		t.Fatalf("bad password: status = %d, want 401", badPassword.Code)
 	}
-	// The message must not reveal whether the account exists.
-	pg := p.login("nosuchaccount", "whatever")
-	if !strings.Contains(pg.Body, "Wrong account name or password") {
-		t.Error("the login error distinguishes a missing account from a wrong password")
+
+	// The refusal must not reveal whether the account exists: a wrong password
+	// and a missing account have to be indistinguishable. Asserted against the
+	// catalogue rather than a literal, so this keeps testing the security
+	// property once the message is translated rather than testing English.
+	cat, err := loadCatalog()
+	if err != nil {
+		t.Fatalf("loadCatalog: %v", err)
 	}
+	want := cat.t(LangEN, "err.badcredentials")
+
+	noSuchAccount := p.login("nosuchaccount", "whatever")
+	if noSuchAccount.Code != badPassword.Code {
+		t.Errorf("missing account answered %d but a wrong password answered %d; "+
+			"the difference tells an attacker which accounts exist",
+			noSuchAccount.Code, badPassword.Code)
+	}
+	for _, pg := range []struct {
+		what string
+		body string
+	}{{"wrong password", badPassword.Body}, {"missing account", noSuchAccount.Body}} {
+		if !strings.Contains(pg.body, want) {
+			t.Errorf("%s: refusal did not show %q", pg.what, want)
+		}
+	}
+	pg := noSuchAccount
 
 	pg = p.login("player", "password1")
 	if pg.Code != http.StatusOK || pg.URL != "/account" {

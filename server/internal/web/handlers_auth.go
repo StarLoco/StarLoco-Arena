@@ -43,12 +43,12 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	data := s.newAuthData(w, r, "Sign in", "login")
 
 	if !sameOrigin(r) {
-		data.Error = "That request did not come from this page. Please try again."
+		data.Error = s.tr(r, "err.crossorigin")
 		s.render(w, http.StatusForbidden, "login.html", data)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		data.Error = "The form could not be read. Please try again."
+		data.Error = s.tr(r, "err.formunreadable")
 		s.render(w, http.StatusBadRequest, "login.html", data)
 		return
 	}
@@ -61,7 +61,7 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// it is deliberately more generous than registration because a household
 	// behind one address will legitimately mistype passwords.
 	if !s.loginLimiter.allow(s.clientIP(r)) {
-		data.Error = "Too many sign-in attempts from your address. Please wait a few minutes."
+		data.Error = s.tr(r, "err.loginratelimit")
 		s.render(w, http.StatusTooManyRequests, "login.html", data)
 		return
 	}
@@ -73,7 +73,7 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		// One message for both "no such account" and "wrong password", so the
 		// form cannot be used to find out which account names exist.
-		data.Error = "Wrong account name or password."
+		data.Error = s.tr(r, "err.badcredentials")
 		s.render(w, http.StatusUnauthorized, "login.html", data)
 		return
 	}
@@ -91,7 +91,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.clearSession(w)
-	setFlash(w, "info", "You have been signed out.")
+	setFlash(w, "info", s.tr(r, "flash.signedout"))
 	redirect(w, r, "/")
 }
 
@@ -106,7 +106,7 @@ func (s *Server) handleRegisterForm(w http.ResponseWriter, r *http.Request) {
 	}
 	data := s.newAuthData(w, r, "Create an account", "register")
 	if !s.cfg.RegistrationEnabled {
-		data.Error = "Registration is closed on this server."
+		data.Error = s.tr(r, "err.registrationclosed")
 		s.render(w, http.StatusForbidden, "register.html", data)
 		return
 	}
@@ -117,7 +117,7 @@ func (s *Server) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	data := s.newAuthData(w, r, "Create an account", "register")
 
 	if !s.cfg.RegistrationEnabled {
-		data.Error = "Registration is closed on this server."
+		data.Error = s.tr(r, "err.registrationclosed")
 		s.render(w, http.StatusForbidden, "register.html", data)
 		return
 	}
@@ -125,12 +125,12 @@ func (s *Server) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	// Origin or its own; anything else is a third-party page driving the
 	// visitor's browser.
 	if !sameOrigin(r) {
-		data.Error = "That request did not come from this page. Please try again."
+		data.Error = s.tr(r, "err.crossorigin")
 		s.render(w, http.StatusForbidden, "register.html", data)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		data.Error = "The form could not be read. Please try again."
+		data.Error = s.tr(r, "err.formunreadable")
 		s.render(w, http.StatusBadRequest, "register.html", data)
 		return
 	}
@@ -145,25 +145,25 @@ func (s *Server) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if confirm := r.PostFormValue("confirm"); confirm != "" && confirm != password {
-		data.Error = "The two passwords do not match."
+		data.Error = s.tr(r, "err.passwordmismatch")
 		s.render(w, http.StatusBadRequest, "register.html", data)
 		return
 	}
 	// Rate-limit only once the input is well-formed, so a player fumbling the
 	// form does not burn their allowance.
 	if !s.limiter.allow(s.clientIP(r)) {
-		data.Error = "Too many accounts created from your address recently. Please try again later."
+		data.Error = s.tr(r, "err.registerratelimit")
 		s.render(w, http.StatusTooManyRequests, "register.html", data)
 		return
 	}
 
 	if _, err := s.store.Accounts.FindByName(login); err == nil {
-		data.Error = "That account name is already taken."
+		data.Error = s.tr(r, "err.nametaken")
 		s.render(w, http.StatusConflict, "register.html", data)
 		return
 	} else if !errors.Is(err, store.ErrNotFound) {
 		s.log.Error("web: account lookup failed", "err", err)
-		data.Error = "The server could not reach its database. Please try again."
+		data.Error = s.tr(r, "err.database")
 		s.render(w, http.StatusInternalServerError, "register.html", data)
 		return
 	}
@@ -184,12 +184,12 @@ func (s *Server) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 		// The unique index is the real guard; a duplicate here means someone
 		// took the name between the check above and now.
 		if isDuplicate(err) {
-			data.Error = "That account name is already taken."
+			data.Error = s.tr(r, "err.nametaken")
 			s.render(w, http.StatusConflict, "register.html", data)
 			return
 		}
 		s.log.Error("web: account creation failed", "err", err)
-		data.Error = "The account could not be created. Please try again."
+		data.Error = s.tr(r, "err.accountcreate")
 		s.render(w, http.StatusInternalServerError, "register.html", data)
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	// a second time achieves nothing.
 	s.writeSession(w, session{AccountID: acc.ID, IssuedAt: time.Now()})
 	if first {
-		setFlash(w, "success", "Welcome! Yours is the first account on this server, so it is the administrator.")
+		setFlash(w, "success", s.tr(r, "flash.welcomeadmin"))
 	} else {
 		setFlash(w, "success", "Welcome! Your account is ready — sign in with it from the game client.")
 	}

@@ -97,6 +97,6 @@ func (s *Server) handlePasswordSubmit(w http.ResponseWriter, r *http.Request, se
 	}
 
 	s.log.Info("web: password changed", "login", acc.Name)
-	setFlash(w, "success", "Your password has been changed. Use it in the game client too.")
+	setFlash(w, "success", s.tr(r, "flash.passwordchanged"))
 	redirect(w, r, "/account")
 }
