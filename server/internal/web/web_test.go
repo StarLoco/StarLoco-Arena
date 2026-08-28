@@ -475,6 +475,88 @@ func TestLimiterWindowExpires(t *testing.T) {
 	}
 }
 
+// TestClientIPTrustsOnlyConfiguredProxies pins the whole point of
+// web.trusted_proxies: behind a reverse proxy every visitor arrives as the
+// proxy, so without this the per-address limits become one shared bucket and a
+// single busy hour locks the entire server out of registration. The flip side
+// matters just as much — an unproxied portal must NOT believe the header, or
+// anyone could mint a fresh allowance per request by forging it.
+func TestClientIPTrustsOnlyConfiguredProxies(t *testing.T) {
+	cases := []struct {
+		name    string
+		trusted []string
+		peer    string
+		fwd     string
+		want    string
+	}{
+		{
+			name: "no trusted proxies: header ignored",
+			peer: "203.0.113.9:4321", fwd: "1.2.3.4",
+			want: "203.0.113.9",
+		},
+		{
+			name:    "untrusted peer cannot forge an address",
+			trusted: []string{"127.0.0.1"},
+			peer:    "203.0.113.9:4321", fwd: "1.2.3.4",
+			want: "203.0.113.9",
+		},
+		{
+			name:    "trusted proxy is believed",
+			trusted: []string{"127.0.0.1"},
+			peer:    "127.0.0.1:5555", fwd: "198.51.100.7",
+			want: "198.51.100.7",
+		},
+		{
+			name:    "trusted proxy, no header, falls back to peer",
+			trusted: []string{"127.0.0.1"},
+			peer:    "127.0.0.1:5555", fwd: "",
+			want: "127.0.0.1",
+		},
+		{
+			name:    "chain: rightmost untrusted hop wins",
+			trusted: []string{"127.0.0.1", "10.0.0.0/8"},
+			peer:    "127.0.0.1:5555", fwd: "1.2.3.4, 198.51.100.7, 10.0.0.9",
+			want: "198.51.100.7",
+		},
+		{
+			name:    "client-supplied junk left of a real hop is ignored",
+			trusted: []string{"127.0.0.1"},
+			peer:    "127.0.0.1:5555", fwd: "not-an-ip, 198.51.100.7",
+			want: "198.51.100.7",
+		},
+		{
+			name:    "CIDR form matches",
+			trusted: []string{"10.0.0.0/8"},
+			peer:    "10.4.5.6:5555", fwd: "198.51.100.7",
+			want: "198.51.100.7",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trusted, err := parseTrustedProxies(tc.trusted)
+			if err != nil {
+				t.Fatalf("parseTrustedProxies: %v", err)
+			}
+			s := &Server{trustedProxies: trusted}
+			r := httptest.NewRequest(http.MethodPost, "/register", nil)
+			r.RemoteAddr = tc.peer
+			if tc.fwd != "" {
+				r.Header.Set("X-Forwarded-For", tc.fwd)
+			}
+			if got := s.clientIP(r); got != tc.want {
+				t.Errorf("clientIP() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseTrustedProxiesRejectsGarbage(t *testing.T) {
+	if _, err := parseTrustedProxies([]string{"nonsense"}); err == nil {
+		t.Error("expected an error for a non-IP, non-CIDR entry")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------------

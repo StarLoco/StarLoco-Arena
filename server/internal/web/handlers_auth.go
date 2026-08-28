@@ -60,7 +60,7 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Rate-limit sign-in attempts per address. This is the brute-force guard;
 	// it is deliberately more generous than registration because a household
 	// behind one address will legitimately mistype passwords.
-	if !s.loginLimiter.allow(clientIP(r)) {
+	if !s.loginLimiter.allow(s.clientIP(r)) {
 		data.Error = "Too many sign-in attempts from your address. Please wait a few minutes."
 		s.render(w, http.StatusTooManyRequests, "login.html", data)
 		return
@@ -151,7 +151,7 @@ func (s *Server) handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	// Rate-limit only once the input is well-formed, so a player fumbling the
 	// form does not burn their allowance.
-	if !s.limiter.allow(clientIP(r)) {
+	if !s.limiter.allow(s.clientIP(r)) {
 		data.Error = "Too many accounts created from your address recently. Please try again later."
 		s.render(w, http.StatusTooManyRequests, "register.html", data)
 		return

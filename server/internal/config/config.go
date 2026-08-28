@@ -89,6 +89,17 @@ type WebConfig struct {
 	// for a plain-HTTP server makes logging in silently impossible, because the
 	// browser accepts the cookie and then refuses to send it back.
 	SecureCookies bool `yaml:"secure_cookies"`
+	// TrustedProxies lists the peer addresses whose X-Forwarded-For header may
+	// be believed, as IPs or CIDRs ("127.0.0.1", "10.0.0.0/8"). It is EMPTY by
+	// default, and while it is empty no proxy header is trusted at all — the
+	// rate limiter keys on the real peer address, which is the only safe
+	// reading when anyone can dial the port directly and forge the header.
+	//
+	// Set it only when a reverse proxy you control terminates every request and
+	// rewrites X-Forwarded-For itself (nginx's proxy_set_header). Without it,
+	// a proxied portal sees every visitor as the proxy, so the per-IP sign-up
+	// and sign-in limits silently become one shared, server-wide bucket.
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 // UpdateCheckConfig configures the startup "a newer release exists" notice.
@@ -262,6 +273,17 @@ func (c *Config) applyEnv() {
 	}
 	if v, ok := envBool("ARENA_WEB_SECURE_COOKIES"); ok {
 		c.Web.SecureCookies = v
+	}
+	// Comma-separated, so a container can set it without a config file.
+	if v := os.Getenv("ARENA_WEB_TRUSTED_PROXIES"); v != "" {
+		parts := strings.Split(v, ",")
+		list := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if p = strings.TrimSpace(p); p != "" {
+				list = append(list, p)
+			}
+		}
+		c.Web.TrustedProxies = list
 	}
 	if v, ok := envBool("ARENA_UPDATE_CHECK_ENABLED"); ok {
 		c.UpdateCheck.Enabled = v

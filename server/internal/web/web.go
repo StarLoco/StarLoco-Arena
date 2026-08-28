@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -84,6 +85,11 @@ type Server struct {
 	limiter      *limiter
 	loginLimiter *limiter
 	started      time.Time
+
+	// trustedProxies are the reverse proxies allowed to tell us, via
+	// X-Forwarded-For, who the real visitor is. Empty means "believe nobody",
+	// which is the safe default for a directly-reachable portal.
+	trustedProxies []netip.Prefix
 }
 
 // New builds the portal. It fails only on a programming error — a template
@@ -114,6 +120,15 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 		return nil, err
 	}
 
+	trusted, err := parseTrustedProxies(cfg.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
+	if len(trusted) > 0 {
+		log.Info("web: trusting forwarded client addresses from reverse proxies",
+			"proxies", cfg.TrustedProxies)
+	}
+
 	return &Server{
 		store:          st,
 		cfg:            cfg,
@@ -129,8 +144,9 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 		// Brute-force guard. Passwords are bcrypt-hashed, so an online guess
 		// already costs ~100ms of CPU; this stops that CPU being the whole
 		// server's.
-		loginLimiter: newLimiter(20, 15*time.Minute),
-		started:      time.Now(),
+		loginLimiter:   newLimiter(20, 15*time.Minute),
+		started:        time.Now(),
+		trustedProxies: trusted,
 	}, nil
 }
 
@@ -333,15 +349,88 @@ func sameOrigin(r *http.Request) bool {
 	return strings.EqualFold(u.Host, r.Host)
 }
 
-// clientIP extracts the peer address. Proxy headers are deliberately ignored:
-// they are attacker-controlled unless a trusted proxy is known to rewrite
-// them, and trusting them would defeat the rate limit entirely.
-func clientIP(r *http.Request) string {
+// peerIP is the address the connection actually came from.
+func peerIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// parseTrustedProxies turns the configured IPs/CIDRs into prefixes, rejecting
+// anything unparseable at startup rather than silently trusting nothing (a
+// typo here would quietly reinstate the shared-bucket bug it exists to fix).
+func parseTrustedProxies(list []string) ([]netip.Prefix, error) {
+	out := make([]netip.Prefix, 0, len(list))
+	for _, raw := range list {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(raw); err == nil {
+			out = append(out, p)
+			continue
+		}
+		addr, err := netip.ParseAddr(raw)
+		if err != nil {
+			return nil, fmt.Errorf("web: trusted_proxies: %q is not an IP or CIDR", raw)
+		}
+		addr = addr.Unmap()
+		out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return out, nil
+}
+
+// isTrustedProxy reports whether addr is one of the reverse proxies we run.
+func (s *Server) isTrustedProxy(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	for _, p := range s.trustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientIP extracts the address the rate limiter keys on.
+//
+// Proxy headers are believed ONLY when the request genuinely arrived from a
+// configured trusted proxy; otherwise they are attacker-controlled and
+// trusting them would defeat the rate limit entirely. That is why
+// web.trusted_proxies is empty by default: a directly-reachable portal must
+// keep keying on the real peer.
+//
+// When the header is believed, the client is the right-most X-Forwarded-For
+// entry that is not itself one of our proxies. Entries to the right of it were
+// appended by hops we control and are therefore known-good; everything to its
+// left is whatever the original caller chose to claim, and is ignored.
+func (s *Server) clientIP(r *http.Request) string {
+	peer := peerIP(r)
+	if len(s.trustedProxies) == 0 {
+		return peer
+	}
+	addr, err := netip.ParseAddr(peer)
+	if err != nil || !s.isTrustedProxy(addr) {
+		return peer
+	}
+	fwd := r.Header.Get("X-Forwarded-For")
+	if fwd == "" {
+		return peer
+	}
+	hops := strings.Split(fwd, ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+		if err != nil {
+			// A malformed hop means we can no longer tell who appended what,
+			// so stop rather than skip past it and trust something further left.
+			break
+		}
+		if !s.isTrustedProxy(hop) {
+			return hop.Unmap().String()
+		}
+	}
+	return peer
 }
 
 func isDuplicate(err error) bool {

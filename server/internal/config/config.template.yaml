@@ -86,6 +86,21 @@ web:
   # cookie back - so it stays off by default.
   # secure_cookies: false
 
+  # Reverse-proxy support. When the website sits behind nginx/Caddy/Cloudflare,
+  # every request arrives from the proxy, so the sign-up and sign-in rate limits
+  # - which are per visitor address - collapse into ONE shared bucket and the
+  # whole server gets locked out after a handful of registrations.
+  #
+  # List the addresses of the proxies you run, as IPs or CIDRs. Only a request
+  # arriving FROM one of these is allowed to claim a different address via its
+  # X-Forwarded-For header. Leave it empty (the default) when the portal is
+  # reachable directly, because then anyone could forge that header and dodge
+  # the limit entirely.
+  #
+  # Typical value when nginx runs on this same machine:
+  #   trusted_proxies: ["127.0.0.1", "::1"]
+  # trusted_proxies: []
+
 
 # -----------------------------------------------------------------------------
 #  Game data - the card, spell and map files copied out of the game client.
