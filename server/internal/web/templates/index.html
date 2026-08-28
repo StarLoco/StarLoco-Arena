@@ -27,7 +27,9 @@
     </p>
 
     <div class="btn-row mt-3 reveal reveal-3">
-      {{if .RegistrationEnabled}}
+      {{if .LoggedIn}}
+        <a class="btn btn-primary btn-lg" href="/account">My account</a>
+      {{else if .RegistrationEnabled}}
         <a class="btn btn-primary btn-lg" href="/register">Create your account</a>
       {{end}}
       {{if .ClientDownloadURL}}
@@ -37,8 +39,14 @@
       {{end}}
     </div>
 
+    {{/* The download ships already pointed at this server, so players are never
+         asked to type an address. */}}
     <p class="small muted mt-3 mb-0 reveal reveal-4">
-      Already have an account? Point your client at <code class="accent">{{.GameAddr}}</code> and sign in.
+      {{if .LoggedIn}}
+        Download the game, sign in, and you are ready to play.
+      {{else}}
+        Create an account, download the game, and you are ready to play.
+      {{end}}
     </p>
   </div>
 </section>

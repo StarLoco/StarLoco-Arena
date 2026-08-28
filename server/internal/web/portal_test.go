@@ -163,12 +163,30 @@ func TestLogoutClearsSession(t *testing.T) {
 	}
 }
 
-// A signed-in visitor should be taken to their account, not the sales pitch.
-func TestSignedInVisitorSkipsLanding(t *testing.T) {
+// The landing page must stay reachable once signed in.
+//
+// This asserted the opposite - that "/" redirected a signed-in visitor to
+// /account, "not the sales pitch". That reasoning only holds for the moment
+// just after signing in, which the login handler already covers by redirecting
+// there itself. As a rule for "/" it made the site's own Home link and header
+// logo dead ends for every logged-in player, because both point at "/".
+func TestSignedInVisitorCanStillReachLanding(t *testing.T) {
 	p := newPortal(t)
 	p.register("player", "password1")
-	if pg := p.get("/"); pg.URL != "/account" {
-		t.Errorf("landing page for a signed-in user went to %s, want /account", pg.URL)
+	if pg := p.get("/"); pg.URL != "/" {
+		t.Errorf("landing page for a signed-in user went to %s, want / "+
+			"(redirecting it makes Home and the logo unusable)", pg.URL)
+	}
+}
+
+// ...but signing IN still lands on the account page, which is what the
+// redirect above was really for.
+func TestSigningInLandsOnTheAccountPage(t *testing.T) {
+	p := newPortal(t)
+	p.seedPlayer("player", "Rushu")
+	pg := p.login("player", "password1")
+	if pg.URL != "/account" {
+		t.Errorf("after signing in, landed on %s, want /account", pg.URL)
 	}
 }
 

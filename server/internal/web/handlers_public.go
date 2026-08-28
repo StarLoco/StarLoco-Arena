@@ -18,13 +18,16 @@ type indexData struct {
 	TotalFights   int64
 }
 
+// handleIndex serves the landing page to EVERYONE, signed in or not.
+//
+// It used to bounce a signed-in visitor to /account, on the reasoning that they
+// want their account rather than the marketing page. That reasoning only holds
+// immediately after signing in - which the login handler already does itself by
+// redirecting to /account. As a rule for "/" it made the site's own "Home" link
+// and the header logo unusable for anybody logged in: both point at "/", so
+// both silently landed back on /account and the landing page became unreachable
+// without signing out.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	// A signed-in visitor wants their account, not the marketing page.
-	if _, ok := s.readSession(r); ok {
-		redirect(w, r, "/account")
-		return
-	}
-
 	d := &indexData{baseData: s.newBase(w, r, "", "home")}
 	if n, err := s.store.Accounts.Count(); err == nil {
 		d.TotalAccounts = n

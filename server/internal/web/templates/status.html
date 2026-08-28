@@ -34,11 +34,16 @@
       </div>
     </div>
 
+    {{if .ClientDownloadURL}}
     <div class="card">
       <div class="card-title">Connect</div>
-      <p>Point your DofusArena client at this address:</p>
-      <p class="mb-0"><code class="accent" style="font-size:1.1rem">{{.GameAddr}}</code></p>
+      <p class="mb-0">
+        The download comes ready to connect to this server &mdash;
+        <a class="accent" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">get the game</a>,
+        then sign in with your account.
+      </p>
     </div>
+    {{end}}
 
     <p class="small muted mt-3 mb-0">
       Only totals are shown here — no player names, and nothing that identifies an account.

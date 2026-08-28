@@ -126,16 +126,48 @@ func TestStatusShowsLiveCountersAndNoNames(t *testing.T) {
 	}
 }
 
-// The landing page shows the address a player must type into their client.
-func TestIndexShowsGameAddress(t *testing.T) {
+// The public pages must NOT tell players to type a server address: the download
+// ships already pointed at this server, so printing an address only invites
+// people to mistype one. (This asserted the opposite until the address was
+// removed from the player-facing copy - it is kept, inverted, so the copy
+// cannot quietly come back.)
+func TestPublicPagesDoNotAskPlayersForAnAddress(t *testing.T) {
 	s, _ := newTestServer(t, nil)
+	for _, path := range []string{"/", "/status"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "arena.example:8080"
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+
+		if strings.Contains(rec.Body.String(), "arena.example:5555") {
+			t.Errorf("%s still prints the game address at players", path)
+		}
+	}
+}
+
+// Signing in must not make the landing page unreachable: "/" is what both the
+// header logo and the "Home" nav link point at, so redirecting it away from the
+// landing page (as it used to, to /account) broke both for every signed-in
+// visitor.
+func TestHomePageIsReachableWhileSignedIn(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+
+	// Registering signs you in, so this gives a real session cookie.
+	reg := postRegister(t, s, "Homer", "password1", nil)
+	if reg.Code != http.StatusSeeOther {
+		t.Fatalf("register: status = %d, want 303; body: %s", reg.Code, reg.Body)
+	}
+
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Host = "arena.example:8080"
+	for _, c := range reg.Result().Cookies() {
+		req.AddCookie(c)
+	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
-	if !strings.Contains(rec.Body.String(), "arena.example:5555") {
-		t.Error("landing page does not show the game address to connect to")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET / while signed in = %d, want 200 "+
+			"(a redirect makes the header logo and the Home link unusable)", rec.Code)
 	}
 }
 
@@ -608,6 +640,7 @@ func TestEveryTemplateParses(t *testing.T) {
 		"admin_dashboard.html", "admin_accounts.html", "admin_detail.html",
 		"admin_create.html", "admin_monitoring.html",
 		"admin_tournaments.html", "admin_tournament_form.html",
+		"admin_bugs.html", "admin_bug_detail.html",
 	}
 	for _, name := range want {
 		if _, ok := set.pages[name]; !ok {
