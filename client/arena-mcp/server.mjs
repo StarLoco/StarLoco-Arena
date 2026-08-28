@@ -43,9 +43,19 @@ const P = {
 // does `list.get(n)`). Do not confuse it with `lastProxyGroupIndex` in
 // config.properties, which apN writes ONE-based - they are different keys and
 // setting the wrong one silently connects you to the wrong server.
+// bugReportURL is where the client's "Rapport de bug" dialog POSTs. The client
+// appends "<language>/bug-report" itself (aOG.a), so this is a bare origin with
+// a trailing slash. It is switched with the target so a report always lands on
+// the server the bug happened on.
 const TARGETS = {
-  localhost: { prefIndex: 0, group: "Localhost", local: true },
-  arenareborn: { prefIndex: 1, group: "ArenaReborn", local: false },
+  localhost: {
+    prefIndex: 0, group: "Localhost", local: true,
+    bugReportURL: "http://localhost/",
+  },
+  arenareborn: {
+    prefIndex: 1, group: "ArenaReborn", local: false,
+    bugReportURL: "https://arenareborn.com/",
+  },
 };
 
 // selectServer points the client at a target before it launches. It rewrites
@@ -67,11 +77,16 @@ function selectServer(name) {
   writeFileSync(P.userPrefs, prefs.join(eol), "latin1");
 
   // Keep config.properties' 1-based cousin consistent, so a human opening the
-  // file sees the same server the client will actually preselect.
+  // file sees the same server the client will actually preselect, and point the
+  // bug reporter at the same server.
   try {
-    const cfgEol = /\r\n/.test(readFileSync(P.clientConfig, "latin1")) ? "\r\n" : "\n";
-    const cfg = readFileSync(P.clientConfig, "latin1").split(/\r?\n/)
-      .map((l) => (/^lastProxyGroupIndex=/.test(l) ? "lastProxyGroupIndex=" + (t.prefIndex + 1) : l));
+    const raw = readFileSync(P.clientConfig, "latin1");
+    const cfgEol = /\r\n/.test(raw) ? "\r\n" : "\n";
+    const cfg = raw.split(/\r?\n/).map((l) => {
+      if (/^lastProxyGroupIndex=/.test(l)) return "lastProxyGroupIndex=" + (t.prefIndex + 1);
+      if (/^bugReportURL=/.test(l)) return "bugReportURL=" + t.bugReportURL;
+      return l;
+    });
     writeFileSync(P.clientConfig, cfg.join(cfgEol), "latin1");
   } catch {}
 

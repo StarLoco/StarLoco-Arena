@@ -205,6 +205,29 @@ absent pass their own short timeout explicitly.
 Raised the shared default rather than special-casing the one test that happened to flake,
 since that would have left the same trap for the next person.
 
+### B-127 - the website's own Home link was a dead end once you signed in
+
+**Symptom.** After signing in, neither the "Home" nav link nor the header logo
+worked: both went straight back to /account, so the landing page could not be
+reached again without signing out.
+
+**Root cause.** `handleIndex` redirected any request carrying a session to
+/account, commented "a signed-in visitor wants their account, not the marketing
+page". True the moment you sign in - and the login handler already redirects
+there itself - but wrong as a rule for `/`, which is exactly what the site's own
+logo and Home link point at.
+
+**Fix.** `/` renders the landing page for everybody; its call to action becomes
+"My account" when signed in. `TestSignedInVisitorSkipsLanding` asserted the old
+behaviour and is now `TestSignedInVisitorCanStillReachLanding`, joined by
+`TestSigningInLandsOnTheAccountPage` so the behaviour the redirect was really
+for stays pinned.
+
+**Also removed in the same pass:** every "point your client at `<host>:<port>`"
+line (landing page, account page, /status, footer). The download ships already
+configured for this server, so printing an address only invited people to
+mistype one. `TestPublicPagesDoNotAskPlayersForAnAddress` keeps it gone.
+
 ### B-126 - the sign-up and sign-in limits became ONE server-wide bucket behind a proxy
 
 **Symptom.** On a server whose portal sits behind a reverse proxy (here nginx-less:
