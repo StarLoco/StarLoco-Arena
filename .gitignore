@@ -85,3 +85,11 @@ Thumbs.db
 # ============================================================================
 __pycache__/
 *.pyc
+
+# ============================================================================
+#  Bug-report screenshots (web.bug_report_dir)
+# ============================================================================
+# Player-submitted screenshots collected by the in-game bug reporter. Runtime
+# data, and it can contain other people's account names and chat, so it must
+# never be committed.
+/server/bugreports/
