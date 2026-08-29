@@ -165,6 +165,12 @@ func handleTeamPresetDelete(s *Session, f *protocol.C2SFrame) error {
 			return err
 		}
 		s.log.Info("team preset deleted", "id", teamID)
+		// Tell the client to drop it. Re-sending the list is NOT enough: 6030
+		// merges by preset id and only purges duo presets, so a deleted normal
+		// preset would linger on screen until the player relogged.
+		if err := s.sendTeamPresetDeleted(uint16(teamID)); err != nil {
+			return err
+		}
 	}
 	return s.pushTeamPresetList()
 }
@@ -228,6 +234,18 @@ func (s *Session) pushTeamPresetList() error {
 	w.U8(0) // coach section (empty)
 
 	frame, err := protocol.EncodeS2C(protocol.OpTeamPresetList, w.Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// sendTeamPresetDeleted acknowledges a deleted preset (6022 agH):
+// [i8 status][i16 teamId], the id present only on success - agH reads it inside
+// `if (aV == 0)`, so a failure frame must stop after the status byte.
+func (s *Session) sendTeamPresetDeleted(teamID uint16) error {
+	w := protocol.NewWriter().U8(0).U16(teamID)
+	frame, err := protocol.EncodeS2C(protocol.OpTeamPresetDeleted, w.Bytes())
 	if err != nil {
 		return err
 	}

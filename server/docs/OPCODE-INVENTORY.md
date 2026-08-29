@@ -277,7 +277,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 6014 | S2C | - | (aoi) | unidentified (fighter family) |
 | 6020 | S2C | - | SaveTeamPresetMessage (aic_0) | Not emitted — server re-pushes 6030 list instead |
 | 6021 | C2S | H | SaveTeamPresetRequestMessage (aqH) | `handleTeamPresetSave` |
-| 6022 | S2C | - | DeletionTeamPresetMessage (agH) | Not emitted — server re-pushes 6030 list instead |
+| 6022 | S2C | E | TeamPresetDeleted (agH) | `[i8 status]` + `[i16 teamId]` **only when status==0** (`agH` reads the id inside `if (aV == 0)`). Required, not cosmetic: 6030 merges by preset id and `bs_0.IF().IG()` purges only DUO presets, so without this a deleted preset stays on screen until relog (B-130) |
 | 6023 | C2S | H | DeleteTeamPresetRequestMessage (aad_1) | `handleTeamPresetDelete` |
 | 6024 | C2S | H | TeamUpRequest (ir_0), arch 2 | `handleTeamUpRequest` - **2v2 team formation**. `[u8 teamName][i64 inviterId][i64 invitedId]`. Sent by the team panel (hu_2 case 16636) after `team2vs2NameDialog`; the teammate is picked from the coach's own FRIEND LIST (case 16635). The inviter id is IGNORED server-side in favour of the sender |
 | 6025 | S2C | E | TeamUpInvitation (dy_2) | `[u8 teamName][u8 inviterName][i64 inviterId][i64 invitedId]` - pops *"[name] te propose de faire equipe avec lui/elle"* (ug_1 case 6025) |

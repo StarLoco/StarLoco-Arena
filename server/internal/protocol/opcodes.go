@@ -133,8 +133,19 @@ const (
 	OpUpdatedFighterInventory = 6010 // S2C: [i64 fighterId][i8 result](+[i16 len][cards][i16 len][spells])
 	OpFighterAssignTeam       = 6013 // C2S: [i64 fighterId][i16 srcTeam][i16 dstTeam][i64 am] — qp_1 drag/assign; dst=-1 removes
 	OpTeamPresetSave          = 6021 // C2S: [sw_1 blob][u8 pad]
-	OpTeamPresetDelete        = 6023 // C2S: [i16 teamId]
-	OpTeamPresetListRequest   = 6031 // C2S: (empty) request team presets
+	// OpTeamPresetDeleted acknowledges a delete: [i8 status] and, when status==0,
+	// [i16 teamId] (agH reads the id ONLY on success).
+	//
+	// Required, not cosmetic. Re-sending the preset list (6030) does NOT remove a
+	// deleted preset: `dx_2` case 6030 calls `bs_0.IF().IG()`, which purges only
+	// the presets where `afK()` is false (`bMK.size() > 1`, i.e. the DUO ones) and
+	// keeps the normal ones, then merges the payload into a map keyed by preset
+	// id. A deleted preset is absent from that payload, so nothing ever removes
+	// it and it stays on screen until the player relogs. 6022 is what calls
+	// `bs_0.IF().as(id)`.
+	OpTeamPresetDeleted     = 6022 // S2C agH
+	OpTeamPresetDelete      = 6023 // C2S: [i16 teamId]
+	OpTeamPresetListRequest = 6031 // C2S: (empty) request team presets
 	// --- 2v2 team formation (60xx) -------------------------------------------
 	// The production path, reachable from the team panel: "Creer une equipe 2VS2"
 	// (hu_2 case 16636) opens team2vs2NameDialog, the teammate is picked from the

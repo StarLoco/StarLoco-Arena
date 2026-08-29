@@ -140,6 +140,30 @@ belongs to the coach.
 
 ## Fixed
 
+### B-130 - a deleted team preset stayed on screen until relog
+
+**Symptom.** Deleting a team preset removed it from the database, and it kept appearing in
+the client's team list for the rest of the session.
+
+**Root cause.** The handler deleted the row and re-sent the whole preset list (6030),
+assuming the client would rebuild from it. It does not. `dx_2` case 6030 calls
+`bs_0.IF().IG()`, which is not a clear: it removes only the presets where `afK()` is false
+(`bMK.size() > 1`, i.e. the DUO ones) and KEEPS the normal ones, then merges the payload
+into a map keyed by preset id. A deleted preset is simply absent from that payload, so
+nothing ever removes it.
+
+**Fix.** Send **6022** (`agH`) after a successful delete: `[i8 status]` plus `[i16 teamId]`
+only when status is 0, because `agH` reads the id inside `if (aV == 0)`. That is what calls
+`bs_0.IF().as(id)` client-side.
+
+**Found by reading, not by testing.** The delete path had tests and they passed - they
+asserted the row was gone from the store, which was true and beside the point. What exposed
+it was working through the `dx_2` family opcode by opcode and asking what each reply
+actually does to the client's state.
+
+Tests: `TestDeletedTeamPresetIsAcknowledged`, mutation-checked against never acking, acking
+the wrong id, and a non-zero status (which makes the client read no id at all).
+
 ### B-129 - the e2e suite sits too close to go test's 10m default on CI
 
 **Symptom.** `test/e2e` intermittently hit `panic: test timed out after 10m0s` on
