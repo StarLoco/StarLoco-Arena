@@ -69,9 +69,15 @@
     {{/* Decorative: the name is already in the h1, so alt="" keeps a screen
          reader from reading it twice. fetchpriority=high because this is the
          largest thing above the fold. */}}
+    {{/* srcset so a high-DPI screen gets the 920px art and everyone else keeps
+         the 560px one: this is the largest thing above the fold, so it should
+         be sharp without making every visitor pay for it. */}}
     <div class="hero-art reveal reveal-2" aria-hidden="true">
       <img class="hero-logo" src="/static/logo-large.png?v={{.AssetVersion}}"
-           alt="" width="560" height="376" fetchpriority="high" decoding="async">
+           srcset="/static/logo-large.png?v={{.AssetVersion}} 560w,
+                   /static/logo-large-2x.png?v={{.AssetVersion}} 920w"
+           sizes="(max-width: 900px) 78vw, 460px"
+           alt="" width="560" height="388" fetchpriority="high" decoding="async">
     </div>
   </div>
 </section>
