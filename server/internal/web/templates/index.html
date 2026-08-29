@@ -28,17 +28,11 @@
       {{/* The logo art lives in the column on the right, so here the heading is
            real text: it is the h1 a crawler reads, and on a phone it is what
            shows above the fold. */}}
-      {{/* A branded install reads "Arena Reborn / DofusArena 2.70". The shipped
-           default server name is already "DofusArena", so in that case the
-           second line is just the version, otherwise the headline would say
-           "DofusArena DofusArena 2.70". */}}
+      {{/* The game's name, not the server's: the logo beside it already says
+           Arena Reborn, and the brand is still carried by <title> and the meta
+           description. Not translated — it is a proper noun. */}}
       <h1 class="hero-title reveal reveal-1">
-        {{.ServerName}}
-        {{if eq .ServerName "DofusArena"}}
-          <span class="hero-accent">2.70</span>
-        {{else}}
-          <span class="hero-accent">DofusArena 2.70</span>
-        {{end}}
+        Dofus <span class="hero-accent">Arena</span>
       </h1>
       <p class="lede reveal reveal-2">
         {{t "index.lede"}}

@@ -172,8 +172,11 @@ func (s *Server) Handler() http.Handler {
 
 	// Embedded assets: stylesheet, fonts, favicon.
 	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(staticFileServer())))
+	// Served directly rather than redirected. Browsers request this path
+	// implicitly and cache a 301 here very aggressively, so the old permanent
+	// redirect to favicon.svg outlived the file it pointed at.
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
+		http.StripPrefix("/", cacheStatic(staticFileServer())).ServeHTTP(w, r)
 	})
 
 	// Public.
