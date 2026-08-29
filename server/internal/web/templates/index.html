@@ -7,7 +7,9 @@
        announce to a screen reader, and it never delays the headline. */}}
   <div class="hero-bg" aria-hidden="true"></div>
   <div class="hero-scrim" aria-hidden="true"></div>
-  <div class="grid-texture" aria-hidden="true"></div>
+  {{/* No grid-texture here on purpose: the arena art already supplies the
+       texture, and laying a second one over it just makes both look busy.
+       Every other section keeps its grid — those have no photo behind them. */}}
   <div class="blob blob-accent" style="width:520px;height:520px;right:-140px;top:-200px" aria-hidden="true"></div>
   <div class="blob blob-yellow" style="width:380px;height:380px;left:-120px;bottom:-180px" aria-hidden="true"></div>
 
