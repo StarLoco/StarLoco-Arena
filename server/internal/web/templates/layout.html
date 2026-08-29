@@ -73,7 +73,6 @@
 </main>
 
 <footer class="site-footer">
-  <div class="grid-texture" aria-hidden="true"></div>
   <div class="blob blob-accent" style="width:420px;height:420px;left:-120px;bottom:-220px" aria-hidden="true"></div>
   <div class="container">
     <div class="footer-grid">
@@ -83,6 +82,15 @@
                alt="{{.ServerName}}" width="280" height="194">
         </a>
         <p class="mt-2 small mb-0">{{t "footer.tagline"}}</p>
+        {{/* /discord is deliberately not language-prefixed (see
+             unlocalisedPrefixes), so this is a plain href, not {{path}}. */}}
+        <a class="social-link mt-3" href="/discord" aria-label="Discord"
+           title="Discord" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M20.317 4.369A19.79 19.79 0 0 0 15.432 3c-.21.375-.455.88-.623 1.28a18.29 18.29 0 0 0-5.618 0A12.65 12.65 0 0 0 8.56 3a19.74 19.74 0 0 0-4.886 1.372C.554 8.98-.32 13.473.117 17.9a19.9 19.9 0 0 0 6.048 3.06c.49-.669.927-1.38 1.302-2.128a12.9 12.9 0 0 1-2.05-.986c.172-.126.34-.258.502-.393a14.2 14.2 0 0 0 12.166 0c.164.14.332.271.502.393-.654.386-1.343.717-2.053.988a15.9 15.9 0 0 0 1.302 2.126 19.84 19.84 0 0 0 6.051-3.058c.512-5.133-.875-9.585-3.67-13.533ZM8.02 15.203c-1.183 0-2.157-1.086-2.157-2.42 0-1.332.951-2.42 2.157-2.42 1.204 0 2.178 1.087 2.157 2.42 0 1.334-.953 2.42-2.157 2.42Zm7.963 0c-1.183 0-2.157-1.086-2.157-2.42 0-1.332.951-2.42 2.157-2.42 1.205 0 2.178 1.087 2.157 2.42 0 1.334-.952 2.42-2.157 2.42Z"/>
+          </svg>
+          <span>Discord</span>
+        </a>
       </div>
       <div>
         <div class="footer-heading">{{t "footer.navigation"}}</div>
@@ -96,7 +104,7 @@
       <div>
         <div class="footer-heading">{{t "footer.play"}}</div>
         <ul class="footer-links">
-          {{if .ClientDownloadURL}}<li><a href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "footer.download"}}</a></li>{{end}}
+          {{if .ClientDownloadURL}}<li><a href="{{.ClientDownloadURL}}" target="_blank" rel="noopener noreferrer">{{t "footer.download"}}</a></li>{{end}}
           {{if and .RegistrationEnabled (not .LoggedIn)}}<li><a href="{{path "/register"}}">{{t "nav.create"}}</a></li>{{end}}
           {{if not .LoggedIn}}<li><a href="{{path "/login"}}">{{t "nav.signin"}}</a></li>{{end}}
         </ul>
@@ -117,9 +125,12 @@
       {{end}}
     </div>
 
+    {{/* The brand logo sits directly above, so repeating the server name here
+         just said it twice. The build identity is the only thing this line
+         adds that is not already on the page. */}}
     <div class="footer-bottom">
       <span>{{t "footer.disclaimer"}}</span>
-      <span class="nowrap">{{.ServerName}} · {{.Version}}</span>
+      <span class="nowrap muted-soft">{{.Version}}</span>
     </div>
   </div>
 </footer>

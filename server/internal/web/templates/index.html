@@ -7,16 +7,16 @@
        announce to a screen reader, and it never delays the headline. */}}
   <div class="hero-bg" aria-hidden="true"></div>
   <div class="hero-scrim" aria-hidden="true"></div>
-  {{/* No grid-texture here on purpose: the arena art already supplies the
-       texture, and laying a second one over it just makes both look busy.
-       Every other section keeps its grid — those have no photo behind them. */}}
   <div class="blob blob-accent" style="width:520px;height:520px;right:-140px;top:-200px" aria-hidden="true"></div>
   <div class="blob blob-yellow" style="width:380px;height:380px;left:-120px;bottom:-180px" aria-hidden="true"></div>
 
   <div class="container hero-inner hero-split">
     <div class="hero-copy">
+      {{/* The dot reports that the SERVER is up, which it is whenever this page
+           renders at all, so it is green either way. It used to grey out when
+           nobody was connected, which read as "offline". */}}
       <div class="badge-pill reveal">
-        <span class="dot{{if not .PlayersOnline}} dot-off{{end}}" aria-hidden="true"></span>
+        <span class="dot dot-online" aria-hidden="true"></span>
         {{if .PlayersOnline}}
           {{.PlayersOnline}} {{t "index.online.some"}}
         {{else}}
@@ -51,7 +51,7 @@
           <a class="btn btn-primary btn-lg" href="{{path "/register"}}">{{t "index.cta.create"}}</a>
         {{end}}
         {{if .ClientDownloadURL}}
-          <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" rel="noopener noreferrer">{{t "index.cta.download"}}</a>
+          <a class="btn btn-secondary btn-lg" href="{{.ClientDownloadURL}}" target="_blank" rel="noopener noreferrer">{{t "index.cta.download"}}</a>
         {{else}}
           <a class="btn btn-secondary btn-lg" href="{{path "/status"}}">{{t "index.cta.status"}}</a>
         {{end}}
@@ -104,7 +104,6 @@
 </section>
 
 <section class="section">
-  <div class="grid-texture" aria-hidden="true"></div>
   <div class="blob blob-accent" style="width:420px;height:420px;right:-160px;top:10%" aria-hidden="true"></div>
 
   <div class="container">
@@ -151,13 +150,30 @@
 
 <section class="section-tight">
   <div class="container">
-    <div class="panel center">
-      <div class="grid-texture" aria-hidden="true"></div>
-      <div class="blob blob-accent" style="width:360px;height:360px;left:50%;margin-left:-180px;top:-180px" aria-hidden="true"></div>
-      <div style="position:relative;z-index:1">
+    {{/* The two fighters are decoration, so alt="" + aria-hidden keeps them out
+         of the reading order entirely, and they are lazy-loaded because this
+         sits at the bottom of the page. */}}
+    <div class="panel cta-panel">
+      <div class="cta-aura" aria-hidden="true"></div>
+      <div class="blob blob-accent" style="width:360px;height:360px;left:50%;margin-left:-180px;top:-200px" aria-hidden="true"></div>
+
+      <img class="cta-fighter cta-fighter-l"
+           src="/static/fighter-1.webp?v={{.AssetVersion}}"
+           srcset="/static/fighter-1.webp?v={{.AssetVersion}} 423w,
+                   /static/fighter-1-2x.webp?v={{.AssetVersion}} 847w"
+           sizes="300px" width="423" height="520"
+           alt="" aria-hidden="true" loading="lazy" decoding="async">
+      <img class="cta-fighter cta-fighter-r"
+           src="/static/fighter-2.webp?v={{.AssetVersion}}"
+           srcset="/static/fighter-2.webp?v={{.AssetVersion}} 374w,
+                   /static/fighter-2-2x.webp?v={{.AssetVersion}} 748w"
+           sizes="270px" width="374" height="520"
+           alt="" aria-hidden="true" loading="lazy" decoding="async">
+
+      <div class="cta-content">
         <div class="eyebrow eyebrow-center">{{t "index.get.eyebrow"}}</div>
-        <h2>{{t "index.get.title"}}</h2>
-        <p class="lede center" style="margin:0 auto 1.5rem">
+        <h2 class="cta-title">{{t "index.get.title"}}</h2>
+        <p class="lede center cta-lede">
           {{t "index.get.lede"}}
         </p>
         <div class="btn-row" style="justify-content:center">

@@ -122,16 +122,6 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
 
 /* --------------------------------------------------------------- Textures */
 
-.grid-texture {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(250, 158, 25, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(250, 158, 25, 0.03) 1px, transparent 1px);
-  background-size: 50px 50px;
-}
-
 /* Large, soft colour blobs. They are what stops a flat dark page reading as
    plain black, and they cost nothing but a blur. */
 .blob {
@@ -479,6 +469,19 @@ main { flex: 1 0 auto; position: relative; }
   animation: pulse 2.4s ease-out infinite;
 }
 .dot-off { background: var(--text-muted); animation: none; }
+
+/* The badge reports that the SERVER is reachable, which is a different fact
+   from how many people are logged in - so it is green, not the amber accent. */
+.dot-online {
+  background: #3fb950;
+  box-shadow: 0 0 0 0 rgba(63, 185, 80, .55);
+  animation: pulse-online 2.4s ease-out infinite;
+}
+@keyframes pulse-online {
+  0%   { box-shadow: 0 0 0 0 rgba(63, 185, 80, .55); }
+  70%  { box-shadow: 0 0 0 7px rgba(63, 185, 80, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0); }
+}
 @keyframes pulse {
   0%   { box-shadow: 0 0 0 0 rgba(250, 158, 25, 0.55); }
   70%  { box-shadow: 0 0 0 10px rgba(250, 158, 25, 0); }
@@ -749,16 +752,40 @@ td strong, th strong { color: var(--text-primary); }
 .footer-bottom {
   position: relative;
   z-index: 1;
-  margin-top: 2.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
+  margin-top: 0.85rem;
   font-size: 0.83rem;
   color: var(--text-muted);
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 1rem;
   flex-wrap: wrap;
 }
+
+/* The build identity is reference information, not a headline. */
+.muted-soft { opacity: .6; }
+
+/* Discord link under the footer tagline. */
+.social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: .85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color .18s ease, border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+.social-link:hover {
+  color: #fff;
+  border-color: rgba(88, 101, 242, .85);
+  background: rgba(88, 101, 242, .16);
+  transform: translateY(-1px);
+}
+.social-link svg { flex: none; }
 
 /* ---------------------------------------------------------------- Utility */
 
@@ -827,7 +854,7 @@ td strong, th strong { color: var(--text-primary); }
   flex-wrap: wrap;
   gap: .85rem;
   align-items: center;
-  margin-top: 1.75rem;
+  margin-top: 2.25rem;
   padding-top: 1.25rem;
   border-top: 1px solid rgba(255, 255, 255, .07);
   font-size: .82rem;
@@ -1047,4 +1074,80 @@ td strong, th strong { color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) {
   .hero-bg { animation: none; transform: scale(1.06); }
   .hero-logo { animation: none; }
+}
+
+/* ------------------------------------------------------------- Closing CTA */
+/* The last thing on the page, so it is allowed to be the loudest: two fighters
+   lean in from the edges, an amber aura sits behind the copy, and the panel
+   gets a lit top edge. */
+.cta-panel {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  padding: clamp(2.5rem, 5vw, 4rem) clamp(1.25rem, 4vw, 3rem);
+  text-align: center;
+  background:
+    radial-gradient(120% 140% at 50% 0%, rgba(250, 158, 25, .12), transparent 60%),
+    linear-gradient(180deg, rgba(30, 22, 12, .95), rgba(14, 11, 8, .98));
+  border: 1px solid rgba(250, 158, 25, .22);
+}
+
+/* A lit hairline along the top edge, brightest in the middle. */
+.cta-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(250, 158, 25, .75), transparent);
+}
+
+.cta-aura {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  width: min(720px, 90%);
+  aspect-ratio: 2 / 1;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(250, 158, 25, .20), transparent 72%);
+  filter: blur(18px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cta-content { position: relative; z-index: 2; }
+.cta-title { margin-bottom: .75rem; }
+.cta-lede { margin: 0 auto 1.75rem; max-width: 46ch; }
+
+/* Bottom-anchored so they stand ON the panel edge, and faded out at the feet
+   so there is no hard cut where the artwork stops. */
+.cta-fighter {
+  position: absolute;
+  bottom: 0;
+  z-index: 1;
+  height: clamp(230px, 30vw, 330px);
+  width: auto;
+  pointer-events: none;
+  user-select: none;
+  opacity: .92;
+  filter: drop-shadow(0 12px 26px rgba(0, 0, 0, .55));
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 97%);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 97%);
+  animation: cta-breathe 9s ease-in-out infinite;
+}
+.cta-fighter-l { left: clamp(-40px, -1vw, 0px); }
+.cta-fighter-r { right: clamp(-40px, -1vw, 0px); animation-delay: -4.5s; }
+
+@keyframes cta-breathe {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-9px); }
+}
+
+/* Below this the figures would crowd the copy rather than frame it, so they
+   go entirely instead of being shrunk into noise. */
+@media (max-width: 1080px) {
+  .cta-fighter { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cta-fighter { animation: none; }
 }

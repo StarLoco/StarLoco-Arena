@@ -19,7 +19,7 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
-//go:embed static/app.css static/favicon.svg static/logo.png static/logo-large.png static/logo-large-2x.png static/arena-bg.jpg static/arena-bg-sm.jpg static/arena-bg.webp static/arena-bg-sm.webp static/arena-bg-xl.jpg static/arena-bg-xl.webp static/fonts/*.woff2
+//go:embed static/app.css static/favicon.svg static/logo.png static/logo-large.png static/logo-large-2x.png static/arena-bg.jpg static/arena-bg-sm.jpg static/arena-bg.webp static/arena-bg-sm.webp static/arena-bg-xl.jpg static/arena-bg-xl.webp static/fighter-1.webp static/fighter-1-2x.webp static/fighter-2.webp static/fighter-2-2x.webp static/fighter-3.webp static/fighter-3-2x.webp static/fonts/*.woff2
 var staticFS embed.FS
 
 // templateFuncs are the helpers available inside every template. They are
