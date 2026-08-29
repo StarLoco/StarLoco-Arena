@@ -446,7 +446,10 @@ main { flex: 1 0 auto; position: relative; }
 /* The second half of the headline, on its own line. This deliberately does NOT
    key off `.hero .accent`: that also matched the inline <code> further down the
    hero and turned it into a block, breaking one sentence across three lines. */
-.hero-accent { color: var(--accent); display: block; }
+/* Inline, not block. It was a block when the headline's second half really was
+   a second line ("DofusArena 2.70" under the server name); now it is just the
+   accented half of one name, and block was splitting it across two lines. */
+.hero-accent { color: var(--accent); }
 
 .badge-pill {
   display: inline-flex;
