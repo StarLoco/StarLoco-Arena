@@ -482,6 +482,11 @@ const (
 	// only sets the actor's facing locally, the animation itself is driven purely
 	// by the 4700 handler (`no_2` case 4700 -> `mT.aY(name)`). Without the echo
 	// the player who emoted sees nothing.
+	// OpResetPosition is the console command `/resetPosition` (client class `yl_0`,
+	// empty payload). It is the player's own unstick: no admin rights, no
+	// arguments. Note the client special-cases the literal text in `jd_0` case 10
+	// so it bypasses the local flood guard.
+	OpResetPosition           = 4514 // C2S aII: EMPTY
 	OpEmotePlay               = 4701 // C2S JY:     [u8 nameLen][name][i32 emoteId]
 	OpEmotePlayed             = 4700 // S2C azt_0:  [i64 actorId][u8 nameLen][name]
 	OpChatErrMalformedCommand = 3206 // S2C amd_1: "error.chat.malformedCommand"

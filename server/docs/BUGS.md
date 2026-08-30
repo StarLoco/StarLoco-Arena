@@ -140,6 +140,40 @@ belongs to the coach.
 
 ## Fixed
 
+### B-135 - /resetPosition did nothing (players could not unstick themselves)
+
+**Symptom.** The client's `/resetPosition` console command (4514) had no handler, so a player
+wedged in geometry had no recourse but to ask an admin for a `/TP`.
+
+**Fix.** `handleResetPosition` moves the coach to its current world's primary Zaap through
+`sendEnterOverworld` - the same path Zaap travel already uses. A teleporter is by definition
+somewhere the coach can walk out of, which is exactly what an unstick needs. Refused during
+a fight so it cannot double as an escape hatch.
+
+**Why not ActorTeleports (4510), which is the "right" frame.** 4510 moves an actor with no
+walk animation in 18 bytes, and would be much cheaper than a full instance re-enter. It is
+blocked on something structural: our overworld AoI membership is only ever computed in
+`EnterAoI` (instance enter, fight exit) - `Registry.UpdatePosition` merely records
+coordinates. A 4510 teleport would therefore move the coach visually while leaving every
+AoI known-set stale, making it visible to players it is nowhere near and invisible to those
+it landed among. Recorded on the 4510 row as a precondition rather than a to-do.
+
+**A mutation that survived, and why it is not a test gap.** Removing the explicit
+`s.Coach.Pos* = ...` assignment changes nothing observable, because
+`Registry.UpdatePosition` mutates the *same* `*domain.Coach` the session holds - the registry
+stores the pointer, not a copy. The assignment is only load-bearing when the coach is absent
+from the registry. Genuinely equivalent under any fixture where the coach is online, so it
+is documented rather than papered over with a contrived test.
+
+**A mutation that did not survive, after a fix.** "Fall back to the start world" initially
+passed, because the first test put the coach on the start world - both branches were
+identical. `TestResetPositionStaysOnCurrentWorld` uses world 26 and asserts the two zaaps
+differ before trusting the result. Without it, a start-world fallback would have looked
+correct for everyone on world 25 while silently evicting everyone else.
+
+Tests: `TestResetPositionMovesCoachToAZaap`, `TestResetPositionRefusedInFight` (with a
+fixture check that a fight is really registered), `TestResetPositionStaysOnCurrentWorld`.
+
 ### B-134 - emotes did nothing
 
 **Symptom.** Using an emote had no effect: no animation for the player, nothing for anyone

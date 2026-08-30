@@ -224,7 +224,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 
 | Op | Dir | St | Client class | Notes |
 |---|---|---|---|---|
-| 4000 | S2C | - | (tg_1) | unidentified (currency family) |
+| 4000 | S2C | - | (`tg_1`) | `[i32 value]` -> `sj_1.nu(value)` on the local coach. The setter body is not resolvable from the obfuscated source, so the FIELD is unknown even though the wire is trivial. Do not guess - a wrong write here silently corrupts local coach state |
 | 4001 | S2C | E | WalletUpdate (tc_2) | `buildWalletUpdate` (token balance) |
 | 4096 | S2C | E | ActorSpawnMessage (xe_2) | `buildActorSpawn` (AoI seed) |
 | 4098 | S2C | E | ActorDespawnMessage (th_1) | despawn fan-out |
@@ -237,24 +237,24 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 4501 | C2S | H | CoachActorMovementRequestMessage (aLY) | `handleMovement` |
 | 4503 | C2S | H | FighterActorMovementRequestMessage (md_1) | `handleFighterMoveInFight` |
 | 4506 | S2C | E | FighterTackledMessage (acg) | tackle interrupt |
-| 4510 | S2C | - | ActorTeleportsMessage (xp_0) | not modelled |
+| 4510 | S2C | - | ActorTeleports (`xp_0`) | `[i64 actorId][i32 x][i32 y][i16 z]`, exactly 18 bytes (the client length-checks it). Moves an actor with no walk animation; for the local player it also recentres the camera. **Blocked, not merely unwritten**: our overworld AoI membership is computed only in `EnterAoI` (instance enter / fight exit) - `Registry.UpdatePosition` just records coordinates. Sending 4510 alone would move a coach visually while leaving every AoI known-set stale. Needs incremental AoI maintenance on move first; until then teleports must go through `sendEnterOverworld` |
 | 4512 | C2S | H | ZaapTeleport (Gs) | `handleZaapTeleport` � `[i32 cardTemplateId]` |
-| 4514 | C2S | - | (aII) | unidentified |
+| 4514 | C2S | H | ResetPosition (`aII`) | EMPTY. The console command **`/resetPosition`** (`yl_0.getName()`); the client also special-cases the literal text in `jd_0` case 10 so it skips the local flood guard. Player-facing unstick - moves the coach to its CURRENT world's primary Zaap via the enter path (B-135) |
 | 4516 | S2C | E | InstanceReady (yu_1) | **mandatory after every 4600** � else movement stays locked |
 | 4517 | C2S | H | (aae_2) | `handleTutorialChangeInstance` (instance-ready ack) |
-| 4518 | C2S | - | (Ab) | unidentified |
-| 4519 | C2S | - | (aOx) | unidentified |
+| 4518 | C2S | - | (`Ab`) | EMPTY. Console command **`/ignoreEventsMessages`** (`sr_1`). The client also locally despawns every other actor. Note it sends the frame **twice** (`b(new Ab())` then a second instance) - a client bug, so expect duplicates. Not implemented: we have no event-message stream to mute |
+| 4519 | C2S | - | (`aOx`) | EMPTY. Console command **`/acceptEventsMessages`** (`yl`), the counterpart to 4518, and likewise **sent twice**. Not implemented for the same reason |
 | 4520 | S2C | E | FighterDiesMessage (cd_2) | death event |
 | 4521 | C2S | H | FighterActorDirectionChangeRequestMessage (lr_2) | `handleFighterDirectionChange` — relays facing; reply 4522 |
 | 4522 | S2C | E | FighterChangeDirectionMessage (u_0) | `buildFighterDirectionChange` — cosmetic facing broadcast |
-| 4523 | C2S | - | (anv_0) | unidentified |
+| 4523 | C2S | - | (`anv_0`) | EMPTY. Console command **`/skipTutorial`** (`bv_0`). Not implemented: there is no tutorial to skip |
 | 4524 | S2C | E | FighterMoveMessage (yr_1) | in-fight move broadcast |
 | 4600 | S2C | E | EnterInstanceMessage (aec_2) | `handshake.EncodeEnterInstance` (world/arena stream) |
-| 4601 | S2C | - | (afV) | unidentified |
+| 4601 | S2C | - | SitStand (`afV`) | `[i16 n]{i64 actorId}` sitting, then `[i16 n]{i64 actorId}` standing. First list gets `eM(true)` + `AnimAssis-Debut`, second `eM(false)` + `AnimAssis-Fin`; both nudge facing. A batched sit/stand broadcast. Not implemented: no C2S in the client asks to sit, so the trigger would have to be invented |
 | 4607 | C2S | H | TournamentRegister (aik_0) | `handleTournamentRegister` - join a tournament (arch 3); reply 28608 |
 | 4700 | S2C | E | EmotePlayed (`azt_0`) | `[i64 actorId][u8 nameLen][animName]`. `no_2` case 4700 resolves the actor, nudges its facing, then `mT.aY(name)` plays the animation. Broadcast to the emoter's AoI **including the emoter** - the client never plays its own emote locally |
 | 4701 | C2S | H | EmotePlay (`JY`) | `[u8 nameLen][animName][i32 emoteId]`, sent by `avv_0.playEmote`. The name is the client's locally-resolved string and is **ignored** by the server, which relays its own canonical name for the id |
-| 4800 | S2C | - | (yd) | unidentified |
+| 4800 | S2C | - | RunScript (`yd`) | `[i32 scriptId][i32 n]{i64 args}` -> `anr_0.aXN().a(scriptId, 0, args, false)` (the client logs *"execution du script"*), guarded by a lookup so an unknown script is ignored. Drives client-side scripted sequences. Not implemented: the script ids live in client content we do not model |
 | 4900 | S2C | - | (`xk_0`) | `[i32 apt][i32 apu][i64 id][i64 packedPos][i32 qc_0]` (header from `ue_0.o`). `of_1` builds an `avJ` and pushes it onto the `vr_0.aiM()` replay/telemetry queue, then flushes. `packedPos` unpacks via `wi_2.dd/de/df` into (x,y,z). Not implemented: the queue is a **client-side recorder** (the handler also prints a `418\|` trace line); nothing in the visible UI reads it, so sending it changes nothing a player can see |
 | 4901 | S2C | - | (`xy_2`) | `[i32 apt][i32 apu][i64 id]`. Same `vr_0.aiM()` recorder queue as 4900, via `ol_2`. Not implemented for the same reason |
 | 4902 | S2C | - | (`aiz_0`) | `[i32 apt][i32 apu][i64 fighterId]`. Pops an **"ouch !" speech bubble** over the fighter (`interactiveBubbleDialog`, 25s), gated on the fighter being visible or owned by the local coach. Pure flavour - implementable at any time, but needs a server-side decision about WHEN a fighter says ouch (no rule in the client says it) |

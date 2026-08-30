@@ -30,6 +30,7 @@ var emoteAnimations = map[int32]string{
 
 func registerEmoteHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpEmotePlay, handleEmote)
+	r.Register(protocol.OpResetPosition, handleResetPosition)
 }
 
 // handleEmote receives 4701 (`JY`) and relays the emote to everyone in the
@@ -84,4 +85,50 @@ func handleEmote(s *Session, f *protocol.C2SFrame) error {
 func buildEmotePlayed(coachID uint, anim string) ([]byte, error) {
 	w := protocol.NewWriter().I64(int64(coachID)).StringU8(anim)
 	return protocol.EncodeS2C(protocol.OpEmotePlayed, w.Bytes())
+}
+
+// handleResetPosition implements the `/resetPosition` console command (4514,
+// `aII`, empty payload): the player's own unstick.
+//
+// It deliberately reuses the Zaap/enter path rather than the cheaper
+// ActorTeleports (4510). 4510 is the correct frame for moving an actor without a
+// walk animation, but our overworld AoI membership is only ever computed on
+// EnterAoI (instance enter / leaving a fight) - Registry.UpdatePosition just
+// records coordinates. Teleporting with 4510 alone would move the coach visually
+// while leaving every AoI known-set stale, so a long hop would leave the coach
+// visible to people it is nowhere near and invisible to those it landed among.
+// Going through sendEnterOverworld re-seeds AoI correctly. See the 4510 row in
+// OPCODE-INVENTORY.md for what would have to exist first.
+//
+// Destination is the primary Zaap of the coach's CURRENT world, matching the
+// Zaap arrival rule: a teleporter is always somewhere the coach can walk out of,
+// which is precisely what "unstick me" needs. Falling back to the start world
+// would silently turn an unstick into an eviction from the island the player
+// is on.
+func handleResetPosition(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	if s.deps.Fights.ByCoach(s.Coach.ID) != nil {
+		return nil // not an escape hatch out of a fight
+	}
+	world := s.currentWorld
+	if world == 0 {
+		world = startWorldID
+	}
+	z, ok := primaryZaap(world)
+	if !ok {
+		s.log.Debug("resetPosition: no zaap on this world", "coach", s.Coach.Name, "world", world)
+		return nil
+	}
+	s.Coach.PosX, s.Coach.PosY, s.Coach.PosZ = z.cellX, z.cellY, z.alt
+	s.deps.World.UpdatePosition(s.Coach.ID, z.cellX, z.cellY, z.alt)
+	_ = s.deps.Store.Coaches.Save(s.Coach)
+
+	if err := s.sendEnterOverworld(float32(z.cellX), float32(z.cellY), z.alt, world); err != nil {
+		return err
+	}
+	s.log.Info("reset position", "coach", s.Coach.Name, "world", world,
+		"cell", []int32{z.cellX, z.cellY}, "alt", z.alt)
+	return nil
 }
