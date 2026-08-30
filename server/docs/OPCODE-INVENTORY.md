@@ -23,6 +23,29 @@ Framing (see `internal/protocol/frame.go`):
 > reply, actor movement) are built in the **`internal/handshake`** package, not the
 > `game` package — that is why a grep of `internal/game` alone misses them.
 
+### Negative results - things that look like missing opcodes but are not
+
+These cost real time to establish. They are recorded so nobody re-derives them.
+
+**Chat flood detection has no S2C frame.** The client shows
+*"Flood detecte : message deja envoye."* from `jd_0` case 10 - a purely **client-side**
+check (`jd_0.c(text, System.currentTimeMillis())`) on the chat input box, which refuses to
+send and prints the warning locally. The sibling string `error.chat.floodDetected.time`
+(`aon_0.edG`) is **declared and never referenced anywhere in the client**. `om_0` has no
+flood case at all.
+
+Consequence: the server's own repeat guard (`chat.allowRepeat`) is a second line of defence
+against a *modified* client, and it is correct for it to drop silently - there is no retail
+frame to report it with. Do not invent one, and do not reuse 3212/3216 for it. This is the
+one place in chat where a silent server-side drop is right; everywhere else the silence was
+a bug (see B-133, and the 3206/3210/3214 fixes).
+
+**`error.chat.floodDetected.time`, `memberNotFound` and the flood pair are string-only.**
+Their presence in `texts_fr.properties` proves nothing about reachability - the i18n bundle
+is shared across Ankama titles and carries strings this client never displays. Always
+confirm a string is actually fetched by a `getString(...)` call site before treating it as
+evidence of a feature.
+
 ## Status legend
 
 | Mark | Meaning |
