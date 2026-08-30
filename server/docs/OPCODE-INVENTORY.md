@@ -188,7 +188,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 3210 | S2C | E | NotEnoughPrivilegesMessage (`lx_0`) | EMPTY payload. Sent when a non-admin issues a `/` command; replaces an invented, untranslated English string |
 | 3212 | S2C | I | NotYetImplementedMessage (`adm_0`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.notYetImplemented"* |
 | 3214 | S2C | E | TargetIsYourselfMessage (as_0) | EMPTY payload - `om_0` ignores the body and shows *"error.chat.targetIsYourself"*. Sent when a coach whispers ITSELF; before this the whisper was relayed straight back and the player saw no explanation. Emitted via `sendChatError` |
-| 3216 | S2C | I | OperationNotPermitedMessage (`avs`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.operationNotPermited"* |
+| 3216 | S2C | E | OperationNotPermited (`avs`) | EMPTY payload. The i18n string names the real trigger: *"Ta liste d'amis ou de personnes ignorees est peut-etre **pleine**"* - it is the **social-list-full** refusal, NOT a generic permission error. Sent when a friend/ignore add would exceed `maxSocialListEntries` (B-133) |
 
 ### 4000 – 4902 — wallet, actors, overworld & fight movement, direction
 
@@ -225,9 +225,9 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 4700 | S2C | - | (azt_0) | unidentified |
 | 4701 | C2S | - | (JY) | unidentified |
 | 4800 | S2C | - | (yd) | unidentified |
-| 4900 | S2C | - | (xk_0) | unidentified (fight family) |
-| 4901 | S2C | - | (xy_2) | unidentified (fight family) |
-| 4902 | S2C | - | (aiz_0) | unidentified (fight family) |
+| 4900 | S2C | - | (`xk_0`) | `[i32 apt][i32 apu][i64 id][i64 packedPos][i32 qc_0]` (header from `ue_0.o`). `of_1` builds an `avJ` and pushes it onto the `vr_0.aiM()` replay/telemetry queue, then flushes. `packedPos` unpacks via `wi_2.dd/de/df` into (x,y,z). Not implemented: the queue is a **client-side recorder** (the handler also prints a `418\|` trace line); nothing in the visible UI reads it, so sending it changes nothing a player can see |
+| 4901 | S2C | - | (`xy_2`) | `[i32 apt][i32 apu][i64 id]`. Same `vr_0.aiM()` recorder queue as 4900, via `ol_2`. Not implemented for the same reason |
+| 4902 | S2C | - | (`aiz_0`) | `[i32 apt][i32 apu][i64 fighterId]`. Pops an **"ouch !" speech bubble** over the fighter (`interactiveBubbleDialog`, 25s), gated on the fighter being visible or owned by the local coach. Pure flavour - implementable at any time, but needs a server-side decision about WHEN a fighter says ouch (no rule in the client says it) |
 
 ### 5000 – 5491 — exchange, inventory/equipment, shop, fusion
 
@@ -325,7 +325,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 8122 | S2C | - | DetachBuff (zq_1) | `[i64 buffId][i64 fighterId]` - the removal counterpart to 8121: `of_1` does `ee_2.PJ().dL(buffId)` and raises `"hasBuff"`. Needed alongside 8121 for buff expiry (item 11); keyed by a buff id the server does not yet mint |
 | 8151 | C2S | H | GiveUpFightRequestMessage (as_1) | `handleGiveUp` (forfeit) |
 | 8200 | S2C | E | FightActionSequenceExecute (ayj_0) | action flush barrier |
-| 8250 | S2C | - | (wc_2) | unidentified (fight family) |
+| 8250 | S2C | - | (`wc_2`) | `[i64 coachId][i8 flag]`. `aez_0.nw(1)` when true, `nw(2)` when false; if the id is the local coach and the flag is false it shows **"cheat.turnDuration.decreased"**. This is a **turn-duration penalty** toggle. Not implemented: the wire is settled but nothing in the client says what earns the penalty - that is an anti-cheat policy decision, not a protocol gap |
 | 8300 | S2C | E | EndFightMessage (YP) | fight result screen |
 | 8400 | S2C | - | (aBZ) | unidentified (fight family) |
 
@@ -428,12 +428,12 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 27514 | C2S | H | ProLeagueLadderRequest (ck_2) | `handleProLeagueLadderRequest` — the real **"Ligue Pro"** tab (B-046) |
 | 27515 | S2C | E | ProLeagueLadder (amu_0) | `buildProLeagueLadder` — well-formed empty; total bounds the client's clear loop |
 | 27525 | C2S | - | (zz_0) | 27xxx family |
-| 27526 | S2C | - | (jg_2) | 27xxx family |
-| 27527 | C2S | - | (gc_0) | 27xxx family |
-| 27528 | S2C | - | (eq_1) | 27xxx family |
+| 27526 | S2C | X | (`jg_2`) | `[u8 n][appearance][i8][i8][i8][i16 n][blob][i64 coachId]`. Builds an `aez_0` coach from the payload, renders its avatar offscreen, replies **27527** (`gc_0`) with a hash-match flag, and stashes the PNG. **Never implement** - see 27528 |
+| 27527 | C2S | X | (`gc_0`) | `[i64 coachId][blob hash][i8 match]` - the client's reply to **27526**, reporting whether the avatar it rendered matches the hash the server sent. Part of Ankama's internal avatar-upload pipeline; a normal server never sends 27526, so this never arrives. **Never implement** (see 27528) |
+| 27528 | S2C | X | (`eq_1`) | `[i8 len][blob]`. Opens a TLS socket to **`ws.ankama.lan:443`** and `POST /ankama/Accounts_Game/UploadAvatar` with the PNG rendered by 27526, tagged with the account id and `universe=5`. **Never implement**: this is Ankama's *internal* avatar-generation pipeline (they drove real clients to render account avatars into their account service). `ws.ankama.lan` does not resolve outside Ankama's LAN, so on any other server it can only produce a stack trace and leak the account id. The success branch in the client is literally empty |
 | 27529 | C2S | H | (bl) | `handleDestroyCoach` ("Détruire le coach") |
 | 27551 | C2S | - | (aib_1) | 27xxx family |
-| 27552 | S2C | - | (amk_0) | 27xxx family |
+| 27552 | S2C | - | (`amk_0`) | EMPTY payload and `a(byte[])` is `return true` - no fields at all. Registered in the `gz_1` factory but **referenced by no handler anywhere**, so decoding it is where it ends. Inert |
 | 28601 | C2S | H | TournamentListReq (wa_2) | `handleTournamentListRequest` — **28xxx is the tournament subsystem** |
 | 28602 | S2C | E | TournamentList (ng_2) | `buildTournamentList` — registerable tournaments, per-coach status |
 | 28603 | C2S | - | (ayQ) | 28xxx family |
@@ -551,7 +551,7 @@ flag.
 | 22097 | `OB` | reachable | LIVE - built in agn_0. Stats/achievement family. |
 | 26313 | `aju_1` | dead | DEAD in retail - X-vs-X invite. Only builder is awj_0, the Lua binding XvsXInvitation in the Test library (adg_1, super("Test")). No UI. Superseded by the 60xx 2v2 family (ROADMAP item 33). |
 | 27525 | `zz_0` | reachable | LIVE - built in po_0, the production world-element action handler. |
-| 27527 | `gc_0` | reachable | LIVE - built in sL. Ladder family. |
+| 27527 | `gc_0` | reachable | LIVE - built in `sL`, the 27526 render callback. **Ankama-internal avatar pipeline, not ladder.** |
 | 27551 | `aib_1` | reachable | LIVE - built in and_2. Ladder family. |
 | 28603 | `ayQ` | dead | DEAD in retail - tournament CREATE. No `new ayQ()` anywhere; its reply 28604 is handled only by ajp_0, whose output sink (ajp_0.a(apk_0)) is never installed. The web admin console covers this capability instead. |
 | 28605 | `bi_2` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |

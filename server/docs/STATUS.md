@@ -235,7 +235,7 @@ Ordered by value. Item 1 is the biggest unlock; item 2 is the cheapest concrete 
    maintainer; blocks the other 25 stranded achievements.
 10. **Fusion success probability** — genuinely unknown; no client code reveals the curve.
     Everything else about fusion is implemented (item 22).
-11. **Server-invented constants.** `baseXPPerFight = 100`, `standingForResult`, the
+11. **Server-invented constants.** `baseXPPerFight = 100`, `standingForResult`, `maxSocialListEntries = 100`, the
     reputation-per-card rate and the clan-board score are all **ours** — the client
     receives them pre-computed and so cannot arbitrate them. They are anchored by tests
     (a wrong value now fails loudly) but they are not retail-exact, and no test here can

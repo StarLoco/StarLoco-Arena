@@ -140,6 +140,34 @@ belongs to the coach.
 
 ## Fixed
 
+### B-133 - the friend and ignore lists had no upper bound
+
+**Symptom.** A client could add friends or ignores without limit; nothing server-side ever
+refused. Unbounded growth per coach, and every one of those rows is loaded at login.
+
+**Root cause.** `socialEdit` went straight to `FirstOrCreate` with no count check.
+
+**Fix.** `socialListFull` counts the coach's existing edges and refuses past
+`maxSocialListEntries`, replying **3216** (`avs`).
+
+**Why 3216 is the right frame, and what I had wrong first.** I originally planned 3216 for
+"clan chat with no guild", reading its name (`OperationNotPermited`) as a generic permission
+error. The i18n string says otherwise: *"Operation non permise.\nTa liste d'amis ou de
+personnes ignorees est peut-etre **pleine**."* It is specifically the social-list-full
+refusal. Reading the displayed STRING rather than the class name is what caught it - the
+same check that has now corrected three opcodes this project (28617, 6029, 3216).
+
+**On the constant.** `maxSocialListEntries = 100` is **server policy, not client-derived**.
+The 2.70 client carries no max-friends constant - only the error to show when the server
+refuses - so retail enforced this server-side, but the value it used is not recoverable.
+Recorded alongside the other server-invented constants rather than presented as retail
+behaviour.
+
+Tests: `TestSocialListCapRefusesWithNotPermitted` (both lists), which asserts the list is
+genuinely full before testing the refusal, and that re-adding an EXISTING entry stays a
+no-op instead of erroring at the boundary; `TestSocialCapBelowLimitAllows` guards the other
+direction. 3 mutations caught: cap never trips, duplicate counted as new, `>` for `>=`.
+
 ### B-132 - a 2v2 partner could disconnect without the other half being told
 
 **Symptom.** During 2v2 team formation, if one member dropped, the other was left in the

@@ -65,6 +65,11 @@ func (s *Session) socialEdit(f *protocol.C2SFrame, kind socialKind, add bool) er
 	db := s.deps.Store.DB()
 	switch {
 	case kind == socialFriend && add:
+		if full, err := s.socialListFull(db, socialFriend, target.ID); err != nil {
+			return err
+		} else if full {
+			return s.sendChatError(protocol.OpChatErrNotPermitted)
+		}
 		edge := domain.CoachFriend{OwnerID: s.Coach.ID, FriendID: target.ID, Notify: true}
 		db.Where("owner_id = ? AND friend_id = ?", s.Coach.ID, target.ID).
 			FirstOrCreate(&edge)
@@ -74,6 +79,11 @@ func (s *Session) socialEdit(f *protocol.C2SFrame, kind socialKind, add bool) er
 			Delete(&domain.CoachFriend{})
 		return s.sendSocialAck(protocol.OpFriendRemoved, target)
 	case kind == socialIgnore && add:
+		if full, err := s.socialListFull(db, socialIgnore, target.ID); err != nil {
+			return err
+		} else if full {
+			return s.sendChatError(protocol.OpChatErrNotPermitted)
+		}
 		edge := domain.CoachIgnored{OwnerID: s.Coach.ID, IgnoredID: target.ID}
 		db.Where("owner_id = ? AND ignored_id = ?", s.Coach.ID, target.ID).
 			FirstOrCreate(&edge)
@@ -224,3 +234,50 @@ func (s *Session) pushToWatchers(watcherIDs []uint, frame []byte) {
 
 // silence unused import when gorm helpers change.
 var _ = gorm.ErrRecordNotFound
+
+// maxSocialListEntries caps a coach's friend list and ignore list.
+//
+// This number is SERVER POLICY, not client-derived: the 2.70 client carries no
+// max-friends constant, it only carries the error to display when the server
+// refuses (3216, "Ta liste d'amis ou de personnes ignorees est peut-etre pleine").
+// So retail enforced this server-side too, but the value it used is not knowable
+// from the client. 100 follows the Dofus-lineage convention and is high enough
+// that no ordinary player reaches it; it exists so the list cannot grow without
+// bound. Change it freely - nothing on the wire depends on it.
+const maxSocialListEntries = 100
+
+// socialListFull reports whether adding targetID would push the coach past
+// maxSocialListEntries. An edge that already exists is not a new entry, so
+// re-adding an existing friend stays a no-op rather than becoming an error at
+// the boundary.
+func (s *Session) socialListFull(db *gorm.DB, kind socialKind, targetID uint) (bool, error) {
+	var (
+		count  int64
+		exists int64
+	)
+	if kind == socialFriend {
+		if err := db.Model(&domain.CoachFriend{}).
+			Where("owner_id = ?", s.Coach.ID).Count(&count).Error; err != nil {
+			return false, err
+		}
+		if err := db.Model(&domain.CoachFriend{}).
+			Where("owner_id = ? AND friend_id = ?", s.Coach.ID, targetID).
+			Count(&exists).Error; err != nil {
+			return false, err
+		}
+	} else {
+		if err := db.Model(&domain.CoachIgnored{}).
+			Where("owner_id = ?", s.Coach.ID).Count(&count).Error; err != nil {
+			return false, err
+		}
+		if err := db.Model(&domain.CoachIgnored{}).
+			Where("owner_id = ? AND ignored_id = ?", s.Coach.ID, targetID).
+			Count(&exists).Error; err != nil {
+			return false, err
+		}
+	}
+	if exists > 0 {
+		return false, nil
+	}
+	return count >= maxSocialListEntries, nil
+}
