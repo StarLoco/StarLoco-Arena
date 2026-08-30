@@ -61,6 +61,27 @@ evidence of a feature.
 whole table is knowable, the server relays its own name rather than the client's
 string, so a modified client cannot push an arbitrary animation name to other players.
 
+**Correction: the tournament admin family is unreachable for a DIFFERENT reason than
+first recorded.** An earlier version of this file leaned on "`ajp_0`'s sink is
+never installed" as the reason. That statement is narrowly true - nothing calls
+`ajp_0.a(apk_0)`, so ajp_0 has no debug-console sink - but it does NOT make ajp_0 inert:
+`ajp_0.azc()` is separately registered as a live message handler
+(`apN.aDK().a(ajp_0.azc())` in `aog_1` and `by_2`, removed again in `aog_1`). Two different
+registrations, one of which I had generalised from the other.
+
+The decisive fact is simpler and stronger: the five C2S classes (`ayQ`, `bi_2`, `ago_0`,
+`kx_2`, `aeC`) are **constructed nowhere in the client**, so retail cannot send them.
+
+The difference matters. "Dead handler" would mean the server may send the replies freely and
+nothing happens. "Live handler, unsendable request" means the replies WOULD be processed if
+we sent them unsolicited - they are orphaned, not dead. Anything added here must still be
+gated on the account admin flag.
+
+This is the second claim of this shape corrected in one pass (see the `apk_0` note below).
+Both were "the sink is missing" arguments made without listing the subscribers/registrations.
+Prefer the argument that rests on a constructor search: it is cheap, decisive, and does not
+depend on tracing a registration path through startup code.
+
 ## Status legend
 
 | Mark | Meaning |
@@ -474,11 +495,11 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 27552 | S2C | - | (`amk_0`) | EMPTY payload and `a(byte[])` is `return true` - no fields at all. Registered in the `gz_1` factory but **referenced by no handler anywhere**, so decoding it is where it ends. Inert |
 | 28601 | C2S | H | TournamentListReq (wa_2) | `handleTournamentListRequest` — **28xxx is the tournament subsystem** |
 | 28602 | S2C | E | TournamentList (ng_2) | `buildTournamentList` — registerable tournaments, per-coach status |
-| 28603 | C2S | - | (ayQ) | 28xxx family |
-| 28604 | S2C | - | (auE) | 28xxx family |
-| 28605 | C2S | - | (bi_2) | 28xxx family |
-| 28606 | S2C | - | (aik) | 28xxx family |
-| 28607 | C2S | - | (ago_0) | 28xxx family |
+| 28603 | C2S | - | TournamentAdmin? (`ayQ`) | **unsendable by retail**: the class is constructed NOWHERE in the client (verified case-sensitively). Tournament admin family - see the note above the legend |
+| 28604 | S2C | - | (`auE`) | Reply in the tournament admin family. Its handler `ajp_0` **is** registered, so the client would process this if sent - it is orphaned, not dead. Unimplemented because it answers 28603, which the client cannot send |
+| 28605 | C2S | - | TournamentAdmin? (`bi_2`) | **unsendable by retail**: the class is constructed NOWHERE in the client (verified case-sensitively). Tournament admin family - see the note above the legend |
+| 28606 | S2C | - | (`aik`) | As 28604; answers 28605 |
+| 28607 | C2S | - | TournamentAdmin? (`ago_0`) | **unsendable by retail**: the class is constructed NOWHERE in the client (verified case-sensitively). Tournament admin family - see the note above the legend |
 | 28608 | S2C | E | TournamentRegisterReply (dy_0) | reply to 4607: [i64 tid][i8 err] (0=accepted) |
 | 28609 | C2S | H | TournamentSearchCancel (bt_0) | `handleTournamentSearchCancel` - refuses visibly rather than going silent (B-100) |
 | 28610 | S2C | E | TournamentSearchCancelResult |  |
@@ -489,14 +510,14 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 28617 | C2S | - | TournamentCarryStanding (afg_2) | `[i64 tid]` - the player answering YES to 28618's *"report my position to the next tournament of the same type?"* dialog (`ajp_0`:152 -> `gs_2`, answer 16). Reachable and player-facing; open work, NOT dead |
 | 28618 | S2C | - | TournamentUnfinished (ahd_0) | `[i64 tid]` - *"Vous avez participe a un tournoi que vous n'avez pu terminer"* + the carry-over question. The SERVER must send this to start the flow; answering it sends 28617 |
 | 28620 | S2C | E | TournamentFinale (Yq) | ADD `[i8 1][i64 id][i32 n]{i64 coachId}[i32 n]{[i32 len][utf8]}[i32 len][utf8 tournamentName]`, REMOVE `[i8 2][i64 id]`. The "Finale du tournoi X - A VS B" alert. **`Yq.a` reads BOTH arrays backwards**, so they are written in reverse or the finalists are announced swapped |
-| 28622 | S2C | - | (uw_2) | 28xxx family |
+| 28622 | S2C | - | (`uw_2`) | Consumer `ds_2` case 28622 is `bl2 = false; break;` - it assigns a local flag and returns. **No-op**: sending it changes nothing. (This is the row that scores "substantive" in the mechanical empty-body sweep precisely because of that assignment - see the sweep's stated limitation) |
 | 28630 | S2C | E | TournamentSearchPeriod (dg_0) | `[i64 tid][i8 open]` - opens/closes a tournament's opponent-search period. Creates the client's tournament NOTIFICATION (`zN` builds a `td_0`), and clicking that is the ONLY way to select a tournament (`agz_1` -> `vk_1.ad(tid)`). Without it `hu_2` refuses Combattre with `error.noTournamentSelected` forever |
-| 28633 | C2S | - | (kx_2) | 28xxx family |
-| 28634 | S2C | - | (acn_2) | 28xxx family |
-| 28635 | C2S | - | (aeC) | 28xxx family |
-| 28636 | S2C | - | (aig_1) | 28xxx family |
+| 28633 | C2S | - | TournamentAdmin? (`kx_2`) | **unsendable by retail**: the class is constructed NOWHERE in the client (verified case-sensitively). Tournament admin family - see the note above the legend |
+| 28634 | S2C | - | (`acn_2`) | As 28604; answers 28633 |
+| 28635 | C2S | - | TournamentAdmin? (`aeC`) | **unsendable by retail**: the class is constructed NOWHERE in the client (verified case-sensitively). Tournament admin family - see the note above the legend |
+| 28636 | S2C | - | (`aig_1`) | As 28604; answers 28635 |
 | 28644 | S2C | E | TournamentSearchUpcoming (aaj_0) | `[i64 tid][i64 startEpochMillis]` - the countdown to a tournament's next opponent-search period. `zN` shows `1 + (start-now)/60000` minutes, so a start in the PAST renders a negative count; sent only while the window is still ahead |
-| 28646 | S2C | - | (aNq) | 28xxx family |
+| 28646 | S2C | - | (`aNq`) | `zN` case 28646 adds its `td_0` WITHOUT the duplicate guard that case 28630 has. **Blocked, not unwritten**: 28630 must stop being the tournament-selection mechanism before this can be sent, or the client accumulates duplicate entries |
 | 28648 | S2C | E | TournamentSearchEnded (df_1) | `[i64 tid][i8 forfeit]` - closes an opponent-search period. forfeit=0 is *"the other player was not searching while you were, so you are declared winner by forfeit"*; forfeit=1 is the same sentence reversed. The ONLY server-side way to dismiss `tournamentsSearchStatusDialog` (`zN` case 28648), so an unopposed coach that never gets this waits in it forever |
 | 28649 | C2S | H | TournamentTreeReq (alf_0) | `handleTournamentTreeRequest` - `[i64 tournamentId][i32 page][i32 len][utf8 highlightName]`. The page is driven by the tree dialog's paging buttons (20069) and the name by its search box (20068) |
 | 28650 | S2C | E | TournamentTree (IL) | `encodeTournamentTree` - `[i32 page][i32 n]{[i32 slot][i32 len][utf8 name]}[i32 unread]`. A 1-indexed binary heap: 1 winner, 2-3 finale, 4-7 semi, 8-15 quarter, 16-31 first round (`ah_1.getFieldValue`). Names are **UTF-8**, not cp1252. Upper rounds stay empty until a match layer decides them |
@@ -592,8 +613,8 @@ flag.
 | 27527 | `gc_0` | reachable | LIVE - built in `sL`, the 27526 render callback. **Ankama-internal avatar pipeline, not ladder.** |
 | 27551 | `aib_1` | reachable | LIVE - built in and_2. Ladder family. |
 | 28603 | `ayQ` | dead | DEAD in retail - tournament CREATE. No `new ayQ()` anywhere; its reply 28604 is handled only by ajp_0, whose output sink (ajp_0.a(apk_0)) is never installed. The web admin console covers this capability instead. |
-| 28605 | `bi_2` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
-| 28607 | `ago_0` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
+| 28605 | `bi_2` | dead | DEAD in retail - no constructor anywhere. Same family as 28603. |
+| 28607 | `ago_0` | dead | DEAD in retail - no constructor anywhere. Same family as 28603. |
 | 28617 | `afg_2` | reachable | REACHABLE and player-facing - see the note below. NOT part of the dead admin set. |
 | 28633 | `kx_2` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
 | 28635 | `aeC` | dead | DEAD in retail - no constructor; same ajp_0-only reply path as 28603. |
