@@ -477,6 +477,13 @@ const (
 	// decoded message entirely and shows a fixed string from its own i18n table,
 	// so the opcode IS the message. Without them the client shows nothing at all
 	// when the server refuses a chat action.
+	// Emotes. The client sends the emote it wants to play (4701) and the server
+	// relays it to everyone nearby as 4700, INCLUDING the sender: `playEmote`
+	// only sets the actor's facing locally, the animation itself is driven purely
+	// by the 4700 handler (`no_2` case 4700 -> `mT.aY(name)`). Without the echo
+	// the player who emoted sees nothing.
+	OpEmotePlay               = 4701 // C2S JY:     [u8 nameLen][name][i32 emoteId]
+	OpEmotePlayed             = 4700 // S2C azt_0:  [i64 actorId][u8 nameLen][name]
 	OpChatErrMalformedCommand = 3206 // S2C amd_1: "error.chat.malformedCommand"
 	OpChatErrNotEnoughRights  = 3210 // S2C lx_0:  "error.chat.notEnoughPrivileges"
 	OpChatErrNotImplemented   = 3212 // S2C adm_0: "error.chat.notYetImplemented"

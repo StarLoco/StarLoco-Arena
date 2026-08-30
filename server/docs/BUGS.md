@@ -140,6 +140,33 @@ belongs to the coach.
 
 ## Fixed
 
+### B-134 - emotes did nothing
+
+**Symptom.** Using an emote had no effect: no animation for the player, nothing for anyone
+watching. The feature was simply absent - 4701 had no handler and 4700 was never sent.
+
+**Fix.** `handleEmote` (4701) relays the emote to the sender's AoI as 4700.
+
+**Two things that are easy to get wrong here.**
+
+*The sender must be echoed.* `avv_0.playEmote` only updates the actor's facing direction
+locally and then sends 4701 - the animation itself is played exclusively by the 4700 handler
+(`no_2` -> `mT.aY(name)`). Excluding the sender the way vicinity chat correctly does would
+have left the emoting player as the only person who saw nothing. The mutation test for this
+is the one that matters: the neighbour path can look perfect while the feature is useless.
+
+*The client's animation name is not trustworthy.* 4701 carries both an emote id and the
+animation name the client resolved. The table is hardcoded in the client enum `up_0`, so the
+server knows it too and relays its OWN name for the id. Otherwise a modified client could
+make every nearby client attempt an arbitrary animation string.
+
+Ids are non-contiguous (57, 59, 60, 62, 63, 65-69); the gaps are real and unknown ids are
+dropped rather than relayed.
+
+Tests: `TestEmoteRelaysToNeighboursAndSelf` (with a fixture check that the two coaches are
+genuinely within AoI), `TestEmoteUsesServerTableNotClientString`, `TestEmoteUnknownIdDropped`.
+4 mutations caught, including "sender not echoed" and "trust the client string".
+
 ### B-133 - the friend and ignore lists had no upper bound
 
 **Symptom.** A client could add friends or ignores without limit; nothing server-side ever

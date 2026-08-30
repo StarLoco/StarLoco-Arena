@@ -46,6 +46,13 @@ is shared across Ankama titles and carries strings this client never displays. A
 confirm a string is actually fetched by a `getString(...)` call site before treating it as
 evidence of a feature.
 
+**Emote table.** The ten emotes are hardcoded in the client enum `up_0` as
+(id, animation, chat command): 57 `/clap`, 59 `/read`, 60 `/declare`, 62 `/angry`,
+63 `/music`, 65 `/show`, 66 `/laugh`, 67 `/fear`, 68 `/cry`, 69 `/no`. The ids are
+**non-contiguous and the gaps are real** - 58, 61 and 64 are not emotes. Because the
+whole table is knowable, the server relays its own name rather than the client's
+string, so a modified client cannot push an arbitrary animation name to other players.
+
 ## Status legend
 
 | Mark | Meaning |
@@ -245,8 +252,8 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 4600 | S2C | E | EnterInstanceMessage (aec_2) | `handshake.EncodeEnterInstance` (world/arena stream) |
 | 4601 | S2C | - | (afV) | unidentified |
 | 4607 | C2S | H | TournamentRegister (aik_0) | `handleTournamentRegister` - join a tournament (arch 3); reply 28608 |
-| 4700 | S2C | - | (azt_0) | unidentified |
-| 4701 | C2S | - | (JY) | unidentified |
+| 4700 | S2C | E | EmotePlayed (`azt_0`) | `[i64 actorId][u8 nameLen][animName]`. `no_2` case 4700 resolves the actor, nudges its facing, then `mT.aY(name)` plays the animation. Broadcast to the emoter's AoI **including the emoter** - the client never plays its own emote locally |
+| 4701 | C2S | H | EmotePlay (`JY`) | `[u8 nameLen][animName][i32 emoteId]`, sent by `avv_0.playEmote`. The name is the client's locally-resolved string and is **ignored** by the server, which relays its own canonical name for the id |
 | 4800 | S2C | - | (yd) | unidentified |
 | 4900 | S2C | - | (`xk_0`) | `[i32 apt][i32 apu][i64 id][i64 packedPos][i32 qc_0]` (header from `ue_0.o`). `of_1` builds an `avJ` and pushes it onto the `vr_0.aiM()` replay/telemetry queue, then flushes. `packedPos` unpacks via `wi_2.dd/de/df` into (x,y,z). Not implemented: the queue is a **client-side recorder** (the handler also prints a `418\|` trace line); nothing in the visible UI reads it, so sending it changes nothing a player can see |
 | 4901 | S2C | - | (`xy_2`) | `[i32 apt][i32 apu][i64 id]`. Same `vr_0.aiM()` recorder queue as 4900, via `ol_2`. Not implemented for the same reason |
