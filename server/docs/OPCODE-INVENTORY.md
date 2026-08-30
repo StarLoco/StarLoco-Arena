@@ -23,6 +23,14 @@ Framing (see `internal/protocol/frame.go`):
 > reply, actor movement) are built in the **`internal/handshake`** package, not the
 > `game` package — that is why a grep of `internal/game` alone misses them.
 
+**Correction: the `apk_0` developer console is LIVE.** An earlier note in this file reasoned
+that the tournament admin replies are inert because their sink is never installed. That is
+true of **`ajp_0`** specifically (nothing ever calls `ajp_0.a(apk_0)`), but it is NOT true of
+`apk_0` itself: `mu_2`, the `contentLoader.console` startup loader registered in `zh_1`,
+subscribes `ao_0.aU()` and `ajc_0` to it. So anything routed through `apk_0.aDz().log(...)` -
+opcodes 102 and 105 - really is displayed. "Console" is not a synonym for "dead"; check the
+subscriber list for the specific object, not the family.
+
 ### Negative results - things that look like missing opcodes but are not
 
 These cost real time to establish. They are recorded so nobody re-derives them.
@@ -100,26 +108,26 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 2 | both | - | ReconnectionTicketMessage (apg_1 / tI) | Admin/proxy reconnect-ticket channel; unused by our flow |
 | 3 | C2S | - | ReconnectionTicketRequestMessage (po_1 / tL) | idem |
 | 4 | S2C | - | ReconnectionTicketRequestResultMessage (nu_2) | idem |
-| 6 | S2C | - | (asu) | new-in-2.70, unidentified |
+| 6 | S2C | - | (`asu`) | `[i8]` -> `qd_0.w(b)`. Connection-stage message consumed by `alz_2`, the handler for the pre-game **auth/connection** protocol (frames built by the `fp_0` factory, dispatched to the `qd_0` state machine). Our handshake takes a different, working path through `internal/handshake`; these are alternate branches of it |
 | 7 | C2S | H | ClientVersionMessage (na) | `handleClientVersion` |
 | 8 | S2C | E | InvalidClientVersion (oq_1) | `EncodeInvalidClientVersion` � `handleClientVersion` sends `[u8 major][u16 minor]` on a version mismatch; the client shows a modal and self-disconnects |
-| 9 | S2C | - | (avT) | unidentified |
+| 9 | S2C | - | (`avT`) | `[i8][i8]`, exactly 2 bytes. Same `fp_0`/`alz_2` connection stage as 6 |
 | 10 | C2S | - | PropertyListQueryMessage (ms_0) | "property" config subsystem — not modelled |
 | 11 | C2S | - | PropertyItemMessage (afy_2) | idem |
 | 12 | C2S | - | PropertyQueryMessage (pn_2) | idem |
-| 20 | C2S | - | (rx_0) | unidentified |
-| 100 | S2C | - | (es_0) | unidentified |
-| 101 | C2S | - | (aFC) | unidentified |
-| 102 | S2C | - | (ja_0) | unidentified |
+| 20 | C2S | - | (`rx_0`) | `[i32][packed array]`. Built only as `new rx_0(null)` in `afl_2` and read back in `aop_0` - it round-trips locally rather than being a server request |
+| 100 | S2C | - | (`es_0`) | `[i8][i16][i16][i32]`, 9 bytes. `alz_2` case 100: if the first i16 is **-1** it calls `qd_0.vP()`, otherwise `qd_0.a(s, s2, l2)` - a connection-stage status/dispatch with a sentinel. Same subsystem as 6/9 |
+| 101 | C2S | - | (`aFC`) | `[i16 len][text]`. **Constructed nowhere** in the client, so the retail client cannot send it |
+| 102 | S2C | - | (`ja_0`) | `[i8 level][i16 len][text]`. `alz_2` switches on the level and calls `apk_0.aDz().trace/log/...` - the client's **developer console**. NOT inert: `mu_2` (the `contentLoader.console` startup loader, registered in `zh_1`) subscribes `ao_0.aU()` and `ajc_0` to it, so the text is really displayed. Unimplemented because it is a developer affordance (server prints into the client console), not gameplay |
 | 103 | S2C | - | (dm_0 / qr_2) | unidentified (2 class candidates) |
-| 105 | S2C | - | (Ve) | unidentified |
-| 106 | S2C | - | (lo) | unidentified |
+| 105 | S2C | - | (`Ve`) | `[i8 level]` + an i32 when level==3. Same developer-console sink as 102 |
+| 106 | S2C | - | (`lo`) | `[i8][raw remainder]` - the tail is kept as an unparsed ByteBuffer, so the payload shape is defined by whatever reads it downstream. Connection stage (`fp_0`) |
 | 107 | both | H+E | Ping (asg_0) | `handlePing` → `handshake.EncodePingReply` |
-| 108 | S2C | - | (abj_0) | unidentified |
+| 108 | S2C | - | (`abj_0`) | `[i8][i32][i64][i64]...`, min 29 bytes. Connection stage (`fp_0`). Note `pl_2` case 108 calls `nW.sL()` - so a frame in this family is also consumed by the ladder handler |
 | 200 | S2C | E | InteractiveElementSpawn | generated table (`cmd/genelements`); Zaaps, Card Masters, Fusion altars, NPCs, totems |
 | 201 | C2S | H | InteractiveElementAction (bd_2) | `handleInteractiveElementAction` � **every** element click |
-| 202 | S2C | - | (tt_2) | unidentified |
-| 204 | S2C | - | (il_0) | unidentified |
+| 202 | S2C | - | (`tt_2`) | `[i64][i16 len]...` via a shared `G(ByteBuffer)` reader. Connection stage (`fp_0`) |
+| 204 | S2C | - | (`il_0`) | `[i16 n]{[i64][i64][i16 len][blob]}` - a batch of id/id/blob triples. Connection stage (`fp_0`) |
 | 206 | S2C | E | InteractiveElementDespawn (acc_2) |  |
 | 501 | C2S | H | GuildInvite (uq_2) | `handleGuildInvite` |
 | 502 | S2C | E | GuildInvitation (auf_0) | sent to the invitee |
