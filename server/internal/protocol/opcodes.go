@@ -139,6 +139,10 @@ const (
 	// Status 25 is the client's own "this name is taken" case
 	// ("error.teamManagement.teamNameExist"); any other non-zero shows the generic
 	// "error.teamManagement.teamPresetSave".
+	// OpTeamUpCoachGone tells the surviving member of a 2v2 pair that its partner
+	// dropped: [i8 status], and `dx_2` shows "error.teamManagement.coachDisconnected"
+	// regardless of the value - the opcode is the message.
+	OpTeamUpCoachGone = 6029 // S2C OJ
 	OpTeamPresetSaved = 6020 // S2C aic_0
 	OpTeamPresetSave  = 6021 // C2S: [sw_1 blob][u8 pad]
 	// OpTeamPresetDeleted acknowledges a delete: [i8 status] and, when status==0,

@@ -523,3 +523,34 @@ func (s *Session) sendEmpty(opcode uint16) error {
 	}
 	return s.Send(frame)
 }
+
+// releaseTeamUpAndNotify breaks a 2v2 pairing when one member leaves, and TELLS
+// the other half (6029).
+//
+// Every other pairing in the session teardown already notifies its counterparty -
+// matchmaking, direct challenges, exchanges - but the team-up did not, so a
+// partner dropping during team formation left the other player sitting in the
+// fighter picker waiting for someone who was already gone.
+//
+// 6029 carries one byte and `dx_2` shows "error.teamManagement.coachDisconnected"
+// whatever its value: the opcode is the message.
+func (d *Deps) releaseTeamUpAndNotify(coachID uint) {
+	if d.TeamUps == nil {
+		return
+	}
+	partner := d.TeamUps.Partner(coachID)
+	if partner == 0 {
+		return
+	}
+	d.TeamUps.release(coachID)
+	other := d.sessionForCoach(partner)
+	if other == nil {
+		return // nobody left to tell; the pairing is broken either way
+	}
+	frame, err := protocol.EncodeS2C(protocol.OpTeamUpCoachGone,
+		protocol.NewWriter().U8(0).Bytes())
+	if err != nil {
+		return
+	}
+	_ = other.Send(frame)
+}

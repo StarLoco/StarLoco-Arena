@@ -140,6 +140,28 @@ belongs to the coach.
 
 ## Fixed
 
+### B-132 - a 2v2 partner could disconnect without the other half being told
+
+**Symptom.** During 2v2 team formation, if one member dropped, the other was left in the
+fighter picker waiting for a coach who was already gone. The pairing also stayed bound
+server-side, so the survivor could not form a new one.
+
+**Root cause.** `Session.onClose` notifies every other counterparty it has - the matchmaking
+opponent, a pending direct challenge, an in-progress exchange - but the 2v2 team-up was
+simply absent from that list.
+
+**Fix.** `Deps.releaseTeamUpAndNotify` breaks the pairing and sends **6029** (`OJ`) to the
+survivor. One byte: `dx_2` shows *"error.teamManagement.coachDisconnected"* regardless of
+the value, so the opcode is the message.
+
+Extracted as a method rather than written inline, because `onClose` cannot be driven from a
+unit test - it dereferences `s.Account`, which a synthetic session does not have. Testing
+the helper directly also keeps the teardown readable.
+
+Tests: `TestPartnerDisconnectNotifiesTheOtherHalf`, which asserts the pairing is bound
+BEFORE acting (otherwise it would pass whether or not the notification happened) and that
+the survivor is unpaired afterwards. 2 mutations caught: never notifying, never releasing.
+
 ### B-131 - a duplicate team-preset name saved silently
 
 **Symptom.** Saving a preset under a name the coach already used succeeded, leaving two

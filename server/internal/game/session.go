@@ -235,6 +235,12 @@ func (s *Session) onClose() {
 				}
 			}
 		}
+		// Break any 2v2 pairing and TELL the partner. Every other pairing in this
+		// teardown already notifies its counterparty; this one did not, so a
+		// partner who dropped during team formation left the other player sitting
+		// in the fighter picker waiting for someone who was gone.
+		s.deps.releaseTeamUpAndNotify(s.Coach.ID)
+
 		// Despawn the leaver from coaches that currently see it (AoI known set),
 		// then remove it from the registry.
 		viewers := s.deps.World.LeaveAoI(s.Coach.ID)
