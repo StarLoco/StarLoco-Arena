@@ -132,7 +132,15 @@ const (
 	OpUpdateFighterInventory  = 6011 // C2S: [i64 fighterId][i16 teamId][i16 len][cards][i16 len][spells]
 	OpUpdatedFighterInventory = 6010 // S2C: [i64 fighterId][i8 result](+[i16 len][cards][i16 len][spells])
 	OpFighterAssignTeam       = 6013 // C2S: [i64 fighterId][i16 srcTeam][i16 dstTeam][i64 am] — qp_1 drag/assign; dst=-1 removes
-	OpTeamPresetSave          = 6021 // C2S: [sw_1 blob][u8 pad]
+	// OpTeamPresetSaved is the reply to 6021: [i8 status], and on status 0 the
+	// full saved preset follows. `aic_0` reads NOTHING after a non-zero status, so
+	// an error frame is exactly one byte.
+	//
+	// Status 25 is the client's own "this name is taken" case
+	// ("error.teamManagement.teamNameExist"); any other non-zero shows the generic
+	// "error.teamManagement.teamPresetSave".
+	OpTeamPresetSaved = 6020 // S2C aic_0
+	OpTeamPresetSave  = 6021 // C2S: [sw_1 blob][u8 pad]
 	// OpTeamPresetDeleted acknowledges a delete: [i8 status] and, when status==0,
 	// [i16 teamId] (agH reads the id ONLY on success).
 	//

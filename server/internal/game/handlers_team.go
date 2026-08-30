@@ -1,6 +1,8 @@
 package game
 
 import (
+	"strings"
+
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 )
@@ -138,6 +140,15 @@ func handleTeamPresetSave(s *Session, f *protocol.C2SFrame) error {
 			team.Members = append(team.Members, domain.TeamFighter{FighterID: uint(fid)})
 		}
 	}
+	// Retail refuses a duplicate preset name: the client carries a dedicated
+	// status (25) and the string "error.teamManagement.teamNameExist" for it.
+	// Without this the save silently succeeded and left the coach with two
+	// presets sharing a name, which the team panel then lists twice identically.
+	if s.teamNameTaken(team.Name, team.ID) {
+		s.log.Info("team preset save refused: duplicate name",
+			"coach", s.Coach.ID, "name", team.Name)
+		return s.sendTeamPresetSaveError(teamSaveNameExists)
+	}
 	if err := s.deps.Store.Teams.Upsert(team); err != nil {
 		return err
 	}
@@ -246,6 +257,40 @@ func (s *Session) pushTeamPresetList() error {
 func (s *Session) sendTeamPresetDeleted(teamID uint16) error {
 	w := protocol.NewWriter().U8(0).U16(teamID)
 	frame, err := protocol.EncodeS2C(protocol.OpTeamPresetDeleted, w.Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
+}
+
+// teamSaveNameExists is the client's status for a name already in use; `dx_2`
+// case 6020 maps it to "error.teamManagement.teamNameExist".
+const teamSaveNameExists uint8 = 25
+
+// teamNameTaken reports whether this coach already has a DIFFERENT preset with
+// that name. Renaming a preset to its own current name is not a clash.
+func (s *Session) teamNameTaken(name string, selfID uint) bool {
+	if name == "" {
+		return false
+	}
+	teams, err := s.deps.Store.Teams.ListByCoach(s.Coach.ID)
+	if err != nil {
+		return false // a lookup failure must not block a save
+	}
+	for i := range teams {
+		if teams[i].ID != selfID && strings.EqualFold(teams[i].Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// sendTeamPresetSaveError replies to 6021 with a failure. The frame is ONE byte:
+// `aic_0` reads the preset only inside `if (aV == 0)`, so appending anything else
+// would leave unread bytes on a message the client considers complete.
+func (s *Session) sendTeamPresetSaveError(status uint8) error {
+	frame, err := protocol.EncodeS2C(protocol.OpTeamPresetSaved,
+		protocol.NewWriter().U8(status).Bytes())
 	if err != nil {
 		return err
 	}

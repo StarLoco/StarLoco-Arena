@@ -140,6 +140,31 @@ belongs to the coach.
 
 ## Fixed
 
+### B-131 - a duplicate team-preset name saved silently
+
+**Symptom.** Saving a preset under a name the coach already used succeeded, leaving two
+presets listed identically in the team panel with no way to tell them apart.
+
+**Root cause.** The save handler upserted whatever it decoded. Retail refuses this: `dx_2`
+case 6020 has a dedicated status **25** mapped to *"error.teamManagement.teamNameExist"*,
+separate from the generic *"error.teamManagement.teamPresetSave"* it shows for any other
+non-zero status. We never sent 6020 at all, so neither error could ever appear.
+
+**Fix.** Refuse the save and reply 6020 with status 25 when another preset of the same coach
+already has that name (case-insensitive; renaming a preset to its own current name is not a
+clash). The error frame is exactly ONE byte - `aic_0` reads the preset only inside
+`if (aV == 0)`, so appending anything would leave unread bytes on a message the client
+considers complete.
+
+Tests: `TestDuplicateTeamNameIsRefused` (status, frame length, and that nothing was written)
+and `TestDistinctTeamNameStillSaves`. 4 mutations caught, including a wrong status code and
+an over-long error frame.
+
+**Test-harness note.** Building a valid 6021 payload requires the 2v2 tail: after the
+fighter list there is a `[u8 coachCount]` + entries block, and omitting the count even when
+empty makes `decodeTeamPreset` fail as a truncated payload - the handler returns the error
+and the connection drops, which surfaces in a test as a bare `EOF`.
+
 ### B-130 - a deleted team preset stayed on screen until relog
 
 **Symptom.** Deleting a team preset removed it from the database, and it kept appearing in

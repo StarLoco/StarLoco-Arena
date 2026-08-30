@@ -275,7 +275,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 6011 | C2S | H | UpdateFighterInventoryRequestMessage (bp_1) | `handleFighterInventoryUpdate` |
 | 6013 | C2S | H | (qp_1) | `handleFighterAssignTeam` (drag fighter to team slot) |
 | 6014 | S2C | - | (aoi) | unidentified (fighter family) |
-| 6020 | S2C | - | SaveTeamPresetMessage (aic_0) | Not emitted — server re-pushes 6030 list instead |
+| 6020 | S2C | E | TeamPresetSaved (aic_0) | `[i8 status]`; the full preset follows ONLY when status==0 (`aic_0` reads nothing after a non-zero status, so an error frame is exactly one byte). **25** = `error.teamManagement.teamNameExist`, any other non-zero = the generic save error. We send 25 to refuse a duplicate preset name (B-131); the success payload is still carried by the 6030 list re-send |
 | 6021 | C2S | H | SaveTeamPresetRequestMessage (aqH) | `handleTeamPresetSave` |
 | 6022 | S2C | E | TeamPresetDeleted (agH) | `[i8 status]` + `[i16 teamId]` **only when status==0** (`agH` reads the id inside `if (aV == 0)`). Required, not cosmetic: 6030 merges by preset id and `bs_0.IF().IG()` purges only DUO presets, so without this a deleted preset stays on screen until relog (B-130) |
 | 6023 | C2S | H | DeleteTeamPresetRequestMessage (aad_1) | `handleTeamPresetDelete` |
