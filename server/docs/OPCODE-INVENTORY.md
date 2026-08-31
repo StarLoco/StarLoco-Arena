@@ -127,20 +127,20 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 |---|---|---|---|---|
 | 1 | C2S | H | DisconnectionNotificationMessage (aqb) | `handleDisconnect`. (CSV also lists LoginMessage `ll_2` on op 1; real login is 1025.) |
 | 2 | both | - | ReconnectionTicketMessage (apg_1 / tI) | Admin/proxy reconnect-ticket channel; unused by our flow |
-| 3 | C2S | - | ReconnectionTicketRequestMessage (po_1 / tL) | idem |
-| 4 | S2C | - | ReconnectionTicketRequestResultMessage (nu_2) | idem |
+| 3 | C2S | - | ReconnectionTicketRequest (`po_1`) | `[i8]`, constructed in `ajz_1` so retail can send it. Connection-stage; our session flow never needs a reconnection ticket because we do not hand the client off between servers |
+| 4 | S2C | - | ReconnectionTicketResult (`nu_2`) | `[i8 bool]`, 1 byte. The answer to 3; same reason |
 | 6 | S2C | - | (`asu`) | `[i8]` -> `qd_0.w(b)`. Connection-stage message consumed by `alz_2`, the handler for the pre-game **auth/connection** protocol (frames built by the `fp_0` factory, dispatched to the `qd_0` state machine). Our handshake takes a different, working path through `internal/handshake`; these are alternate branches of it |
 | 7 | C2S | H | ClientVersionMessage (na) | `handleClientVersion` |
 | 8 | S2C | E | InvalidClientVersion (oq_1) | `EncodeInvalidClientVersion` � `handleClientVersion` sends `[u8 major][u16 minor]` on a version mismatch; the client shows a modal and self-disconnects |
 | 9 | S2C | - | (`avT`) | `[i8][i8]`, exactly 2 bytes. Same `fp_0`/`alz_2` connection stage as 6 |
-| 10 | C2S | - | PropertyListQueryMessage (ms_0) | "property" config subsystem — not modelled |
-| 11 | C2S | - | PropertyItemMessage (afy_2) | idem |
-| 12 | C2S | - | PropertyQueryMessage (pn_2) | idem |
+| 10 | C2S | - | PropertyListQuery (`ms_0`) | Payload is a single hardcoded `0` byte. Constructed in `gy_2`. Part of a client-side **"property" config subsystem** (10/11/12) we do not model |
+| 11 | C2S | - | PropertyItem (`afy_2`) | `[name][typed value]` - the encoder switches on a type tag to pick the value width. Constructed in `akX`. Same property subsystem |
+| 12 | C2S | - | PropertyQuery (`pn_2`) | `[u8 len][name]`. Constructed in `ad_0`. Same property subsystem - a get-by-name |
 | 20 | C2S | - | (`rx_0`) | `[i32][packed array]`. Built only as `new rx_0(null)` in `afl_2` and read back in `aop_0` - it round-trips locally rather than being a server request |
 | 100 | S2C | - | (`es_0`) | `[i8][i16][i16][i32]`, 9 bytes. `alz_2` case 100: if the first i16 is **-1** it calls `qd_0.vP()`, otherwise `qd_0.a(s, s2, l2)` - a connection-stage status/dispatch with a sentinel. Same subsystem as 6/9 |
 | 101 | C2S | - | (`aFC`) | `[i16 len][text]`. **Constructed nowhere** in the client, so the retail client cannot send it |
 | 102 | S2C | - | (`ja_0`) | `[i8 level][i16 len][text]`. `alz_2` switches on the level and calls `apk_0.aDz().trace/log/...` - the client's **developer console**. NOT inert: `mu_2` (the `contentLoader.console` startup loader, registered in `zh_1`) subscribes `ao_0.aU()` and `ajc_0` to it, so the text is really displayed. Unimplemented because it is a developer affordance (server prints into the client console), not gameplay |
-| 103 | S2C | - | (dm_0 / qr_2) | unidentified (2 class candidates) |
+| 103 | S2C | - | (`dm_0` / `qr_2`) | **Two classes both return 103**, both decode via a shared `n(ByteBuffer)`, and neither is constructed outside the factory - so which one 103 resolves to depends on factory registration order. Ambiguous by construction; do not send it without settling that first |
 | 105 | S2C | - | (`Ve`) | `[i8 level]` + an i32 when level==3. Same developer-console sink as 102 |
 | 106 | S2C | - | (`lo`) | `[i8][raw remainder]` - the tail is kept as an unparsed ByteBuffer, so the payload shape is defined by whatever reads it downstream. Connection stage (`fp_0`) |
 | 107 | both | H+E | Ping (asg_0) | `handlePing` → `handshake.EncodePingReply` |
@@ -159,15 +159,15 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 510 | S2C | E | GuildRecord (arl_0) | the guild sheet |
 | 511 | C2S | H | GuildDestroy (awR) | `handleGuildDestroy` - leader only, rank re-derived server-side |
 | 512 | S2C | E | GuildMembers | the clan member list (item 31) |
-| 513 | C2S | - | (wt_1) | unidentified |
+| 513 | C2S | - | (`wt_1`) | `[i64][u8 len][cp1252 text]`, built in `asW` as `new wt_1(id, string)`. Sendable by retail; the (id, text) pairing is not established |
 | 515 | C2S | H | GuildSetRank (abn_2) | `handleGuildSetRank` - leader-only, validated server-side |
 | 517 | C2S | H | GuildGet (auZ) | `handleGuildGet` |
 | 519 | C2S | H | GuildMembersGet (add_2) | `handleGuildMembers` - live-verified |
 | 539 | C2S | H | MailSend (F) | `handleMailSend` � full mail record |
-| 551 | C2S | - | (mx_1) | unidentified |
+| 551 | C2S | - | (`mx_1`) | `[i64][i16][i32][i32]`, exactly 18 bytes, built in `Ad`. Sendable by retail; field meanings not established |
 | 552 | S2C | E | GuildMembership | the 0x20 membership blob (item 31) |
 | 553 | C2S | H | GuildRankAdd (abo_0) | `handleGuildRankAdd` |
-| 554 | S2C | - | part-table-blob (kf_1) | login part/enum table push |
+| 554 | S2C | - | part-table-blob (`kf_1`) | `[i32 n]` then n x `[i32 len][blob]` into `ca_0` records - a login-time part/enum table push. Not implemented: the client works without it because our login path never advertises the tables it indexes |
 | 555 | C2S | H | GuildRankModify (Nr) | `handleGuildRankModify` |
 | 556 | S2C | E | GuildMemberGone (h_0) | kick / quit notice |
 | 557 | C2S | H | GuildRankDelete (Ko) | `handleGuildRankDelete` |
@@ -312,7 +312,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 5203 | C2S | H | CoachInventoryUpdateRequestMessage (fh_0) | `handleInventoryRequest` |
 | 5204 | C2S | - | (`ajm_2`) | `[i32]`, constructed in `by_0` and `ST` so the client really can send it. Inventory family; the i32's meaning is not established. Blocked by the same wall as item 14 / 5203 - inventory cards have no server-assigned identity |
 | 5300 | C2S | H | ShopOpen (yg) | `handleShopOpen` � **no-op**: 5300 is the client debug console, not the shop; the Card Master opens via 201 |
-| 5301 | ? | - | (axZ) | unidentified stub (shop close?) |
+| 5301 | ? | - | (`axZ`) | **Stub**: both `a(byte[])` and `encode()` are empty (`return true` / `EMPTY_BYTE_ARRAY`) - it carries no data in either direction. Instantiated only by the decode factory, never by client code, so nothing ever sends it |
 | 5400 | C2S | H | ShopBarter (aOo) | `handleShopBarter` |
 | 5401 | S2C | E | ShopCatalog (NN) | `buildShopCatalog` |
 | 5403 | S2C | E | ShopResult (mj_1) | purchase result + new balance |
@@ -486,12 +486,12 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 27513 | S2C | E | DemonList (xn_2) | `buildDemonList` � the 24-demon roster (12/page), reputation 0 |
 | 27514 | C2S | H | ProLeagueLadderRequest (ck_2) | `handleProLeagueLadderRequest` — the real **"Ligue Pro"** tab (B-046) |
 | 27515 | S2C | E | ProLeagueLadder (amu_0) | `buildProLeagueLadder` — well-formed empty; total bounds the client's clear loop |
-| 27525 | C2S | - | (zz_0) | 27xxx family |
+| 27525 | C2S | X | (`zz_0`) | `[u8 len][appearance][i8][i8][i8][i16 len][blob]` - the **same field layout as 27526**, and `zz_0` also carries the static avatar-render helper the 27526 handler calls. This is the C2S half of Ankama's internal avatar pipeline. **Never implement** (see 27528) |
 | 27526 | S2C | X | (`jg_2`) | `[u8 n][appearance][i8][i8][i8][i16 n][blob][i64 coachId]`. Builds an `aez_0` coach from the payload, renders its avatar offscreen, replies **27527** (`gc_0`) with a hash-match flag, and stashes the PNG. **Never implement** - see 27528 |
 | 27527 | C2S | X | (`gc_0`) | `[i64 coachId][blob hash][i8 match]` - the client's reply to **27526**, reporting whether the avatar it rendered matches the hash the server sent. Part of Ankama's internal avatar-upload pipeline; a normal server never sends 27526, so this never arrives. **Never implement** (see 27528) |
 | 27528 | S2C | X | (`eq_1`) | `[i8 len][blob]`. Opens a TLS socket to **`ws.ankama.lan:443`** and `POST /ankama/Accounts_Game/UploadAvatar` with the PNG rendered by 27526, tagged with the account id and `universe=5`. **Never implement**: this is Ankama's *internal* avatar-generation pipeline (they drove real clients to render account avatars into their account service). `ws.ankama.lan` does not resolve outside Ankama's LAN, so on any other server it can only produce a stack trace and leak the account id. The success branch in the client is literally empty |
 | 27529 | C2S | H | (bl) | `handleDestroyCoach` ("Détruire le coach") |
-| 27551 | C2S | - | (aib_1) | 27xxx family |
+| 27551 | C2S | - | (`aib_1`) | EMPTY payload, constructed in `and_2`. Ladder family; sendable by retail but its request has no observable answer we emit |
 | 27552 | S2C | - | (`amk_0`) | EMPTY payload and `a(byte[])` is `return true` - no fields at all. Registered in the `gz_1` factory but **referenced by no handler anywhere**, so decoding it is where it ends. Inert |
 | 28601 | C2S | H | TournamentListReq (wa_2) | `handleTournamentListRequest` — **28xxx is the tournament subsystem** |
 | 28602 | S2C | E | TournamentList (ng_2) | `buildTournamentList` — registerable tournaments, per-coach status |

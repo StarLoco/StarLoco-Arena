@@ -107,9 +107,16 @@ func TestDeadClaimsHoldAgainstTheClient(t *testing.T) {
 			ctors[c.class] = regexp.MustCompile(`\bnew\s+` + regexp.QuoteMeta(c.class) + `\s*\(`)
 		}
 	}
+	// The decode factories instantiate EVERY message class in order to parse
+	// incoming frames. That says nothing about whether the client can SEND one,
+	// which is what these claims are about, so they are not evidence either way.
+	decodeFactories := map[string]bool{"gz_1": true, "fp_0": true}
 	for name := range javaFiles {
 		b, err := os.ReadFile(filepath.Join(coreDir, name+".java"))
 		if err != nil {
+			continue
+		}
+		if decodeFactories[name] {
 			continue
 		}
 		for class, re := range ctors {
