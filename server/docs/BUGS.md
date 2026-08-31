@@ -36,11 +36,23 @@ duplicate is not yet established - the error is raised by the manager, and the a
   - `/resetPosition` (B-135), which inherited the behaviour
   - Zaap travel only when the destination island is the current one
 
-**Why it is not fixed here.** The obvious fix - skip the element re-push when the world is
-unchanged - assumes the client keeps its elements across a same-world 4600, which is exactly
-the assumption that just proved wrong in the other direction. Establishing what the client
-actually does with its element manager per 4600 needs a live experiment (enter same world,
-then verify a Zaap is still interactive), not a guess. Doing that carefully is the next step.
+**Experiment run - what the client actually does.** Re-entered world 25 while already on it
+and read the manager's own words: *"...au manager ajX@172290f **qui le contient deja**"*. The
+manager still HOLDS element 37 and REJECTS the duplicate add. So:
+
+  - the client does **not** clear its element manager on a same-world 4600 (contradicting the
+    `elements.go` comment), and
+  - the original element survives - the re-push is redundant rather than destructive.
+
+That makes the error **noisy but benign**: nothing is lost, the second copy is simply refused.
+It is a real defect only in that it hides genuine element errors in the log.
+
+**Why it is STILL not fixed.** The obvious change - skip the re-push when `world ==
+s.currentWorld` - has a trap: on the FIRST enter into a world, `currentWorld` may already have
+been set to that world by the caller, in which case the guard would skip the push that
+actually matters and leave the island with no interactive elements at all. Distinguishing
+"first enter" from "re-enter" is the real work here, and it is not a one-line change. The
+symptom being benign is what makes deferring it defensible.
 
 **How it was found.** Only by reading the retail client's log after driving a real teleport.
 No server-side test would show this: the server's behaviour is correct in isolation, and the
