@@ -590,7 +590,14 @@ func (f *Fight) castSpellByFighter(caster *FightFighter, spellID int32, target P
 	//    An unknown spell / absent data falls back to a flat neutral hit.
 	if !fumble {
 		if sp != nil {
+			var ouchBefore map[int64]int32
+			if crit {
+				ouchBefore = f.hpSnapshot()
+			}
 			f.resolveSpellEffects(caster, sp, target, crit)
+			if crit {
+				f.broadcastOuchForDamaged(ouchBefore)
+			}
 		} else {
 			f.applyFallbackDamage(caster, target)
 		}
@@ -705,7 +712,14 @@ func (f *Fight) closeCombat(ff *FightFighter, target Pos) {
 		// 89: reflect a share to the attacker. Close combat is not a spell, so it
 		// has no effect record to name - 0 is honest here (see B-111).
 		final = f.applyDamageRebound(ff, victim, final, 0)
+		var ouchBefore map[int64]int32
+		if crit {
+			ouchBefore = f.hpSnapshot()
+		}
 		f.applyHPDelta(ff, victim, directElementActionID(elem), 0, -final)
+		if crit {
+			f.broadcastOuchForDamaged(ouchBefore)
+		}
 	}
 	if seq, err := buildActionSequenceExecute(); err == nil {
 		f.broadcast(seq)

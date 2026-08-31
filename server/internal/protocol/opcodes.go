@@ -486,7 +486,11 @@ const (
 	// empty payload). It is the player's own unstick: no admin rights, no
 	// arguments. Note the client special-cases the literal text in `jd_0` case 10
 	// so it bypasses the local flood guard.
-	OpResetPosition           = 4514 // C2S aII: EMPTY
+	OpResetPosition = 4514 // C2S aII: EMPTY
+	// OpFighterOuch pops the "ouch !" bubble over a fighter (of_1 case 4902).
+	// [i32][i32][i64 fighterId] - the two header i32s come from ue_0.o and are
+	// NOT read by the handler, which uses only the fighter id.
+	OpFighterOuch             = 4902 // S2C aiz_0
 	OpEmotePlay               = 4701 // C2S JY:     [u8 nameLen][name][i32 emoteId]
 	OpEmotePlayed             = 4700 // S2C azt_0:  [i64 actorId][u8 nameLen][name]
 	OpChatErrMalformedCommand = 3206 // S2C amd_1: "error.chat.malformedCommand"

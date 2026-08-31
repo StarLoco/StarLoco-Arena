@@ -187,6 +187,35 @@ belongs to the coach.
 
 ## Fixed
 
+### B-138 - fighters never reacted to critical hits
+
+**Not a bug so much as an absent feature, implemented to an explicit product decision.**
+
+The client can pop an "ouch !" speech bubble over a fighter (4902, `of_1` -> a 25-second
+`interactiveBubbleDialog`). Nothing in the client says WHEN, so the trigger is server policy.
+
+**Decision (StarLoco): a fighter says ouch when it takes a CRITICAL hit - the fighter that
+RECEIVES the damage, not the attacker.**
+
+The wire agrees with that reading on its own: 4902 carries a single fighter id, so it cannot
+express "attacker hit target" even if we wanted it to. Whatever it names is the fighter the
+bubble appears over.
+
+**Implementation.** Both halves of the rule are enforced: the cast must be critical AND the
+fighter must actually lose HP. A critical debuff, a miss, or a fully absorbed hit produces no
+bubble; ordinary damage produces none either.
+
+Rather than thread a "was crit" flag through every effect handler - which would still miss
+damage applied indirectly via rebound, transfer or collision - the fight snapshots HP before a
+critical cast and compares after. That catches every path damage can arrive by and cannot
+drift out of sync with the damage code, which is the failure mode a threaded flag invites.
+
+Hooked at all three places a crit is rolled: spell cast, close combat, and fighter-card use.
+
+Tests: `TestOuchOnlyForFightersThatLostHP` (a bystander at full HP must stay silent),
+`TestOuchNotSentForZeroDamageCrit`, `TestOuchNotSentForHealing` (the comparison is strictly
+"lost HP", not "changed HP"). 3 mutations caught, including the healing-direction one.
+
 ### B-136 - emotes could crash a nearby player's message handler (found live)
 
 **Symptom.** None in unit or e2e tests - all four emote tests passed. Found only by injecting

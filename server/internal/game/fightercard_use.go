@@ -73,8 +73,15 @@ func (f *Fight) useFighterCard(user *FightFighter, cardID int32, target Pos) boo
 	f.broadcast(ap)
 
 	if !fumble {
+		var ouchBefore map[int64]int32
+		if crit {
+			ouchBefore = f.hpSnapshot()
+		}
 		for _, ef := range selectEffectsForCrit(card.UseEffects, crit) {
 			f.resolveEffect(user, ef, target)
+		}
+		if crit {
+			f.broadcastOuchForDamaged(ouchBefore)
 		}
 	}
 
