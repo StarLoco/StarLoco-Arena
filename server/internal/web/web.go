@@ -188,6 +188,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /register", s.handleRegisterForm)
 	mux.HandleFunc("POST /register", s.handleRegisterSubmit)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	// Legal pages. Public and crawlable on purpose: a non-affiliation notice
+	// nobody can find does not do the job it exists to do, and a GDPR notice
+	// has to be reachable before somebody signs up, not after.
+	mux.HandleFunc("GET /legal", s.handleLegal)
+	mux.HandleFunc("GET /privacy", s.handlePrivacy)
+	mux.HandleFunc("GET /terms", s.handleTerms)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
@@ -197,6 +203,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /account", s.requireUser(s.handleAccount))
 	mux.HandleFunc("GET /account/password", s.requireUser(s.handlePasswordForm))
 	mux.HandleFunc("POST /account/password", s.requireUser(s.handlePasswordSubmit))
+	// Self-service erasure. The admin console can already delete an account,
+	// but GDPR art. 17 is the data subject's right, so it cannot require
+	// asking an operator.
+	mux.HandleFunc("GET /account/delete", s.requireUser(s.handleDeleteAccountForm))
+	mux.HandleFunc("POST /account/delete", s.requireUser(s.handleDeleteAccountSubmit))
 
 	// Admin console. Starting impersonation is admin-gated; stopping it is
 	// not, so somebody who is impersonating can always get back to themselves
@@ -254,11 +265,17 @@ func (s *Server) Handler() http.Handler {
 }
 
 // serverName is the branding shown in the header and the page titles.
+//
+// The fallback is "Arena Reborn", not "DofusArena". DofusArena is Ankama's
+// trademark: describing what the server runs is referential use and is fine,
+// but taking the mark as the site's OWN name is the thing that turns a
+// preservation project into a source-of-confusion problem. An operator can set
+// web.server_name to whatever they like; what they get for free is neutral.
 func (s *Server) serverName() string {
 	if n := strings.TrimSpace(s.cfg.ServerName); n != "" {
 		return n
 	}
-	return "DofusArena"
+	return "Arena Reborn"
 }
 
 func (s *Server) playersOnline() int {

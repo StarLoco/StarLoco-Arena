@@ -33,7 +33,13 @@ type indexData struct {
 // publicPages are the crawlable pages, listed per language in the sitemap.
 // Anything requiring a session is deliberately absent: a crawler can never see
 // it, so listing it would only advertise URLs that answer with a redirect.
-var publicPages = []string{"/", "/ladder", "/status", "/login", "/register"}
+var publicPages = []string{
+	"/", "/ladder", "/status", "/login", "/register",
+	// The legal pages are listed deliberately. They are the project's public
+	// statement of what it is and is not, and of how a rights holder gets in
+	// touch — being findable is the entire point of them.
+	"/legal", "/privacy", "/terms",
+}
 
 // handleRobots points crawlers at the sitemap and keeps them out of the parts
 // of the site that are operator-only or per-visitor.

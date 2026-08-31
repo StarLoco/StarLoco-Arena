@@ -1,0 +1,43 @@
+{{define "content"}}
+<section class="section">
+  <div class="blob blob-accent" style="width:420px;height:420px;right:-140px;top:-160px" aria-hidden="true"></div>
+
+  <div class="container container-mid">
+    <div class="eyebrow">{{t "legal.eyebrow"}}</div>
+    <h1>{{t "legal.title"}}</h1>
+    <p class="lede mb-4">{{t "legal.lede"}}</p>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "legal.affiliation.title"}}</div>
+      <p class="mb-0">{{t "legal.affiliation.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "legal.what.title"}}</div>
+      <p class="mb-0">{{t "legal.what.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "legal.client.title"}}</div>
+      <p class="mb-0">{{t "legal.client.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "legal.noncommercial.title"}}</div>
+      <p class="mb-0">{{t "legal.noncommercial.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "legal.takedown.title"}}</div>
+      <p class="mb-2">{{t "legal.takedown.body"}}</p>
+      {{if .ContactEmail}}
+      <p class="mb-0"><a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>
+      {{else}}
+      <p class="mb-0 small muted">{{t "legal.takedown.nocontact"}}</p>
+      {{end}}
+    </div>
+
+    <p class="small muted mt-3 mb-0">{{t "legal.trademarks"}}</p>
+  </div>
+</section>
+{{end}}

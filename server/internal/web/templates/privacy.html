@@ -1,0 +1,66 @@
+{{define "content"}}
+<section class="section">
+  <div class="blob blob-accent" style="width:420px;height:420px;right:-140px;top:-160px" aria-hidden="true"></div>
+
+  <div class="container container-mid">
+    <div class="eyebrow">{{t "privacy.eyebrow"}}</div>
+    <h1>{{t "privacy.title"}}</h1>
+    <p class="lede mb-4">{{t "privacy.lede"}}</p>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.controller.title"}}</div>
+      <p class="mb-0">{{t "privacy.controller.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.collect.title"}}</div>
+      <p class="mb-2">{{t "privacy.collect.body"}}</p>
+      <ul class="mb-0">
+        <li>{{t "privacy.collect.account"}}</li>
+        <li>{{t "privacy.collect.game"}}</li>
+        <li>{{t "privacy.collect.ip"}}</li>
+        <li>{{t "privacy.collect.bug"}}</li>
+      </ul>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.never.title"}}</div>
+      <p class="mb-0">{{t "privacy.never.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.basis.title"}}</div>
+      <p class="mb-0">{{t "privacy.basis.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.retention.title"}}</div>
+      <p class="mb-0">{{t "privacy.retention.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.cookies.title"}}</div>
+      <p class="mb-0">{{t "privacy.cookies.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.rights.title"}}</div>
+      <p class="mb-2">{{t "privacy.rights.body"}}</p>
+      <ul class="mb-0">
+        <li>{{t "privacy.rights.access"}}</li>
+        <li>{{t "privacy.rights.erase"}}</li>
+        <li>{{t "privacy.rights.complain"}}</li>
+      </ul>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "privacy.contact.title"}}</div>
+      {{if .ContactEmail}}
+      <p class="mb-0"><a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>
+      {{else}}
+      <p class="mb-0 small muted">{{t "privacy.contact.none"}}</p>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{end}}

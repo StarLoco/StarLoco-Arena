@@ -1,0 +1,44 @@
+{{define "content"}}
+<section class="section">
+  <div class="container container-narrow">
+    <div class="eyebrow">{{t "delete.eyebrow"}}</div>
+    <h1>{{t "delete.title"}}</h1>
+    <p class="lede mb-4">
+      {{t "delete.lede"}}
+    </p>
+
+    {{if .Error}}<div class="notice notice-error">{{.Error}}</div>{{end}}
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "delete.what.title"}}</div>
+      <p class="mb-0">{{t "delete.what.body"}}</p>
+    </div>
+
+    {{if .Impersonating}}
+      <div class="notice notice-error">{{t "delete.impersonating"}}</div>
+    {{else if .Connected}}
+      <div class="notice notice-error">{{t "delete.connected"}}</div>
+    {{else}}
+    <div class="card">
+      <form method="post" action="{{path "/account/delete"}}">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <div class="form-row">
+          <label for="password">{{t "delete.confirm.password"}}</label>
+          <input type="password" id="password" name="password"
+                 autocomplete="current-password" autofocus required>
+        </div>
+        <div class="form-row">
+          <label for="confirm">{{t "delete.confirm.name"}}</label>
+          <input type="text" id="confirm" name="confirm" autocomplete="off" required>
+          <div class="hint">{{.Account.Name}}</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-danger" type="submit">{{t "delete.submit"}}</button>
+          <a class="btn btn-secondary" href="{{path "/account"}}">{{t "delete.cancel"}}</a>
+        </div>
+      </form>
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}

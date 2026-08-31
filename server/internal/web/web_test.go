@@ -682,7 +682,8 @@ func TestEveryTemplateParses(t *testing.T) {
 	}
 	want := []string{
 		"index.html", "status.html", "ladder.html", "login.html", "register.html",
-		"account.html", "password.html", "error.html",
+		"account.html", "password.html", "account_delete.html", "error.html",
+		"legal.html", "privacy.html", "terms.html",
 		"admin_dashboard.html", "admin_accounts.html", "admin_detail.html",
 		"admin_create.html", "admin_monitoring.html",
 		"admin_tournaments.html", "admin_tournament_form.html",

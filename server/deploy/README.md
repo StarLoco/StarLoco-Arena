@@ -63,7 +63,9 @@ YAML config (`configs/config.*.yaml`). Env vars override the file.
 | `ARENA_WEB_ADDR` | portal listen address (image default `0.0.0.0:8080`) |
 | `ARENA_WEB_REGISTRATION_ENABLED` | allow visitors to sign themselves up |
 | `ARENA_WEB_PUBLIC_HOST` | hostname shown to players as the game address |
-| `ARENA_WEB_CLIENT_DOWNLOAD_URL` | link to the game client shown on the portal (blank hides it) |
+| `ARENA_WEB_CLIENT_DOWNLOAD_URL` | link to the game client shown on the portal (blank by default, and blank hides it — see `DISCLAIMER.md` before setting it) |
+| `ARENA_WEB_CONTACT_EMAIL` | address published on `/legal` and `/privacy` for takedown and GDPR requests — **set this on a public server** |
+| `ARENA_WEB_SERVER_NAME` | site branding (defaults to "Arena Reborn") |
 | `ARENA_UPDATE_CHECK_ENABLED` | startup "newer release available" notice |
 | `ARENA_DB_DRIVER` | sqlite / postgres / mysql |
 | `ARENA_DB_DSN` | connection string / file path |

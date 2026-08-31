@@ -22,6 +22,17 @@
     </p>
 
     {{template "account_data" .Detail}}
+
+    {{/* Erasure lives at the bottom of the page that shows the player
+         everything held about them: right of access and right to erasure in
+         the same place, which is where somebody actually looks for it. */}}
+    {{if not .Impersonating}}
+    <div class="card mt-4">
+      <div class="card-title">{{t "account.danger.title"}}</div>
+      <p class="mb-2 small muted">{{t "account.danger.body"}}</p>
+      <a class="btn btn-danger" href="{{path "/account/delete"}}">{{t "account.danger.delete"}}</a>
+    </div>
+    {{end}}
   </div>
 </section>
 {{end}}

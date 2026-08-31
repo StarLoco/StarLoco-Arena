@@ -116,6 +116,14 @@
           {{if not .LoggedIn}}<li><a href="{{path "/login"}}">{{t "nav.signin"}}</a></li>{{end}}
         </ul>
       </div>
+      <div>
+        <div class="footer-heading">{{t "footer.legal"}}</div>
+        <ul class="footer-links">
+          <li><a href="{{path "/legal"}}">{{t "footer.legalnotice"}}</a></li>
+          <li><a href="{{path "/privacy"}}">{{t "footer.privacy"}}</a></li>
+          <li><a href="{{path "/terms"}}">{{t "footer.terms"}}</a></li>
+        </ul>
+      </div>
     </div>
     {{/* Language switcher. Each link carries the page it was clicked from, so
          switching keeps the reader where they were instead of dumping them on
@@ -135,8 +143,15 @@
     {{/* The brand logo sits directly above, so repeating the server name here
          just said it twice. The build identity is the only thing this line
          adds that is not already on the page. */}}
+    {{/* The non-affiliation notice is on EVERY page, not just /legal. It is
+         the first thing a rights holder looks for, and a player who only ever
+         sees the landing page should still know who does and does not run
+         this. */}}
     <div class="footer-bottom">
-      <span>{{t "footer.disclaimer"}}</span>
+      <span>
+        {{t "footer.disclaimer"}}
+        <a class="muted-soft" href="{{path "/legal"}}">{{t "footer.learnmore"}}</a>
+      </span>
       <span class="nowrap muted-soft">{{.Version}}</span>
     </div>
   </div>
