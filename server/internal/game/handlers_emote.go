@@ -67,8 +67,13 @@ func handleEmote(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
+	// ViewersOf, NOT SessionsNear: 4700 makes the client look the actor up by id
+	// and `no_2` dereferences the result with no null check, so sending it to
+	// someone who never received an ActorSpawn for this coach throws
+	// NullPointerException in their client. Proximity and AoI membership are not
+	// the same set - AoI is seeded on EnterAoI and not maintained on movement.
 	n := 0
-	for _, other := range s.deps.World.SessionsNear(s.Coach.PosX, s.Coach.PosY, s.Coach.ID) {
+	for _, other := range s.deps.World.ViewersOf(s.Coach.ID) {
 		if other.Send(frame) == nil {
 			n++
 		}

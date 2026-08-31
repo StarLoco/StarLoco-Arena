@@ -317,6 +317,30 @@ func (r *Registry) EnterAoI(coachID uint) (spawnToJoiner []CoachView, joinerView
 
 // LeaveAoI clears a leaving coach from all known sets and returns the sessions
 // that currently see it (to send a despawn).
+// ViewersOf returns the sessions whose client currently HAS this coach spawned,
+// i.e. those whose AoI known-set contains it. Non-destructive.
+//
+// Use this, not SessionsNear, for any frame that makes the client look an actor
+// up by id. SessionsNear is raw proximity and can include a session that never
+// received an ActorSpawn for the coach (AoI membership is seeded in EnterAoI and
+// is not maintained incrementally on movement). The retail client does not guard
+// those lookups: `no_2` case 4700 dereferences the result of `bd_1.Is().bb(id)`
+// with no null check, so an unknown actor id throws NullPointerException and the
+// whole message is dropped - verified live against the retail client.
+func (r *Registry) ViewersOf(coachID uint) []*Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var viewers []*Session
+	for id, o := range r.byID {
+		if id == coachID || o.inFight {
+			continue
+		}
+		if o.known[coachID] && o.Session != nil {
+			viewers = append(viewers, o.Session)
+		}
+	}
+	return viewers
+}
 func (r *Registry) LeaveAoI(coachID uint) []*Session {
 	r.mu.Lock()
 	defer r.mu.Unlock()

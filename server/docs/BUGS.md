@@ -140,6 +140,44 @@ belongs to the coach.
 
 ## Fixed
 
+### B-136 - emotes could crash a nearby player's message handler (found live)
+
+**Symptom.** None in unit or e2e tests - all four emote tests passed. Found only by injecting
+4700 into the retail client and reading its log.
+
+**What the client does.** `no_2` case 4700 resolves the actor with `bd_1.Is().bb(id)` and
+dereferences the result **with no null check**. An id the client has not spawned throws
+NullPointerException and the whole message is dropped:
+
+```
+ERROR Exception levee lors du traitement d'un message : azT  NO.a(SourceFile:193)
+java.lang.NullPointerException
+WARN  Message (azT) non traite, de type 4700
+```
+
+(4510 by contrast logs *"Impossible de teleporter le personnage ... car il n'existe pas"* -
+so the politeness is per-handler, not a client-wide guarantee.)
+
+**The bug.** `handleEmote` broadcast with `World.SessionsNear` - raw proximity. AoI membership
+is seeded in `EnterAoI` and is **not** maintained as coaches move, so "standing nearby" and
+"has this coach spawned" are different sets. A neighbour in the first set but not the second
+would take the NPE.
+
+**Fix.** New `Registry.ViewersOf(coachID)` returns sessions whose AoI known-set contains the
+coach (the same predicate `LeaveAoI` uses, without mutating). `handleEmote` uses it.
+
+**The rule this establishes.** Any frame that makes the client look an actor up by id must be
+addressed by AoI membership, not proximity. Proximity is only safe for frames that carry
+everything they need - vicinity chat is text, which is why it has been correct all along.
+
+Tests: `TestEmoteNotSentToCoachesWhoCannotSeeIt` puts a coach in proximity but NOT in the
+known-set - the exact divergence - and asserts both fixture conditions so it cannot pass for
+the wrong reason. Reverting to `SessionsNear` fails the suite.
+
+**Process note.** This is the first bug this session that unit and e2e tests could not have
+found, and it took ~6 tool calls against the live client to surface. AGENTS.md is right that
+a live run is the final step, not a formality.
+
 ### B-135 - /resetPosition did nothing (players could not unstick themselves)
 
 **Symptom.** The client's `/resetPosition` console command (4514) had no handler, so a player

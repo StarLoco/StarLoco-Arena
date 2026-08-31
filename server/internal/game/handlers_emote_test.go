@@ -21,10 +21,15 @@ func TestEmoteRelaysToNeighboursAndSelf(t *testing.T) {
 	d.World.Add(&Online{Coach: self.Coach, Session: self})
 	d.World.Add(&Online{Coach: near.Coach, Session: near})
 
-	// Fixture check: if the two coaches are not actually within AoI of each
-	// other, the neighbour assertion below would pass for the wrong reason.
-	if got := d.World.SessionsNear(self.Coach.PosX, self.Coach.PosY, self.Coach.ID); len(got) == 0 {
-		t.Fatal("fixture: no sessions near the emoter, so this test could not " +
+	// Seed AoI both ways: the relay targets coaches whose client HAS the emoter
+	// spawned, not merely coaches standing nearby.
+	d.World.EnterAoI(self.Coach.ID)
+	d.World.EnterAoI(near.Coach.ID)
+
+	// Fixture check: if the neighbour does not actually have the emoter in its
+	// known-set, the assertion below would pass for the wrong reason.
+	if got := d.World.ViewersOf(self.Coach.ID); len(got) == 0 {
+		t.Fatal("fixture: nobody has the emoter spawned, so this test could not " +
 			"tell a working relay from a missing one")
 	}
 
@@ -121,5 +126,41 @@ func drainPayload(t *testing.T, s *Session, opcode uint16) []byte {
 		default:
 			return nil
 		}
+	}
+}
+
+// TestEmoteNotSentToCoachesWhoCannotSeeIt is a live-client regression.
+//
+// Injecting 4700 with an actor the client has not spawned throws
+// NullPointerException inside `no_2` - the retail handler dereferences
+// `bd_1.Is().bb(id)` with no null check - and the client drops the message.
+// Broadcasting emotes by raw proximity (SessionsNear) could therefore crash a
+// neighbour's message handler, because AoI membership is seeded in EnterAoI and
+// is NOT maintained as coaches move.
+func TestEmoteNotSentToCoachesWhoCannotSeeIt(t *testing.T) {
+	d := tmDeps()
+	d.Log = testLogger()
+	self := tmSession(d, 1, "Emoter")
+	stranger := tmSession(d, 2, "Stranger")
+	d.World.Add(&Online{Coach: self.Coach, Session: self})
+	d.World.Add(&Online{Coach: stranger.Coach, Session: stranger})
+
+	// The stranger is standing right next to the emoter but has never had it
+	// spawned - exactly the divergence that raw proximity cannot see.
+	if len(d.World.SessionsNear(self.Coach.PosX, self.Coach.PosY, self.Coach.ID)) == 0 {
+		t.Fatal("fixture: the stranger is not within proximity, so this test would " +
+			"pass even with the buggy SessionsNear broadcast")
+	}
+	if len(d.World.ViewersOf(self.Coach.ID)) != 0 {
+		t.Fatal("fixture: the stranger already has the emoter spawned; AoI was " +
+			"seeded when it should not have been")
+	}
+
+	if err := handleEmote(self, emoteFrame(t, "AnimEmote-Rire", 66)); err != nil {
+		t.Fatalf("handleEmote: %v", err)
+	}
+	if p := drainPayload(t, stranger, protocol.OpEmotePlayed); p != nil {
+		t.Error("4700 was sent to a coach that has not spawned the emoter; the " +
+			"retail client NPEs on an unknown actor id")
 	}
 }
