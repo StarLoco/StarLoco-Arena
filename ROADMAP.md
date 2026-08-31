@@ -1219,9 +1219,15 @@ is a signing certificate or SignPath); no published Docker image.
     own id from `uq_1.ahR()`, a client-local counter, so the server has never
     seen the number and cannot map it to a `CoachCard` row. Acting on it would
     mean guessing which card to destroy, against an inventory containing bound
-    and undestructible cards. The real prerequisite is giving inventory cards a
-    server-assigned identity in the 5200 push (section 3 currently carries only
-    `{i32 templateId, u16 quantity}`) — a wire-format change, not a handler fix.
+    The old prerequisite - "give inventory cards a server-assigned identity
+    in the 5200 push" - is now **ruled out with evidence**, so this item is
+    CLOSED rather than deferred. eb_1.b(ByteBuffer) reads only the i32
+    reference-card id and then does 	his.aFL = uq_1.ahR() UNCONDITIONALLY:
+    a server-supplied uid would be discarded even if we added a field for it,
+    and adding one would break the sacred wire regardless. There is no
+    fallback route either - 5203 echoes ONLY those uids, with no template id
+    to reconcile against. Our current handling (accept the frame, act
+    destructively on nothing) is the correct end state, not a stopgap.
 15. ~~**AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.~~ —
     **done (B-080)**. Shape 8 is directional (the client's symmetry flag `fi()`
     is false for it, as for the T shapes); the cross accepts 1/2/4 arm lengths
