@@ -11,6 +11,41 @@ decompiled client, no runtime).
 
 ---
 
+### B-137 (OPEN) - re-entering the SAME world duplicates interactive elements
+
+**Status: open, not fixed.** Found live; recorded with evidence rather than patched in a hurry.
+
+**Symptom.** Any code path that calls `sendEnterOverworld` for the world the coach is ALREADY
+on makes the client log:
+
+```
+ERROR Impossible d'ajouter un elements interactif d'ID=37 au manager ajX@... qui le contient deja.
+```
+
+(37 is world 25's Zaap.) Reproduced by firing `/resetPosition` via the dev `/c2s` endpoint
+with the coach already on world 25.
+
+**Why it matters beyond the log line.** `elements.go` carries the comment *"the client clears
+its element manager on each 4600, so they must be re-sent per world"*. That is evidently NOT
+true for a same-world re-enter, so the premise the element re-push rests on is wrong in at
+least one case. Whether the element ends up in a broken state or the client just refuses the
+duplicate is not yet established - the error is raised by the manager, and the add is rejected.
+
+**Scope - this is not new.** It affects every same-world `sendEnterOverworld` caller:
+  - `/TP` (`gmTeleport`) explicitly stays on the current world
+  - `/resetPosition` (B-135), which inherited the behaviour
+  - Zaap travel only when the destination island is the current one
+
+**Why it is not fixed here.** The obvious fix - skip the element re-push when the world is
+unchanged - assumes the client keeps its elements across a same-world 4600, which is exactly
+the assumption that just proved wrong in the other direction. Establishing what the client
+actually does with its element manager per 4600 needs a live experiment (enter same world,
+then verify a Zaap is still interactive), not a guess. Doing that carefully is the next step.
+
+**How it was found.** Only by reading the retail client's log after driving a real teleport.
+No server-side test would show this: the server's behaviour is correct in isolation, and the
+client accepts the frame - it just rejects the duplicate element.
+
 ## Open / suspected
 
 ### `generic effet inconnu : 0` — the frames that genuinely have no effect record (documented, won't fix)
