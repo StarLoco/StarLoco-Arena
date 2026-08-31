@@ -439,28 +439,61 @@ with zero flags — 907 cards / 203 spells / 47 arenas, no setup. Archives also 
 
 **2026-08-05, later still — the retail client itself, by link, not by commit.**
 The maintainer supplied a personal Mega mirror of the full retail client and asked
-for it on the web portal, the README and the release notes. Unlike the data-dist
-call above, `client/compiled/` is **not** going into git — it is the actual
-copyrighted game (art, audio, the executable, ~436 MB), a materially bigger claim
-than the small server-record subset, and directly contradicted what `DISCLAIMER.md`
-said about it minutes earlier ("not distributed here at all"). Flagged that once
-before touching anything (bigger legal-exposure surface than data-dist, GitHub does
-act on repos that link piracy hosts, sometimes at the account level) and let the
-maintainer choose with that in view; the answer was to add it in all three places.
-Implemented as `web.client_download_url` (`internal/config`, default = the mirror
-link, blank hides it, overridable per-fork) rather than hardcoding the URL into the
-template — Mega links get taken down and need rotating, and a config field means
-that never needs a rebuild. Rendered as a new conditional panel on the portal
-(`internal/web`), templated into every future GoReleaser release footer, and added
-to the root README (top callout, the client/data comparison table, Step 2). Fixed
-a stale, now-provably-false line in `config.template.yaml` found while in there:
-the `data_dir` comment still claimed "not distributed... fights are unavailable",
-left over from before the data-dist bundling above. `DISCLAIMER.md` and `NOTICE`
-restructured from a two-way (committed / not-distributed-at-all) split into three:
-committed-in-git, linked-to-an-external-mirror-but-not-committed, and genuinely
-neither (now only `server/data/`, the local dev scratch copy). `AGENTS.md` gained
-a constraint (5) so a future pass does not "clean up" the link thinking it is an
-oversight, and pins the raw URL to four places on purpose, not scattered further.
+for it on the web portal, the README and the release notes. Implemented as
+`web.client_download_url` (`internal/config`, default = the mirror link, blank
+hides it, overridable per-fork). **⚠️ REVERSED — see the compliance-pass entry
+below. The link is gone and the default is empty; do not restore it.**
+
+**2026-08-31 — compliance pass on the repo and arenareborn.com.** The maintainer
+asked for maximum defensibility at minimum risk, accepting residual risk. What
+changed, in order of how much exposure it removed:
+
+1. **The client mirror is gone from everything this project controls.**
+   `defaultClientDownloadURL` is now `""` and `config.template.yaml` matches
+   (the template is written verbatim on first run and *overrides* the Go
+   default, so blanking only one would have changed nothing for new installs).
+   The URL is out of `.goreleaser.yaml`'s footer and out of `README.md`. The
+   config field survives, so an operator with a lawful copy can opt in under
+   their own name. Pinned by `TestNoClientDownloadLinkByDefault`.
+   The reason this mattered more than it looks: the link was the *default*, so
+   every operator who ran a release republished it from their own portal
+   without choosing to — the project's one unambiguous exposure, spread onto
+   strangers. `AGENTS.md` constraint 5 was rewritten to say so.
+2. **Three legal pages** — `/legal`, `/privacy`, `/terms` — public, crawlable,
+   in all four languages, listed in `publicPages` so they reach the sitemap.
+   Non-affiliation, what is and is not distributed, non-commercial status, and
+   a takedown route that does not require a lawyer. New `web.contact_email`
+   feeds the address; blank renders an explanation rather than a dead
+   `mailto:`.
+3. **Self-service account deletion** (`/account/delete`) — GDPR art. 17. Reuses
+   `store.AccountRepo.DeleteAccount`, so the player path and the admin path can
+   never diverge in what they erase. Two confirmations (password + typing the
+   account name), blocked while impersonating and while the account is
+   connected, and it clears the session afterwards.
+4. **Non-affiliation notice in the footer of every page**, linking `/legal`.
+5. **`serverName()` now falls back to "Arena Reborn", not "DofusArena"** —
+   describing the game is referential use, adopting the mark as the site's own
+   identity is not.
+
+Two documentation errors found and fixed while doing this, both of which had
+been trusted: this file claimed the README carried the mirror link in three
+places ("top callout, comparison table, Step 2") when there was exactly **one**
+raw URL, at `README.md:125`; and `DISCLAIMER.md`/`NOTICE` still described a
+three-way committed / linked / neither split that no longer had a middle term.
+
+**Still open, deliberately, and needing a maintainer decision:**
+
+- **`server/data-dist/`** — 344 files, 2.96 MB of Ankama records, committed and
+  in every release. "No art, audio or executable code" mitigates but does not
+  answer it. Bring-your-own via `Discover()` is the defensible alternative and
+  costs the zero-setup property. Not changed without an explicit call.
+- **`client/decompiled/`** — EU Software Directive art. 6 protects decompiling
+  *for interoperability*; it is weaker cover for publishing the output. Moving
+  it to a private repo would cost nothing operationally. `client/analysis/`
+  (our own notes) is unaffected either way.
+- **`static/arena-bg*`** (6 files, ~645 KB) is game-world art and is the
+  background of every page on the public site. Flagged; the maintainer chose to
+  keep it.
 
 **Web portal** (`internal/web`) — a full account site, no JS, no external assets, all
 embedded in the binary. See [`WEB-PORTAL.md`](./WEB-PORTAL.md) for the page list, the
