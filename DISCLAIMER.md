@@ -33,21 +33,24 @@ respective owners.
     chosen to include so the server runs without requiring every operator to
     separately source a client. It ships in every downloadable release and in
     `git clone`.
-- **Not distributed or linked anywhere by this project** (© Ankama Games):
+- **Not distributed by this project** (© Ankama Games):
   - `client/compiled/` — the full retail game client (launcher, `core.jar`,
     art, audio, ~436 MB) and its bundled Oracle/Sun JRE. It is not in this
     repository's source tree, not in `git clone`, not in any release archive,
-    and **not linked from anywhere this project controls** — not the release
-    notes, not the `README`, and not the web portal. It stays git-ignored (see
-    `AGENTS.md` constraint 4). Players must supply their own lawfully obtained
-    copy.
+    and not linked from the README or the release notes. It stays git-ignored
+    (see `AGENTS.md` constraint 4).
 
-    A maintainer-hosted mirror used to be linked from those three places, and
-    the server binary shipped with that link as its *default* config value, so
-    every operator who ran a release republished it from their own portal
-    without having chosen to. Both are gone: `web.client_download_url` now
-    defaults to empty, and an operator who has a lawful copy to share must opt
-    in deliberately, under their own name.
+    **`web.client_download_url` defaults to empty**, so the software as
+    published links to no copy of the client anywhere. An individual operator
+    may configure a link for their own deployment — that is their decision,
+    published under their own name, and it is not inherited by anyone else who
+    runs this software.
+
+    This is deliberately narrower than it once was. The default used to be a
+    maintainer-hosted mirror, printed in the release notes and the README as
+    well, so every operator who unzipped a release and ran it republished that
+    link from their own portal without ever choosing to. The link itself was a
+    defensible individual choice; making it everyone's default was not.
   - `server/data/` — a git-ignored scratch folder for pointing a local build
     at your own client copy instead of the bundled `server/data-dist/`.
 
