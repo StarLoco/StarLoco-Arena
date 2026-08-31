@@ -139,3 +139,110 @@ func truncateRow(s string) string {
 	}
 	return s
 }
+
+// TestNoOpConsumerClaimsHoldAgainstTheClient is the companion to
+// TestDeadClaimsHoldAgainstTheClient, covering the OTHER absence argument in the
+// inventory: "the client's consumer for this opcode does nothing".
+//
+// That claim is what justifies not sending ~10 S2C frames. It is exactly as
+// rottable as the constructor claims were, and it is checkable the same way: find
+// `case <opcode>:` in the named consumer class and look at the body. A body that
+// invokes a method is doing something, whatever the row says.
+//
+// Deliberately conservative - it only inspects rows that name BOTH an opcode and
+// a consumer class, and it only rejects bodies containing method invocations.
+// Casts, local assignments, break and return are all fine; those are precisely
+// what a no-op consumer looks like (`bl2 = false; break;`, or cast-and-return).
+func TestNoOpConsumerClaimsHoldAgainstTheClient(t *testing.T) {
+	coreDir := filepath.Join("..", "..", "..", "client", "decompiled", "core")
+	if _, err := os.Stat(coreDir); err != nil {
+		t.Skipf("decompiled client not available (%v)", err)
+	}
+	invBytes, err := os.ReadFile(opcodeInventoryPath)
+	if err != nil {
+		t.Fatalf("read inventory: %v", err)
+	}
+
+	// Rows shaped: | <op> | S2C | - | ... `<consumer>` ... no-op ...
+	rowRe := regexp.MustCompile(`^\|\s*(\d{3,5})\s*\|`)
+	classRe := regexp.MustCompile("`([A-Za-z][A-Za-z0-9_]*)`")
+	callRe := regexp.MustCompile(`\.\w+\s*\(|\bnew\s+\w+\s*\(`)
+
+	checked := 0
+	for i, line := range strings.Split(string(invBytes), "\n") {
+		m := rowRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		// Both tables in this file assert the claim, in different words: the main
+		// opcode table says "no-op", the consumer-analysis table says "no side
+		// effect" / "body is a cast and a return".
+		low := strings.ToLower(line)
+		isNoOp := false
+		for _, marker := range []string{"no-op", "no side effect", "body is a cast"} {
+			if strings.Contains(low, marker) {
+				isNoOp = true
+				break
+			}
+		}
+		if !isNoOp {
+			continue
+		}
+		opcode := m[1]
+		// A row names both the message class and the consumer (e.g. 28622 names
+		// `uw_2` for the wire and `ds_2` for the handler). Take whichever one
+		// actually contains the case - that IS the consumer, by definition.
+		var consumer, body string
+		var named []string
+		for _, c := range classRe.FindAllStringSubmatch(line, -1) {
+			src, err := os.ReadFile(filepath.Join(coreDir, c[1]+".java"))
+			if err != nil {
+				continue
+			}
+			named = append(named, c[1])
+			if b, ok := caseBody(string(src), opcode); ok {
+				consumer, body = c[1], b
+				break
+			}
+		}
+		if len(named) == 0 {
+			continue // row names no client class; nothing mechanical to check
+		}
+		if consumer == "" {
+			t.Errorf("OPCODE-INVENTORY.md:%d claims %s has a no-op consumer, but none of "+
+				"the classes it names %v contains a `case %s:` - the row points at the "+
+				"wrong class, so the claim rests on nothing checkable",
+				i+1, opcode, named, opcode)
+			continue
+		}
+		checked++
+		if calls := callRe.FindAllString(body, -1); len(calls) > 0 {
+			t.Errorf("OPCODE-INVENTORY.md:%d claims %s is a no-op in %s, but its case body "+
+				"invokes %v.\n  body: %s\n  A consumer that calls something is doing "+
+				"something - re-read it before trusting the row.",
+				i+1, opcode, consumer, calls, strings.TrimSpace(body))
+		}
+	}
+	if checked == 0 {
+		t.Fatal("checked 0 no-op claims - the row format or wording must have drifted, " +
+			"and this test is now vacuous")
+	}
+	t.Logf("verified %d no-op consumer claim(s)", checked)
+}
+
+// caseBody returns the source between `case <opcode>:` and the statement that
+// ends it (break/return/the next case), for the first match.
+func caseBody(src, opcode string) (string, bool) {
+	idx := strings.Index(src, "case "+opcode+":")
+	if idx < 0 {
+		return "", false
+	}
+	rest := src[idx+len("case "+opcode+":"):]
+	end := len(rest)
+	for _, term := range []string{"break;", "case ", "return "} {
+		if j := strings.Index(rest, term); j >= 0 && j < end {
+			end = j
+		}
+	}
+	return rest[:end], true
+}

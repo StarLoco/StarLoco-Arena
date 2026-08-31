@@ -649,10 +649,17 @@ the next person starts from the consumer rather than from a grep.
 |---|---|---|
 | 3208 | *none* | No `case 3208` anywhere. The client would drop it. |
 | 28604 | `ajp_0` | Tournament-create reply. `ajp_0` is the debug console whose output sink (`ajp_0.a(apk_0)`) is never installed, so the reply is inert even if sent. |
-| 28606 | `ajp_0` | Same inert console path. |
-| 28634 | `ajp_0` | Same inert console path. |
-| 28636 | `ajp_0` | Same inert console path. |
+| 28606 | `ajp_0` | Same: live handler, unsendable request (28605). |
+| 28634 | `ajp_0` | Same: live handler, unsendable request (28633). |
+| 28636 | `ajp_0` | Same: live handler, unsendable request (28635). |
 | 5000 | `rl_2` | `case` present, body is a cast and a return - no side effect. Found by the mechanical sweep, not by eye. |
+| 3128 | `om_0` | `case` present, body is a cast and a return - no side effect. |
+| 3130 | `om_0` | `case` present, body is a cast and a return - no side effect. |
+| 3132 | `om_0` | `case` present, body is a cast and a return - no side effect. |
+| 3134 | `om_0` | `case` present, body is a cast and a return - no side effect. |
+| 3136 | `om_0` | `case` present, body is a cast and a return - no side effect. |
+| 3138 | `om_0` | `case` present, body is a cast and a return - no side effect. |
+| 3142 | `om_0` | `case` present, body is a cast and a return - no side effect. |
 | 28622 | `ds_2` | Has a `case`, but the body is empty (`bl2 = false; break;`) and the static list it decodes into is only reachable via `uw_2.ahZ()`, which nothing calls. A case label is not a consumer. |
 
 
@@ -662,7 +669,7 @@ unimplemented S2C had its `case` body extracted and scored: lines that are only 
 
 - **10 have a no-op consumer** - 3128/3130/3132/3134/3136/3138/3142 (`om_0`), 3208 (no
   handler at all), 5000 (`rl_2`), and 28622 (`ds_2`).
-- **4 more are inert in practice** - 28604/28606/28634/28636 have real bodies but write
+- **4 more are unreachable in practice** - 28604/28606/28634/28636 have real bodies and a LIVE handler (`ajp_0.azc()` is registered), but they answer requests the client cannot construct, so nothing triggers them. Formerly described here as writing
   only through `ajp_0.cE()`, whose sink is never installed.
 - **60 are genuinely consumed** and are the real backlog.
 
