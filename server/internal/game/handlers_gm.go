@@ -81,7 +81,15 @@ func handleGMCommand(s *Session, line string) error {
 		_ = s.deps.Store.Coaches.Save(s.Coach)
 		return s.gmFeedback(fmt.Sprintf("strength set to %d", n))
 	default:
-		return s.gmFeedback("unknown command: " + verb)
+		// Retail has a frame for this and it is translated: 3206
+		// (error.chat.malformedCommand -> "Commande incorrecte."). The old
+		// invented English string was shown verbatim in a German client, which is
+		// the same problem 3210 fixed for the non-admin case.
+		//
+		// The verb still goes to the log - an admin mistyping /ANNONCE wants to
+		// know which word failed, and the client frame carries no payload.
+		s.log.Debug("unknown GM command", "verb", verb)
+		return s.sendChatError(protocol.OpChatErrMalformedCommand)
 	}
 }
 

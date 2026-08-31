@@ -187,6 +187,40 @@ belongs to the coach.
 
 ## Fixed
 
+### B-140 - unknown slash-commands answered with invented English
+
+**Symptom.** Mistyping a command produced *"unknown command: ZZZZNOTACOMMAND"* - a string this
+server made up, in English, shown verbatim inside a German client.
+
+**Fix.** Reply with **3206** (`error.chat.malformedCommand`), which retail already has and
+which was already wired for the bare-`/` case. Live-verified: the German client now renders
+*"Ungultiger Befehl"*.
+
+The verb still goes to the server log. An admin who mistypes `/ANNONCE` wants to know which
+word failed, and the client frame carries no payload to tell them - so the information moves
+to where it is useful rather than being deleted.
+
+**Same class as two earlier fixes**, and worth stating as a rule: 3210 replaced an invented
+English permission error, 3214 replaced a self-whisper echo. Any time this server authors
+player-facing prose, it is almost certainly re-inventing a frame the client already has
+translated into every language it ships with. The remaining `gmFeedback` strings (usage lines,
+command results) are admin-only and have no retail equivalent, so they stay.
+
+Tests: `TestUnknownCommandUsesTranslatedFrame` and `TestUnknownCommandSendsNoInventedText` -
+the second asserts no server-authored English is sent at all, since a frame AND a text line
+would be worse than either alone. 1 mutation caught.
+
+### Live validation of B-139 (sitting)
+
+`/sit` typed in the retail client produces no error reply (it previously answered *"unknown
+command: SIT"*) and the 4601 is CONSUMED - no `[DEFAUT DE CONCEPTION] ... non traite` warning,
+which is how the client reports a frame no active screen handled (see the 6029 note in B-132).
+
+The sit animation itself could not be judged: this client instance cannot load
+`animations.jar` (`AnimCommunes.anm` FileNotFoundException), so no player sprite renders at
+all. Wire and handler are confirmed; the visual is not, and that is an environment limit
+rather than an open question about the code.
+
 ### B-139 - sitting implemented (/sit, /stand, stand-on-move)
 
 **Decided by StarLoco after a live experiment.** The open question was whether the client

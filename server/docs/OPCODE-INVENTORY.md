@@ -242,7 +242,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 3199 | C2S | H | `ak` | **Clan chat send** (`/c`), arch 2: `[u16 len][msg][i64 guildId]`. The client SELF-GATES on having a guild - with none it emits no packet at all - which is why this looked dead before item 31. Now live: the supplied guild id is re-validated against the sender's actual guild |
 | 3202 | S2C | I | ChannelNotFound (qv_0) | **unreachable** - it answers 3151, which the retail client cannot send (`ChannelContentCommand` is referenced by nothing). Vestigial with the rest of the channel family |
 | 3204 | S2C | E | UserNotFoundMessage (ve_1) | emitted on PM to unknown name |
-| 3206 | S2C | E | MalformedCommandMessage (`amd_1`) | EMPTY payload. Sent for a bare `/` GM command, which used to return silently |
+| 3206 | S2C | E | MalformedCommand (`amd_1`) | EMPTY payload. Sent for a bare `/` and for an **unrecognised slash-command** - the latter replaced an invented English string (B-140). Renders translated: *"Ungultiger Befehl"* in the German client, verified live |
 | 3208 | S2C | - | MemberNotFoundMessage (ez_2) | error class, unused |
 | 3210 | S2C | E | NotEnoughPrivilegesMessage (`lx_0`) | EMPTY payload. Sent when a non-admin issues a `/` command; replaces an invented, untranslated English string |
 | 3212 | S2C | I | NotYetImplementedMessage (`adm_0`) | EMPTY payload; constant + the `sendChatError` helper exist, no call site yet. Shows *"error.chat.notYetImplemented"* |
