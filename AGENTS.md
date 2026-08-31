@@ -64,15 +64,22 @@ every opcode, field order and data layout.
    explicit maintainer decision (StarLoco), not by force-adding whatever
    happens to be in a local `server/data/`. Keep `DISCLAIMER.md` and `NOTICE`
    in sync with whatever it contains.
-5. **The web portal, README and release notes link to a maintainer-hosted
-   mirror of the full retail client** (`config.template.yaml` →
-   `web.client_download_url`, defaulted in `internal/config/config.go`). This
-   is a separate, explicit maintainer decision from constraint 4 above — the
-   client itself is still never committed to this repository, only linked. Do
-   not remove the link or treat it as a mistake; do not add more copies of the
-   raw URL beyond the ones already there (`config.go`, `config.template.yaml`,
-   `.goreleaser.yaml`'s `release.footer`, `README.md`) — that is deliberately
-   kept to a short list of places to update if the link ever needs to move.
+5. **Nothing in this project links to a copy of the retail client, and
+   `web.client_download_url` defaults to empty.** This replaces an earlier
+   decision (the default used to be a maintainer-hosted Mega mirror, also
+   printed in the release notes and the README). It was reversed deliberately
+   in the compliance pass, for a reason worth keeping: because it was the
+   *default*, every operator who unzipped a release and ran it republished
+   that link from their own public portal without ever choosing to — spreading
+   the one genuinely unambiguous legal exposure in the project onto strangers
+   who could not weigh it.
+
+   So: **do not re-add the URL** to `config.go`, `config.template.yaml`,
+   `.goreleaser.yaml`'s `release.footer`, `README.md`, or the portal
+   templates, and do not "restore" it thinking it was lost. The config field
+   still exists, so an operator with a lawful copy can opt in under their own
+   name — that is the only path this project supports.
+   `TestNoClientDownloadLinkByDefault` pins the default.
 6. **The wire protocol is sacred.** The retail client cannot be changed, so
    server output must match the decompiled reference in `client/decompiled/` and
    the specs in `client/analysis/`. Never "improve" the wire format.

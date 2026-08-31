@@ -121,11 +121,11 @@ The repo already includes the data the *server* needs
 finds it automatically and nothing below is required just to start the server.
 
 To actually **play**, though, you need your own copy of the **DofusArena 2.70**
-retail client — the game window itself. Don't have it?
-**[Download a mirror here](https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4)**
-(not an official Ankama link — hosted by StarLoco; the running server's web
-portal offers the same link too). Put it at **`client/compiled/`**, so that
-`client/compiled/DofusArena.exe` and `client/compiled/game/core.jar` exist.
+retail client — the game window itself. That client is Ankama's copyrighted
+work: this project does not bundle, commit, host or link it, and you must
+supply a copy you are lawfully entitled to use. Put it at
+**`client/compiled/`**, so that `client/compiled/DofusArena.exe` and
+`client/compiled/game/core.jar` exist.
 
 If you'd rather the server use your own client's data instead of the bundled
 copy (e.g. after a client update), point it there with any of:

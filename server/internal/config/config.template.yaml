@@ -50,11 +50,16 @@ web:
   # and the portal becomes read-only.
   registration_enabled: true
 
-  # A link shown on the portal for players who still need the DofusArena 2.70
-  # client itself - this server never bundles or commits that (see
-  # DISCLAIMER.md), only links to it. Point this at your own mirror, or leave
-  # it blank ("") to hide the link entirely.
-  client_download_url: "https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4"
+  # Optional link shown on the portal for players who still need the DofusArena
+  # 2.70 client itself. It is EMPTY by default and that is deliberate: this
+  # project distributes a server, not the game. The client is Ankama's
+  # copyrighted work and is never bundled, committed or linked by default (see
+  # DISCLAIMER.md).
+  #
+  # Only set this if you have a lawful copy you are entitled to share. Whatever
+  # you put here is published on YOUR portal under YOUR name, so it is your
+  # call to make, not one inherited from the software.
+  client_download_url: ""
 
   # The address players should type into their game client, shown on the portal
   # page. Leave empty to show the address the visitor is already using.
@@ -65,8 +70,21 @@ web:
   # min_password_length: 6
 
   # The name of your server, shown as the title on the website. Leave it out to
-  # use "DofusArena".
+  # use "Arena Reborn".
+  #
+  # Do not name it "DofusArena": that is Ankama's trademark. Describing what
+  # the server runs is fine - the site already does that - but taking the mark
+  # as your site's own identity is what turns a preservation project into a
+  # trademark problem.
   # server_name: "My Arena Server"
+
+  # Published on /legal and /privacy as the address a rights holder writes to
+  # for a takedown, and a player writes to for a GDPR request.
+  #
+  # SET THIS IF YOUR SERVER IS PUBLIC. A takedown page nobody can write to is
+  # not a takedown process, and data-protection law requires a controller to be
+  # reachable. Empty renders an explanatory line instead of a broken link.
+  # contact_email: "you@example.com"
 
   # Keeps players logged in to the website across server restarts.
   #

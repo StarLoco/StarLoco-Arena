@@ -25,13 +25,12 @@ Copyrighted game material — © Ankama Games
                                                               (data.bdat, indexes.bdat,
                                                                maps/{fight,tplg,env}/)
 
-  NOT COMMITTED HERE, BUT LINKED TO AN EXTERNAL MIRROR (git-ignored; the
-  repository, git clone and release archives do not contain it — the
-  maintainer separately hosts and links a personal copy from the GitHub
-  release notes, README.md and the web portal, see DISCLAIMER.md):
+  NOT DISTRIBUTED OR LINKED ANYWHERE BY THIS PROJECT (git-ignored; the
+  repository, git clone and release archives do not contain it, and nothing
+  this project controls links to a copy - not the release notes, not
+  README.md, not the web portal. Players supply their own lawfully obtained
+  copy. See DISCLAIMER.md):
   - DofusArena 2.70 retail client and launcher ........... client/compiled/
-
-  NOT DISTRIBUTED OR LINKED ANYWHERE BY THIS PROJECT (git-ignored):
   - A local scratch copy of your own client's data ....... server/data/
 
   "DofusArena", "Dofus", and all related assets are trademarks and/or

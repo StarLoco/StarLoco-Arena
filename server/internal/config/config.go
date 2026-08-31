@@ -24,16 +24,25 @@ import (
 //go:embed config.template.yaml
 var Template string
 
-// defaultClientDownloadURL is StarLoco's own mirror of the retail client,
-// shown on the web portal so a player who found this project on GitHub has
-// somewhere to get the game itself. It is never committed to this repository
-// (client/compiled/ stays git-ignored — see AGENTS.md constraint 4); only
-// linked. An operator running their own fork can point web.client_download_url
-// at their own mirror, or blank it to hide the link entirely.
+// defaultClientDownloadURL is deliberately EMPTY, and must stay that way.
 //
-// If this link ever needs to move (Mega links do get taken down), update it
-// here, in .goreleaser.yaml's release.footer, and in the root README.md.
-const defaultClientDownloadURL = "https://mega.nz/file/tqwUTaJS#-WhMChKA60e2FBXVSsCtgKOh91x4gA4sRI7wdFDHEk4"
+// This project distributes a server, not a game. The DofusArena 2.70 client is
+// Ankama's copyrighted work (art, audio, the executable, a bundled Oracle JRE),
+// and this repository has never contained it — client/compiled/ is git-ignored,
+// see AGENTS.md constraint 4. For a while the default here pointed at a
+// maintainer-hosted mirror, which meant every operator who unzipped a release
+// and ran it published a link to that mirror from their own public portal
+// without ever choosing to. That put strangers' hosting at risk for a decision
+// only the maintainer had made, so the default is now blank: the link is opt-in.
+//
+// An operator who has their own lawful mirror can still set
+// web.client_download_url and the portal will show it. Nothing else is needed
+// — the templates are already guarded on this being non-empty, so blank simply
+// hides the link everywhere.
+//
+// Keep this in agreement with config.template.yaml (config_template_test.go's
+// TestTemplateIsValid compares the whole Web block against Default()).
+const defaultClientDownloadURL = ""
 
 // Config is the full server configuration.
 type Config struct {
@@ -77,8 +86,24 @@ type WebConfig struct {
 	ClientDownloadURL string `yaml:"client_download_url"`
 	// ServerName brands the portal: it is the name in the header, the page
 	// titles and the landing page's headline. Empty falls back to
-	// "DofusArena".
+	// "Arena Reborn".
+	//
+	// The fallback is deliberately NOT "DofusArena": that is Ankama's
+	// trademark, and a site that brands itself with the mark of a company it
+	// is not affiliated with invites a confusion claim on top of everything
+	// else. Naming the game descriptively ("a server for DofusArena 2.70",
+	// as the pages do) is referential use and is fine; adopting the mark as
+	// your own identity is not.
 	ServerName string `yaml:"server_name"`
+	// ContactEmail is the address published on /legal and /privacy: the route
+	// a rights holder uses to ask for material to be taken down, and the one
+	// a player uses to exercise a GDPR request.
+	//
+	// Empty renders an explanatory line instead of a broken mailto:, but an
+	// operator running a PUBLIC site should set it. A takedown page nobody
+	// can write to is not a takedown process, and under GDPR a controller
+	// must give data subjects a way to reach them.
+	ContactEmail string `yaml:"contact_email"`
 	// SessionSecret keys the HMAC that signs login-session cookies and CSRF
 	// tokens. Leave it empty and the server invents a random one at startup,
 	// which is fine for a local game but logs everybody out on every restart.
@@ -301,6 +326,12 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("ARENA_WEB_CLIENT_DOWNLOAD_URL"); v != "" {
 		c.Web.ClientDownloadURL = v
+	}
+	if v := os.Getenv("ARENA_WEB_CONTACT_EMAIL"); v != "" {
+		c.Web.ContactEmail = v
+	}
+	if v := os.Getenv("ARENA_WEB_SERVER_NAME"); v != "" {
+		c.Web.ServerName = v
 	}
 	// Deliberately env-overridable: a session secret is the one web setting
 	// that is a real credential, and operators should be able to inject it
