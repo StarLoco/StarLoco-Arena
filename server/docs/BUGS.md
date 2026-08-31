@@ -332,6 +332,22 @@ Extracted as a method rather than written inline, because `onClose` cannot be dr
 unit test - it dereferences `s.Account`, which a synthetic session does not have. Testing
 the helper directly also keeps the teardown readable.
 
+**Live-client refinement (validated by injecting 6029).** The retail client decodes 6029 into
+`OJ` but only CONSUMES it while the team-management frame is active. Injected while the
+player was standing in the overworld, the client logged:
+
+```
+WARN [DEFAUT DE CONCEPTION] Message (OJ) non traite, de type 6029, les frames ont toutes retourne true
+```
+
+i.e. every registered frame declined it and the message was dropped with no effect.
+
+That is not a defect in this fix - the scenario 6029 exists for is precisely "the survivor is
+sitting in the fighter picker", where the frame IS active. But it bounds the claim: a partner
+who drops while the survivor has the team panel CLOSED is not notified, because the client
+has nowhere to put the message. There is no retail frame that would tell them either, so this
+is a client limitation rather than something the server can route around. Worth knowing before
+anyone reports "I didn't get told" and it gets chased as a server bug.
 Tests: `TestPartnerDisconnectNotifiesTheOtherHalf`, which asserts the pairing is bound
 BEFORE acting (otherwise it would pass whether or not the notification happened) and that
 the survivor is unpaired afterwards. 2 mutations caught: never notifying, never releasing.
