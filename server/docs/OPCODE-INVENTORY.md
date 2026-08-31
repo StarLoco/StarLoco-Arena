@@ -258,10 +258,10 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 4096 | S2C | E | ActorSpawnMessage (xe_2) | `buildActorSpawn` (AoI seed) |
 | 4098 | S2C | E | ActorDespawnMessage (th_1) | despawn fan-out |
 | 4102 | S2C | E | ActorAppearMessage (aEV) | `buildActorAppearForFight` |
-| 4104 | S2C | - | ActorDisapearMessage (aya_0) | overworld actor removal — not modelled (we use 4098) |
-| 4106 | S2C | - | ActorRepositionMessage (aqb_0) | teleport-without-walk — not modelled |
-| 4309 | S2C | - | FightInvitationErrorMessage (n) | fight-setup error path — not emitted |
-| 4311 | S2C | - | FightCreationCancelMessage (aff_2) | fight-setup cancel — not emitted |
+| 4104 | S2C | - | ActorDisapear (`aya_0`) | `[i16 n]{i64 actorId}` -> `qg_2`. A batched actor removal. **Redundant**: we already despawn via 4098, which the client handles equally well. Nothing is missing from the player's view - this is a second way to say the same thing |
+| 4106 | S2C | - | ActorReposition (`aqb_0`) | `[i16 n]{[i64 actorId][i32 x][i32 y][i16 z]}` -> `qg_2` (clears its list first). The **batched** form of 4510 - teleport several actors without a walk animation. **Blocked by the same precondition as 4510**: AoI membership is seeded in `EnterAoI` and not maintained on movement, and a repositioned actor the receiver has not spawned is exactly the case that NPEs a retail handler (see B-136) |
+| 4309 | S2C | - | FightInvitationError (`n`) | EMPTY payload and **no consumer anywhere** - only the `gz_1` factory names it. Inert: emitting it would tell the player nothing. The fight-setup refusals that DO reach the player go through other frames |
+| 4311 | S2C | - | FightCreationCancel (`aff_2`) | EMPTY payload, **no consumer anywhere**. Inert, exactly like 4309 |
 | 4500 | S2C | E | ActorMovementMessage (avf_0) | `handshake.EncodeActorMovement` |
 | 4501 | C2S | H | CoachActorMovementRequestMessage (aLY) | `handleMovement` |
 | 4503 | C2S | H | FighterActorMovementRequestMessage (md_1) | `handleFighterMoveInFight` |
