@@ -443,6 +443,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 	return &game.Deps{
 		Store:          st,
 		World:          game.NewRegistry(cfg.World.AoIRadius),
+		Rules:          rulesFromConfig(cfg),
 		Cards:          cards,
 		Exchanges:      game.NewExchangeManager(),
 		Spells:         spells,
@@ -522,4 +523,24 @@ func staticEffectsLen(s *gamedata.StaticEffects) int {
 		return 0
 	}
 	return s.Len()
+}
+
+// rulesFromConfig maps the invented-number config onto game.Rules, treating 0 as
+// "use the built-in default" for each field independently. That way an operator
+// can override one number without having to restate the others.
+func rulesFromConfig(cfg config.Config) game.Rules {
+	r := game.DefaultRules()
+	if cfg.Rules.BaseXPPerFight != 0 {
+		r.BaseXPPerFight = cfg.Rules.BaseXPPerFight
+	}
+	if cfg.Rules.StandingWin != 0 {
+		r.StandingWin = cfg.Rules.StandingWin
+	}
+	if cfg.Rules.StandingLoss != 0 {
+		r.StandingLoss = cfg.Rules.StandingLoss
+	}
+	if cfg.Rules.MaxSocialListEntries != 0 {
+		r.MaxSocialListEntries = cfg.Rules.MaxSocialListEntries
+	}
+	return r
 }

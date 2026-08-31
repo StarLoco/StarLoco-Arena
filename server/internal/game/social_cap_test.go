@@ -59,7 +59,7 @@ func TestSocialListCapRefusesWithNotPermitted(t *testing.T) {
 				t.Fatalf("create target account: %v", err)
 			}
 			var firstTarget uint
-			for i := 0; i < maxSocialListEntries; i++ {
+			for i := 0; i < DefaultRules().MaxSocialListEntries; i++ {
 				target, err := d.Store.Coaches.Create(
 					targetAcc.ID, fmt.Sprintf("Target%s%d", tc.name, i), 0, 0, 0)
 				if err != nil {
@@ -87,7 +87,7 @@ func TestSocialListCapRefusesWithNotPermitted(t *testing.T) {
 			}
 			if !full {
 				t.Fatalf("fixture: list is not full at %d entries, so this test "+
-					"could not tell a working cap from a missing one", maxSocialListEntries)
+					"could not tell a working cap from a missing one", DefaultRules().MaxSocialListEntries)
 			}
 
 			// An edge that already exists is not a new entry - re-adding an

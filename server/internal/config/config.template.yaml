@@ -270,3 +270,24 @@ log_level: "info"
 # server. Leave this off unless you are working on the server itself; it grants
 # full control to anything that can reach it.
 # debug_addr: "127.0.0.1:5599"
+
+# ---------------------------------------------------------------------------
+# rules - the numbers this server INVENTED
+#
+# The 2.70 client receives every one of these already computed, so it cannot
+# arbitrate them: there is no retail-correct value to recover, only a value we
+# chose. They are exposed here so you can tune your server without patching Go,
+# and so they are never mistaken for protocol facts.
+#
+# Leave a value at 0 (or omit it) to use the built-in default shown below.
+# ---------------------------------------------------------------------------
+rules:
+  # XP a fight awards before morale and card-set bonuses.
+  base_xp_per_fight: 100
+  # Evolution-standing awarded for a ranked win / loss. The client renders a
+  # level derived from total standing, never the per-fight delta.
+  standing_win: 10
+  standing_loss: 3
+  # Cap on the friend list and the ignore list. The client carries the refusal
+  # message but no limit of its own, so this is enforced server-side.
+  max_social_list_entries: 100

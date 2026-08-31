@@ -244,7 +244,7 @@ var _ = gorm.ErrRecordNotFound
 // from the client. 100 follows the Dofus-lineage convention and is high enough
 // that no ordinary player reaches it; it exists so the list cannot grow without
 // bound. Change it freely - nothing on the wire depends on it.
-const maxSocialListEntries = 100
+// maxSocialListEntries moved to Rules.MaxSocialListEntries (configurable).
 
 // socialListFull reports whether adding targetID would push the coach past
 // maxSocialListEntries. An edge that already exists is not a new entry, so
@@ -279,5 +279,5 @@ func (s *Session) socialListFull(db *gorm.DB, kind socialKind, targetID uint) (b
 	if exists > 0 {
 		return false, nil
 	}
-	return count >= maxSocialListEntries, nil
+	return int(count) >= s.deps.rules().MaxSocialListEntries, nil
 }

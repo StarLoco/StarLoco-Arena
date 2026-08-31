@@ -71,9 +71,9 @@ func TestANewFighterCanAffordItsFirstSphere(t *testing.T) {
 			t.Errorf("board %d: no priced node is reachable from the root at all", id)
 			continue
 		}
-		if cheapest > baseXPPerFight {
+		if cheapest > DefaultRules().BaseXPPerFight {
 			t.Errorf("board %d: the cheapest reachable node costs %d xp but a fight pays %d - "+
-				"a new fighter could never start", id, cheapest, baseXPPerFight)
+				"a new fighter could never start", id, cheapest, DefaultRules().BaseXPPerFight)
 		}
 	}
 	if checked != 12 {
@@ -108,7 +108,7 @@ func TestTheMostExpensiveSphereIsBuyable(t *testing.T) {
 // its level ladder, so the Kanodo is a series of CHOICES rather than a checklist -
 // "apprendre a parcourir intelligemment le kanodo", as the client puts it.
 //
-// A tripwire, not a rule of nature: if someone retunes baseXPPerFight or the level
+// A tripwire, not a rule of nature: if someone retunes DefaultRules().BaseXPPerFight or the level
 // steps until a fighter can simply buy everything, that is a design change and
 // should have to be made deliberately.
 func TestABoardOutlastsAFightersLevelLadder(t *testing.T) {

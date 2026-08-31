@@ -44,7 +44,7 @@ const (
 //
 // Chosen so that a fighter at neutral morale needs a plausible number of fights
 // to clear level 1 (860 XP → ~9 fights) rather than to feel tuned.
-const baseXPPerFight int32 = 100
+// baseXPPerFight moved to Rules.BaseXPPerFight (configurable). The constant is\n// gone deliberately: leaving it would let a call site silently bypass config.
 
 // timeChallengeXPPerTurn mirrors the one XP rule the client DOES compute itself
 // (WE.java, time challenges): turns/2 rounded両 ways, times the challenge's own
@@ -148,7 +148,7 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 				hours := hoursSince(fr.LastFightAt, now)
 
 				// 1. XP: base, scaled by morale, then the rest bonus.
-				rep.applyXP(baseXPPerFight, hours, int8(clampInt32(int32(fr.Morale), 0, maxMorale)))
+				rep.applyXP(f.deps.rules().BaseXPPerFight, hours, int8(clampInt32(int32(fr.Morale), 0, maxMorale)))
 				// 2. Gear/set XP modifiers stack onto the final figure only. A HEAD
 				//    WOUND lives here too: it is a meta effect (AI 1, -10%/-20% XP),
 				//    which is why the fighter's own conditions are summed in.
@@ -231,7 +231,7 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 			}
 
 			// Coach reputation for the fight itself, plus any set bonus.
-			standing := standingForResult(won) + teamStanding
+			standing := f.deps.standingForResult(won) + teamStanding
 			if standing < 0 {
 				standing = 0
 			}
@@ -283,11 +283,11 @@ func fightFeedsProgression(f *Fight) bool {
 // wire (`YP.cbG`) and is not derivable from the client. A win being worth more
 // than a loss — and a loss still being worth something — is the shape every
 // Ankama progression uses, but the magnitudes here are ours.
-func standingForResult(won bool) int32 {
+func (d *Deps) standingForResult(won bool) int32 {
 	if won {
-		return 10
+		return d.rules().StandingWin
 	}
-	return 3
+	return d.rules().StandingLoss
 }
 
 // sessionSetBonus is setBonusFor guarded for an absent session (a coach can

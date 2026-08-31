@@ -9,6 +9,9 @@ import (
 
 // Deps is the dependency container every handler closure captures.
 type Deps struct {
+	// Rules are the server-invented numbers (XP, standing, social caps). Zero
+	// value means "use DefaultRules" - see rules.go.
+	Rules    Rules
 	Store    *store.Store
 	World    *Registry
 	Cards    *gamedata.Cards    // nil if data files absent

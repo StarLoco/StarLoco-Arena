@@ -60,6 +60,7 @@ type Config struct {
 	UpdateCheck UpdateCheckConfig `yaml:"update_check"`
 	DB          DBConfig          `yaml:"db"`
 	World       WorldConfig       `yaml:"world"`
+	Rules       RulesConfig       `yaml:"rules"`
 }
 
 // WebConfig configures the browser-facing portal where players register their
@@ -186,6 +187,25 @@ type UpdateCheckConfig struct {
 }
 
 // WorldConfig tunes overworld behavior.
+// RulesConfig holds the numbers this server INVENTED. The 2.70 client receives
+// every one of them already computed, so it cannot arbitrate any of them - there
+// is no retail-correct value to recover, only a value we chose. They live here so
+// an operator can tune them without patching Go, and so nobody mistakes them for
+// protocol facts. 0 means "use the built-in default".
+type RulesConfig struct {
+	// BaseXPPerFight is the XP a fight awards before morale and set bonuses.
+	// Default 100.
+	BaseXPPerFight int32 `yaml:"base_xp_per_fight"`
+	// StandingWin / StandingLoss are the evolution-standing deltas after a ranked
+	// fight. The client renders a level derived from standing, never the delta.
+	// Defaults 10 and 3.
+	StandingWin  int32 `yaml:"standing_win"`
+	StandingLoss int32 `yaml:"standing_loss"`
+	// MaxSocialListEntries caps the friend list and the ignore list. The client
+	// carries the refusal (chat error 3216) but no limit of its own, so retail
+	// enforced this server-side with a number that is not recoverable. Default 100.
+	MaxSocialListEntries int `yaml:"max_social_list_entries"`
+}
 type WorldConfig struct {
 	// AoIRadius is the area-of-interest radius in cells: overworld events (chat,
 	// movement, spawn) only reach coaches within this distance of the source, so
