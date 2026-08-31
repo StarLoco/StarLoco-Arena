@@ -12,6 +12,10 @@ type Online struct {
 	Coach   *domain.Coach
 	Session *Session
 	inFight bool
+	// sitting is the coach's sit state (client flag dBg / 0x40 in the actor blob,
+	// toggled in bulk by 4601). In-memory only: standing up on relog is the
+	// friendlier default and nothing persists it retail-side either.
+	sitting bool
 	// known is the set of other coach ids this coach currently has spawned in
 	// its client (its area of interest). Guarded by the registry lock.
 	known map[uint]bool
@@ -33,6 +37,9 @@ type CoachView struct {
 	// evolution LEVEL shown next to the name, so a hardcoded 0 made every other
 	// coach in the world render as level 1.
 	Standing int32
+	// Sitting drives the actor blob's dBg byte, which makes the client play
+	// AnimAssis-Debut the moment the coach spawns into someone's view.
+	Sitting bool
 }
 
 // Registry tracks online coaches for presence, spawn fan-out and chat.
@@ -113,6 +120,7 @@ func viewOf(o *Online) CoachView {
 	return CoachView{
 		ID: c.ID, Name: c.Name, Hair: c.Hair, Skin: c.Skin, Sex: c.Sex,
 		PosX: c.PosX, PosY: c.PosY, PosZ: c.PosZ, Standing: c.Standing,
+		Sitting: o.sitting,
 	}
 }
 
@@ -317,13 +325,37 @@ func (r *Registry) EnterAoI(coachID uint) (spawnToJoiner []CoachView, joinerView
 
 // LeaveAoI clears a leaving coach from all known sets and returns the sessions
 // that currently see it (to send a despawn).
+// SetSitting records a coach's sit state and reports whether it CHANGED, so a
+// caller can skip broadcasting a no-op (standing up when already standing).
+func (r *Registry) SetSitting(coachID uint, sitting bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	o := r.byID[coachID]
+	if o == nil || o.sitting == sitting {
+		return false
+	}
+	o.sitting = sitting
+	return true
+}
+
+// IsSitting reports a coach's sit state.
+func (r *Registry) IsSitting(coachID uint) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	o := r.byID[coachID]
+	return o != nil && o.sitting
+}
+
 // ViewersOf returns the sessions whose client currently HAS this coach spawned,
 // i.e. those whose AoI known-set contains it. Non-destructive.
 //
 // Use this, not SessionsNear, for any frame that makes the client look an actor
 // up by id. SessionsNear is raw proximity and can include a session that never
-// received an ActorSpawn for the coach (AoI membership is seeded in EnterAoI and
-// is not maintained incrementally on movement). The retail client does not guard
+// received an ActorSpawn for the coach. Walking DOES keep AoI in step (ApplyMove
+// computes the enter/leave diff), but the teleports do not: /TP, Zaap travel and
+// /resetPosition go through UpdatePosition, which only records coordinates, and
+// re-seed AoI via a full EnterAoI. Between those two mechanisms proximity and
+// membership can disagree. The retail client does not guard
 // those lookups: `no_2` case 4700 dereferences the result of `bd_1.Is().bb(id)`
 // with no null check, so an unknown actor id throws NullPointerException and the
 // whole message is dropped - verified live against the retail client.

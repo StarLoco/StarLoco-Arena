@@ -16,6 +16,17 @@ import (
 // Feedback is sent back as a private message from "Server". Commands are gated
 // on the account's IsAdmin flag.
 func handleGMCommand(s *Session, line string) error {
+	// Player commands are handled BEFORE the admin gate. /sit and /stand are not
+	// GM tools - the retail client forwards them here like any other slash-line
+	// (it has no sit UI of its own), so this is simply where they arrive.
+	if verb := playerCommandVerb(line); verb != "" {
+		switch verb {
+		case "SIT":
+			return s.setSitting(true)
+		case "STAND":
+			return s.setSitting(false)
+		}
+	}
 	if s.Account == nil || !s.Account.IsAdmin {
 		// The client has its own localised string for this
 		// ("error.chat.notEnoughPrivileges"); the invented English one it used to
@@ -440,4 +451,20 @@ func (d *Deps) broadcastServerMessage(msg string) int {
 		}
 	}
 	return n
+}
+
+// playerCommandVerb returns the upper-cased verb of a slash-line if it is one of
+// the commands ANY player may use, or "" otherwise. Kept as an explicit allow
+// list: everything not named here still falls through to the admin gate, so a
+// new command cannot become world-readable by accident.
+func playerCommandVerb(line string) string {
+	fields := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "/"))
+	if len(fields) == 0 {
+		return ""
+	}
+	switch v := strings.ToUpper(fields[0]); v {
+	case "SIT", "STAND":
+		return v
+	}
+	return ""
 }

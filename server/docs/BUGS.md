@@ -187,6 +187,37 @@ belongs to the coach.
 
 ## Fixed
 
+### B-139 - sitting implemented (/sit, /stand, stand-on-move)
+
+**Decided by StarLoco after a live experiment.** The open question was whether the client
+sits a coach on its own. It does not: typing `/sit` forwards it to the server exactly like
+any other slash-line - the retail client showed no local reaction and our own handler replied
+*"unknown command: SIT"*, identical to a control `/zzzznotacommand`. So a coach can ONLY ever
+appear seated because the server said so.
+
+**Two mechanisms, both required.**
+  - The actor blob's `dBg` byte (flag 0x40), read on spawn: `no_2.g` plays `AnimAssis-Debut`
+    when an actor arrives with it set. This covers *"was already sitting when you got there"*.
+    We previously wrote a hardcoded 0 here.
+  - **4601**, which toggles it for coaches already on screen. This covers *"sat down while you
+    were watching"*.
+
+**Behaviour.** `/sit` and `/stand` are available to every player - they are handled BEFORE the
+admin gate, via an explicit allow list so no admin verb can slip through that door. Walking
+stands the coach up: without it a coach would slide across the ground in a sitting pose on
+every client that has it spawned. Sitting while already seated emits nothing, or the client
+would visibly re-seat itself on each repeat.
+
+Addressed by AoI membership (`ViewersOf`), not proximity - 4601 makes the client resolve each
+id against its spawned actors, and an unknown id is the case that NPEs a retail handler
+(B-136).
+
+**A mutation that escaped first time.** Swapping the sitting/standing lists still produces a
+well-formed 4601 - it just stands the coach up instead of seating it. The original wire test
+called `buildSitStand` directly, so it could not see the swap, and the broadcast test only
+asserted that *a* frame arrived. Both tests now assert WHICH list the id is in, from both
+sides. 4 mutations caught after the fix.
+
 ### B-138 - fighters never reacted to critical hits
 
 **Not a bug so much as an absent feature, implemented to an explicit product decision.**

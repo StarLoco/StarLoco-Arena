@@ -251,8 +251,10 @@ func writeCoachActor(w *protocol.Writer, v CoachView) {
 	// bMU (0x400): standing — the coach's evolution experience, which the client
 	// turns into the evolution level it renders (aet_0.nJ / StandingToLevel).
 	w.I32(v.Standing)
-	// dBg (0x40): bool
-	w.U8(0)
+	// dBg (0x40): the sit flag. no_2.g plays AnimAssis-Debut when an actor
+	// spawns with this set, so a coach that sat down before you arrived is
+	// already sitting when it appears in your view.
+	w.U8(boolByte(v.Sitting))
 	// W (0x20): guild blob (empty)
 	w.U16(0)
 	// S (0x2): descriptor/linkage blob (empty)

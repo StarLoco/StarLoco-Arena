@@ -490,6 +490,11 @@ const (
 	// OpFighterOuch pops the "ouch !" bubble over a fighter (of_1 case 4902).
 	// [i32][i32][i64 fighterId] - the two header i32s come from ue_0.o and are
 	// NOT read by the handler, which uses only the fighter id.
+	// OpSitStand toggles the sit state of coaches already on screen:
+	// [i16 n]{i64 sitting}[i16 n]{i64 standing}. Server-driven only - the
+	// client has no sit UI and never requests it.
+	OpSitStand = 4601 // S2C afV
+
 	OpFighterOuch             = 4902 // S2C aiz_0
 	OpEmotePlay               = 4701 // C2S JY:     [u8 nameLen][name][i32 emoteId]
 	OpEmotePlayed             = 4700 // S2C azt_0:  [i64 actorId][u8 nameLen][name]

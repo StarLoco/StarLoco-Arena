@@ -39,6 +39,12 @@ func handleMovement(s *Session, f *protocol.C2SFrame) error {
 	// Update position + compute the area-of-interest diff (who enters/leaves
 	// view) in one pass, then send the exact spawn/despawn/move frames.
 	last := steps[len(steps)-1]
+	// Walking stands the coach up. A coach that walks off while still flagged
+	// sitting would slide across the ground in a sitting pose on every client
+	// that has it spawned. Done BEFORE the move so the 4601 reaches the viewers
+	// that can still see it.
+	s.standIfSitting()
+
 	d := s.deps.World.ApplyMove(s.Coach.ID, last.X, last.Y, last.Z)
 
 	// Coaches that entered the mover's view: spawn them to the mover.
