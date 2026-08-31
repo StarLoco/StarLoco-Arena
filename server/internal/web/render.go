@@ -31,6 +31,26 @@ var templateFuncs = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
 	"sub": func(a, b int) int { return a - b },
 
+	// cfEmailOff / cfEmailOn bracket a region that Cloudflare's "Email Address
+	// Obfuscation" (Scrape Shield) must leave alone.
+	//
+	// That feature rewrites any address it finds into
+	// <span class="__cf_email__" data-cfemail="..."> and injects
+	// /cdn-cgi/scripts/.../email-decode.min.js to decode it in the browser.
+	// This portal's CSP is `default-src 'none'` with no script-src, so that
+	// decoder is BLOCKED and the address renders to every visitor as the
+	// literal text "[email protected]" — which silently breaks the one thing
+	// /legal and /privacy exist to provide: a way to contact the operator.
+	//
+	// Cloudflare honours these HTML comments as an opt-out. They have to be
+	// emitted as template.HTML because html/template strips comments written
+	// literally in template source, so they would never reach the CDN.
+	//
+	// Harmless on a deployment with no Cloudflare in front of it: they are
+	// just comments.
+	"cfEmailOff": func() template.HTML { return template.HTML("<!--email_off-->") },
+	"cfEmailOn":  func() template.HTML { return template.HTML("<!--email_on-->") },
+
 	// formatUptime renders a second count compactly: "2d 4h", "13m 6s", "42s".
 	"formatUptime": func(seconds int64) string {
 		if seconds < 0 {

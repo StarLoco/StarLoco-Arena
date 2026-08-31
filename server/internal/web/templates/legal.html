@@ -31,7 +31,7 @@
       <div class="card-title">{{t "legal.takedown.title"}}</div>
       <p class="mb-2">{{t "legal.takedown.body"}}</p>
       {{if .ContactEmail}}
-      <p class="mb-0"><a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>
+      {{cfEmailOff}}<p class="mb-0"><a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>{{cfEmailOn}}
       {{else}}
       <p class="mb-0 small muted">{{t "legal.takedown.nocontact"}}</p>
       {{end}}

@@ -56,7 +56,7 @@
     <div class="card mb-3">
       <div class="card-title">{{t "privacy.contact.title"}}</div>
       {{if .ContactEmail}}
-      <p class="mb-0"><a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>
+      {{cfEmailOff}}<p class="mb-0"><a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>{{cfEmailOn}}
       {{else}}
       <p class="mb-0 small muted">{{t "privacy.contact.none"}}</p>
       {{end}}

@@ -105,6 +105,37 @@ func TestTakedownContactIsShownOrExplained(t *testing.T) {
 	}
 }
 
+// Cloudflare's Email Address Obfuscation rewrites any address it finds and
+// injects a script to decode it. This portal's CSP forbids scripts outright,
+// so behind Cloudflare that decoder never runs and the address renders as the
+// literal string "[email protected]" — the contact route silently dies while
+// every test still passes. It shipped exactly that way once.
+//
+// The <!--email_off--> markers are Cloudflare's documented opt-out. They must
+// survive into the response body, which is why they are emitted as
+// template.HTML: html/template strips comments written in template source.
+func TestContactAddressIsExemptFromCDNEmailObfuscation(t *testing.T) {
+	p := newPortalWith(t, func(c *config.WebConfig) {
+		c.ContactEmail = "takedown@example.com"
+	})
+
+	for _, path := range []string{"/legal", "/privacy"} {
+		body := p.get(path).Body
+		off := strings.Index(body, "<!--email_off-->")
+		on := strings.Index(body, "<!--email_on-->")
+		addr := strings.Index(body, "mailto:takedown@example.com")
+
+		switch {
+		case off < 0 || on < 0:
+			t.Errorf("%s: the Cloudflare email-obfuscation opt-out markers are missing "+
+				"(html/template strips literal comments - they must be template.HTML)", path)
+		case addr < off || addr > on:
+			t.Errorf("%s: the contact address sits outside the email_off region, "+
+				"so a CDN will still obfuscate it", path)
+		}
+	}
+}
+
 func TestLegalPagesAreCrawlable(t *testing.T) {
 	p := newPortal(t)
 	sitemap := p.get("/sitemap.xml")
