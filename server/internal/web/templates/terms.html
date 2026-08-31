@@ -8,8 +8,25 @@
     <p class="lede mb-4">{{t "terms.lede"}}</p>
 
     <div class="card mb-3">
+      <div class="card-title">{{t "terms.publisher.title"}}</div>
+      <p class="mb-2">{{t "terms.publisher.body"}}</p>
+      {{if .ContactEmail}}
+      {{cfEmailOff}}<p class="mb-2">{{t "legal.publisher.contact"}}
+        <a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>{{cfEmailOn}}
+      {{end}}
+      {{if .Host}}<p class="mb-0 small muted">{{t "legal.publisher.host"}} {{.Host}}</p>{{end}}
+    </div>
+
+    <div class="card mb-3">
       <div class="card-title">{{t "terms.service.title"}}</div>
       <p class="mb-0">{{t "terms.service.body"}}</p>
+    </div>
+
+    {{/* GDPR art. 8: France sets the digital-consent age at 15, which is
+         higher than the 13 the regulation allows a member state to choose. */}}
+    <div class="card mb-3">
+      <div class="card-title">{{t "terms.age.title"}}</div>
+      <p class="mb-0">{{t "terms.age.body"}}</p>
     </div>
 
     <div class="card mb-3">
@@ -34,10 +51,24 @@
 
     <div class="card mb-3">
       <div class="card-title">{{t "terms.termination.title"}}</div>
-      <p class="mb-0">{{t "terms.termination.body"}}</p>
+      <p class="mb-2">{{t "terms.termination.body"}}</p>
+      <p class="mb-0 small muted">{{t "terms.termination.appeal"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "terms.closure.title"}}</div>
+      <p class="mb-0">{{t "terms.closure.body"}}</p>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-title">{{t "terms.law.title"}}</div>
+      <p class="mb-2">{{t "terms.law.body"}}</p>
+      <p class="mb-0 small muted">{{t "terms.law.language"}}</p>
     </div>
 
     <p class="small muted mt-3 mb-0">{{t "terms.changes"}}</p>
+    <p class="small muted mt-2 mb-0">{{t "terms.severability"}}</p>
+    <p class="small muted mt-2 mb-0">{{t "legal.version"}} {{.Version}} — {{t "legal.updated"}} {{.Updated}}</p>
   </div>
 </section>
 {{end}}

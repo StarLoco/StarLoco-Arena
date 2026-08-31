@@ -86,6 +86,16 @@ web:
   # reachable. Empty renders an explanatory line instead of a broken link.
   # contact_email: "you@example.com"
 
+  # The company hosting this server, shown in the legal notice.
+  #
+  # SET THIS IF YOUR SERVER IS PUBLIC, and give the legal entity plus its
+  # address. Under French law (LCEN art. 6 III-2) an operator publishing in a
+  # non-professional capacity may keep their own name off the site ONLY if the
+  # host is named and holds their identity; most of the EU has an equivalent
+  # rule. Leaving this empty does not make you anonymous, it makes the legal
+  # notice incomplete.
+  # hosting_provider: "IONOS SE, Elgendorfer Strasse 57, 56410 Montabaur, Germany"
+
   # Keeps players logged in to the website across server restarts.
   #
   # Leave this empty and the server makes up a new random key every time it

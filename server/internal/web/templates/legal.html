@@ -7,6 +7,20 @@
     <h1>{{t "legal.title"}}</h1>
     <p class="lede mb-4">{{t "legal.lede"}}</p>
 
+    {{/* Publisher + host identification. LCEN art. 6 III-2 lets a
+         non-professional publisher stay anonymous ONLY if the host is named,
+         so this block is what makes the anonymity lawful rather than simply
+         missing. */}}
+    <div class="card mb-3">
+      <div class="card-title">{{t "legal.publisher.title"}}</div>
+      <p class="mb-2">{{t "legal.publisher.body"}}</p>
+      {{if .ContactEmail}}
+      {{cfEmailOff}}<p class="mb-2">{{t "legal.publisher.contact"}}
+        <a class="accent" href="mailto:{{.ContactEmail}}">{{.ContactEmail}}</a></p>{{cfEmailOn}}
+      {{end}}
+      {{if .Host}}<p class="mb-0 small muted">{{t "legal.publisher.host"}} {{.Host}}</p>{{end}}
+    </div>
+
     <div class="card mb-3">
       <div class="card-title">{{t "legal.affiliation.title"}}</div>
       <p class="mb-0">{{t "legal.affiliation.body"}}</p>
@@ -38,6 +52,7 @@
     </div>
 
     <p class="small muted mt-3 mb-0">{{t "legal.trademarks"}}</p>
+    <p class="small muted mt-2 mb-0">{{t "legal.version"}} {{.Version}} — {{t "legal.updated"}} {{.Updated}}</p>
   </div>
 </section>
 {{end}}

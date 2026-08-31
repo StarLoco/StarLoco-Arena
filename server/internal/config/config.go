@@ -104,6 +104,18 @@ type WebConfig struct {
 	// can write to is not a takedown process, and under GDPR a controller
 	// must give data subjects a way to reach them.
 	ContactEmail string `yaml:"contact_email"`
+	// HostingProvider names the company hosting this server, shown in the
+	// legal notice.
+	//
+	// This is not decoration. Under French law (LCEN art. 6 III-2) an operator
+	// publishing in a NON-professional capacity may keep their own name off the
+	// site, but only on condition that the host is named and holds their real
+	// identity. Leave this empty and that anonymity is not lawful - it is just
+	// an incomplete legal notice. Equivalent duties exist elsewhere in the EU.
+	//
+	// Give the legal entity and its address, e.g.
+	// "IONOS SE, Elgendorfer Strasse 57, 56410 Montabaur, Germany".
+	HostingProvider string `yaml:"hosting_provider"`
 	// SessionSecret keys the HMAC that signs login-session cookies and CSRF
 	// tokens. Leave it empty and the server invents a random one at startup,
 	// which is fine for a local game but logs everybody out on every restart.
@@ -329,6 +341,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("ARENA_WEB_CONTACT_EMAIL"); v != "" {
 		c.Web.ContactEmail = v
+	}
+	if v := os.Getenv("ARENA_WEB_HOSTING_PROVIDER"); v != "" {
+		c.Web.HostingProvider = v
 	}
 	if v := os.Getenv("ARENA_WEB_SERVER_NAME"); v != "" {
 		c.Web.ServerName = v
