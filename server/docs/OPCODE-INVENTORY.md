@@ -194,12 +194,12 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 2303 | C2S | H | OpponentSearchCancelMessage (adj_0) | `handleOpponentSearchCancel` |
 | 2304 | S2C | E | OpponentSearchInProgressMessage (Hf) | matchmaking "searching…" |
 | 2306 | S2C | E | OpponentSearchCancelResultMessage (tj_2) | |
-| 2307 | S2C | - | (bx_1) | unidentified |
+| 2307 | S2C | - | (`bx_1`) | `[i64][i32 len][utf8][i32 len][utf8][i16]...` -> `ft_1`. Note the **i32** string lengths, unlike the `u8`/`u16` used elsewhere |
 | 2308 | C2S | H | (Pg) | `handleMatchAcceptAlt` |
-| 2309 | S2C | - | (cJ) | unidentified |
+| 2309 | S2C | - | (`cJ`) | `[i8 bool]` -> `ft_1`. Same subsystem as 2307 |
 | 2400 | S2C | E | PlayerStatisticsReportMessage (pl_1) | `buildPlayerStatisticsReport` |
-| 2401 | S2C | - | (uf_0) | unidentified (stats family) |
-| 2411 | S2C | - | (HJ) | unidentified (stats family) |
+| 2401 | S2C | - | PlayerStatisticsReport (`uf_0`) | `[i16 len][serialized blob]` deserialized by `arq_0.aEv().aa(...)` into a `PlayerStatisticsReport` and handed to `sj_1.a(...)`. The field names are visible in `sj_1`: statisticsTotalFights, ...Won, ...Lost, ConsecutiveWins, ConsecutiveLosses, TotalFightsTime, TotalPlayTime. Not implemented because the payload is a **Java-serialized object**, not a flat struct - reproducing it means matching their serializer exactly |
+| 2411 | S2C | - | (`HJ`) | `[i32 n]` then n x `{i16,i16,i16,i32,i32,i32}` into six parallel lists. **Read BACKWARDS** (`for j = n-1; 0 <= j; --j`) - the same trap as `Yq`/28620, so a server writing these in natural order would deliver them reversed. Stats family, alongside 2401 |
 | 2600 | C2S | H | GuildMemberStats (mL) | `handleGuildMemberStats` |
 | 2601 | S2C | E | GuildMemberReport (mL family) | reply to 2600 |
 
@@ -310,7 +310,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 5201 | C2S | H | CoachEquipmentUpdateRequestMessage (aEl) | `handleEquipmentRequest` |
 | 5202 | S2C | I | CoachEquipmentUpdate (yz_2) | **intentionally inactive** � a coach's overworld avatar is hair/skin/sex (already sent correct at ActorSpawn); "equipment" is cards/deck (gameplay), delivered per-fight via 8000. Broadcasting it re-skins nothing visible |
 | 5203 | C2S | H | CoachInventoryUpdateRequestMessage (fh_0) | `handleInventoryRequest` |
-| 5204 | C2S | - | (ajm_2) | unidentified (inventory family) |
+| 5204 | C2S | - | (`ajm_2`) | `[i32]`, constructed in `by_0` and `ST` so the client really can send it. Inventory family; the i32's meaning is not established. Blocked by the same wall as item 14 / 5203 - inventory cards have no server-assigned identity |
 | 5300 | C2S | H | ShopOpen (yg) | `handleShopOpen` � **no-op**: 5300 is the client debug console, not the shop; the Card Master opens via 201 |
 | 5301 | ? | - | (axZ) | unidentified stub (shop close?) |
 | 5400 | C2S | H | ShopBarter (aOo) | `handleShopBarter` |
@@ -386,7 +386,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 8200 | S2C | E | FightActionSequenceExecute (ayj_0) | action flush barrier |
 | 8250 | S2C | - | (`wc_2`) | `[i64 coachId][i8 flag]`. `aez_0.nw(1)` when true, `nw(2)` when false; if the id is the local coach and the flag is false it shows **"cheat.turnDuration.decreased"**. This is a **turn-duration penalty** toggle. Not implemented: the wire is settled but nothing in the client says what earns the penalty - that is an anti-cheat policy decision, not a protocol gap |
 | 8300 | S2C | E | EndFightMessage (YP) | fight result screen |
-| 8400 | S2C | - | (aBZ) | unidentified (fight family) |
+| 8400 | S2C | - | (`aBZ`) | EMPTY payload, `a(byte[])` is `return true`, and **no consumer anywhere** - only the `gz_1` factory references it. Inert, exactly like 27552 |
 
 ### 15000 – 17010 — unidentified subsystems
 
@@ -403,8 +403,8 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 15507 | S2C | E | MailNameResult (afj_2) | `0` = no such coach |
 | 17002 | C2S | H | TournamentCalReq (yq_1) | `handleTournamentCalendarRequest` (TournamentTotem) |
 | 17003 | S2C | E | TournamentCalendar (awa_0) | `buildTournamentCalendar` — standing tournaments as typeId=4 qr_0 events |
-| 17004 | C2S | - | (fu_2) | unidentified subsystem |
-| 17005 | S2C | - | (aef_1) | unidentified subsystem |
+| 17004 | C2S | - | (`fu_2`) | `[i64]`, constructed in `acL`. Sendable by retail |
+| 17005 | S2C | - | (`aef_1`) | `[i32 typeId]` followed by a **polymorphic** payload: the client resolves `tb_0.zl().dD(typeId)` to an `iz_0` and lets IT read the rest. Consumed by **`zN`** (line 58), so this 17xxx block is tournament-adjacent rather than an unknown subsystem. Not implemented: the payload shape depends on a type registry we do not model |
 | 17006 | C2S | - | (agh_2) | unidentified subsystem |
 | 17008 | C2S | - | (ald_2) | unidentified subsystem |
 | 17010 | C2S | - | (aFu) | unidentified subsystem |
@@ -447,7 +447,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 
 | Op | Dir | St | Client class | Notes |
 |---|---|---|---|---|
-| 25000 | S2C | - | (az) | unidentified |
+| 25000 | S2C | - | (`az`) | `[i8]` -> consumed by **`zN`** (line 203) - the tournament handler, not a separate subsystem. Meaning of the byte not established |
 | 26300 | S2C | E | (wu_2) | `ChallengeInvitation` (both sides) |
 | 26301 | C2S | H | (hk_1) | `handleChallengeInvite` |
 | 26302 | S2C | E | (pu_1) | `ChallengeAccepted` (open team panel) |
