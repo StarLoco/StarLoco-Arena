@@ -279,6 +279,11 @@ func (s *Session) completeLogin(coach *domain.Coach) error {
 	if err := s.pushTeamPresetList(); err != nil {
 		return err
 	}
+	// Push the lifetime statistics report (2401). Failure is logged, not
+	// returned: a stats panel is not worth refusing a login over.
+	if err := s.sendPlayerStatistics(); err != nil {
+		s.log.Warn("push statistics", "coach", coach.Name, "err", err)
+	}
 
 	return s.enterWorld(coach)
 }

@@ -187,6 +187,41 @@ belongs to the coach.
 
 ## Fixed
 
+### B-141 - the statistics panel was never populated (2401)
+
+**Shipped after correcting my own cost estimate**, which had kept this closed. I had recorded
+2401 as "a Java-serialized object - matching their serializer byte-for-byte", and repeated that
+as a days-of-work figure. Opening the parser took ten minutes and showed an ordinary typed map:
+
+```
+[i16 blobLen][i16 modelId][i64 ownerId][i16 count]
+  count x { [i16 statId][i8 type][value] }     type: 1=i32(4B) 2=i64(8B) 3=float32(4B)
+```
+
+"Serialized" in the decompiled source described a MODEL LOOKUP (`arq_0.aa` reads a model id,
+finds the model, hands it the buffer). I estimated from a type name instead of the code that
+reads the bytes.
+
+**The stat ids are exact, not inferred.** `PlayerStatisticsReport` is the one UNOBFUSCATED
+class in the client, and its getters read the ids literally - `dJ() { return this.V((short)4); }`
+is fights-won = 4. Full set: 1 playTime(i64), 2 fightTime(i64), 3 fights, 4 won, 5 lost,
+6 unknown (`dN`, no bound UI property), 7 consecutive wins, 8 consecutive losses.
+
+**modelId = 1 was verified against a live client, not guessed.** `arq_0.aa` refuses an unknown
+model by name, so the value is directly testable: injected 0, 2 and 3 were each refused
+("le modele n'est pas reconnu : modelId=N") while 1 was accepted silently. A full five-entry
+report at modelId 1 then decoded with no error, and now arrives on login the same way.
+
+**The map is sparse on purpose.** Play time and total fight time are not measured by this
+server; sending 0 would be indistinguishable from "you have played zero seconds", so they are
+omitted and the client reads its own default. A test asserts they stay out.
+
+**A tautological test, caught by mutation.** The first version compared the encoded modelId
+against `statsReportModelID` - the same constant it came from - so changing the constant
+changed both sides and the mutation survived. It now compares against the literal 1, with the
+live experiment recorded next to it as the way to re-derive it. That is the field where being
+wrong costs the ENTIRE report rather than one number. 5 mutations caught after the fix.
+
 ### B-140 - unknown slash-commands answered with invented English
 
 **Symptom.** Mistyping a command produced *"unknown command: ZZZZNOTACOMMAND"* - a string this

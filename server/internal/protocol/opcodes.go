@@ -493,7 +493,12 @@ const (
 	// OpSitStand toggles the sit state of coaches already on screen:
 	// [i16 n]{i64 sitting}[i16 n]{i64 standing}. Server-driven only - the
 	// client has no sit UI and never requests it.
-	OpSitStand = 4601 // S2C afV
+	// OpPlayerStatistics carries the coach's lifetime statistics report:
+	// [i16 blobLen][blob], blob = [i16 modelId][i64 ownerId][i16 n] then n x
+	// {[i16 statId][i8 type][value]} with type 1=i32, 2=i64, 3=float32.
+	// Stat ids come from the UNOBFUSCATED PlayerStatisticsReport getters.
+	OpPlayerStatistics = 2401 // S2C uf_0
+	OpSitStand         = 4601 // S2C afV
 
 	OpFighterOuch             = 4902 // S2C aiz_0
 	OpEmotePlay               = 4701 // C2S JY:     [u8 nameLen][name][i32 emoteId]
