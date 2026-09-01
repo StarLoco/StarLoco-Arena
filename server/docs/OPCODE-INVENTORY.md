@@ -31,6 +31,21 @@ subscribes `ao_0.aU()` and `ajc_0` to it. So anything routed through `apk_0.aDz(
 opcodes 102 and 105 - really is displayed. "Console" is not a synonym for "dead"; check the
 subscriber list for the specific object, not the family.
 
+**Correction: 2401 is not Java-serialized.** This file previously said emitting the statistics
+report meant "matching their serializer byte-for-byte", and I repeated that as a days-of-work
+estimate. It is wrong. `arq_0.aEv().aa()` reads a model id off the front, looks the model up in
+a registry, and hands it the buffer; `rs_2.u()` then parses an ordinary typed key-value map:
+
+```
+[i16 modelId][i64 ownerId][i16 count]
+  count x { [i16 statId][i8 type][value] }      type: 1=i32(4B) 2=i64(8B) 3=float32(4B)
+```
+
+Nothing about that is harder than any other frame in this file. The phrase "serialized object"
+in the decompiled source described a MODEL LOOKUP, not JVM serialization, and I took it at face
+value because it sat next to a `PlayerStatisticsReport` type name. Estimating from a type name
+instead of the parser cost a day of avoidance.
+
 ### Negative results - things that look like missing opcodes but are not
 
 These cost real time to establish. They are recorded so nobody re-derives them.
@@ -198,7 +213,7 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 | 2308 | C2S | H | (Pg) | `handleMatchAcceptAlt` |
 | 2309 | S2C | - | (`cJ`) | `[i8 bool]` -> `ft_1`. Same subsystem as 2307 |
 | 2400 | S2C | E | PlayerStatisticsReportMessage (pl_1) | `buildPlayerStatisticsReport` |
-| 2401 | S2C | - | PlayerStatisticsReport (`uf_0`) | `[i16 len][serialized blob]` deserialized by `arq_0.aEv().aa(...)` into a `PlayerStatisticsReport` and handed to `sj_1.a(...)`. The field names are visible in `sj_1`: statisticsTotalFights, ...Won, ...Lost, ConsecutiveWins, ConsecutiveLosses, TotalFightsTime, TotalPlayTime. Not implemented because the payload is a **Java-serialized object**, not a flat struct - reproducing it means matching their serializer exactly |
+| 2401 | S2C | - | PlayerStatisticsReport (`uf_0`) | `[i16 blobLen][blob]`. **The blob is NOT Java serialization** (an earlier note here said it was, wrongly). `arq_0.aa` reads a model id, looks up a report model and lets it parse: `[i16 modelId][i64 ownerId][i16 n]` then n x `{[i16 statId][i8 type][value]}`, where type comes from `dr_2`: **1 = i32, 2 = i64, 3 = float32**. A plain typed key-value map. Remaining unknowns are the model-id registry and the numeric stat ids - the NAMES are legible in `sj_1.alA` (statisticsTotalFights / ...Won / ...Lost / ConsecutiveWins / ConsecutiveLosses / TotalFightsTime / TotalPlayTime) |
 | 2411 | S2C | - | (`HJ`) | `[i32 n]` then n x `{i16,i16,i16,i32,i32,i32}` into six parallel lists. **Read BACKWARDS** (`for j = n-1; 0 <= j; --j`) - the same trap as `Yq`/28620, so a server writing these in natural order would deliver them reversed. Stats family, alongside 2401 |
 | 2600 | C2S | H | GuildMemberStats (mL) | `handleGuildMemberStats` |
 | 2601 | S2C | E | GuildMemberReport (mL family) | reply to 2600 |
