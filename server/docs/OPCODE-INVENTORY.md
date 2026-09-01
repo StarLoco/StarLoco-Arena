@@ -222,18 +222,18 @@ obfuscated client class from the CSV; real class name is used when the CSV knows
 
 | Op | Dir | St | Client class | Notes |
 |---|---|---|---|---|
-| 3128 | S2C | - | ChannelFlagsMessage (by_1) | channel mgmt not modelled |
+| 3128 | S2C | - | ChannelFlags (`by_1`) | **No-op consumer**: `om_0` case 3128 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
 | 3129 | C2S | H | AddFriendMessage (QZ) | `handleAddFriend` |
-| 3130 | S2C | - | ChannelJoinMessage (cz_0) | channel mgmt not modelled |
+| 3130 | S2C | - | ChannelJoin (`cz_0`) | **No-op consumer**: `om_0` case 3130 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
 | 3131 | C2S | H | AddIgnoreMessage (MP) | `handleAddIgnore` |
-| 3132 | S2C | - | ChannelLeaveMessage (Bs) | channel mgmt not modelled |
+| 3132 | S2C | - | ChannelLeave (`Bs`) | **No-op consumer**: `om_0` case 3132 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
 | 3133 | C2S | H | RemoveFriendMessage (aym_0) | `handleRemoveFriend` |
-| 3134 | S2C | - | ChannelMemberFlagsMessage (Uy) | channel mgmt not modelled |
+| 3134 | S2C | - | ChannelMemberFlags (`Uy`) | **No-op consumer**: `om_0` case 3134 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
 | 3135 | C2S | H | RemoveIgnoreMessage (aer_0) | `handleRemoveIgnore` |
-| 3136 | S2C | - | ChannelMemberKickMessage (ato_0) | channel mgmt not modelled |
-| 3138 | S2C | - | ChannelMembersMessage (ax_2) | channel mgmt not modelled |
+| 3136 | S2C | - | ChannelMemberKick (`ato_0`) | **No-op consumer**: `om_0` case 3136 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
+| 3138 | S2C | - | ChannelMembers (`ax_2`) | **No-op consumer**: `om_0` case 3138 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
 | 3140 | S2C | E | ChannelContentMessage (xb_1) | channel chat broadcast |
-| 3142 | S2C | - | ChatUserFlagsMessage (wh_0) | not modelled |
+| 3142 | S2C | - | ChatUserFlags (`wh_0`) | **No-op consumer**: `om_0` case 3142 is a cast and `return false` - the client does nothing with it. Not a feature gap; sending it would change nothing on screen. (The row previously read *"channel mgmt not modelled"*, which wrongly implied missing work.) |
 | 3144 | S2C | E | FriendListMessage (aaf_1) | `buildFriendList` (login) |
 | 3146 | S2C | E | IgnoreListMessage (abh_0) | `buildIgnoreList` (login) |
 | 3148 | S2C | E | NotificationFriendOnlineMessage (dh_0) | presence push |
