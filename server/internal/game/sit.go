@@ -56,10 +56,18 @@ func (s *Session) setSitting(sitting bool) error {
 	if err != nil {
 		return err
 	}
+	n := 0
 	for _, other := range s.deps.World.ViewersOf(s.Coach.ID) {
-		_ = other.Send(frame)
+		if other.Send(frame) == nil {
+			n++
+		}
 	}
 	_ = s.Send(frame)
+	// Logged with the audience size because this is otherwise unobservable: the
+	// only way to tell "broadcast correctly" from "broadcast to nobody" is to
+	// stand a second client next to the first and look, and player sprites do not
+	// render in the headless test client at all (animations.jar cannot load).
+	s.log.Debug("sit state changed", "coach", s.Coach.Name, "sitting", sitting, "viewers", n)
 	return nil
 }
 

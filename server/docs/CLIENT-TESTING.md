@@ -446,3 +446,47 @@ log.
 **Reading AI health from `/fight`:** `mp=3/3` and `ap=6/6` on a fighter whose turn
 has passed means it did NOTHING, which is how the B-086 freeze was spotted. A
 working AI shows spent MP while closing and spent AP once in range.
+
+## Running a SECOND client (two-player tests)
+
+The MCP `arena_up` tool drives one client on agent port **8099**. A second is spawned by hand,
+outside the Bash process tree so it survives the shell, with its own agent port:
+
+```powershell
+$java    = "<repo>\client\compiled\jre\bin\java.exe"
+$agent   = "<repo>\client\control-agent\control-agent.jar"
+$natives = "<repo>\client\compiled\natives\win32\x86"
+$game    = "<repo>\client\compiled\game"
+$main    = "com.ankamagames.dofusarena.client.DofusArenaClient"
+$cmd = "`"$java`" `"-javaagent:$agent=port=8100`" -Xmx768m `"-Djava.library.path=$natives`" -cp core.jar $main"
+Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+  CommandLine = $cmd; CurrentDirectory = $game
+}
+```
+
+Then drive it over plain HTTP on 8100: `/health`, `/offscreen?on=1`,
+`/login?user=&pass=`, `/click?x=&y=`, `/doubleclick`, `/type`, `/key?name=ENTER`,
+`/screenshot`. Wait for `/health` to report `ready=true` before logging in - the agent answers
+long before the UI attaches its input handler.
+
+Two things that cost time when they are not written down:
+
+- **`-Djava.library.path` must point at `client\compiled\natives\win32\x86`**, NOT at
+  anything under `game\`. A wrong path leaves the agent reachable and `canvas=false` forever,
+  which looks like a hang rather than a misconfiguration.
+- **Redirect stdout** if you want the second client's log. `Win32_Process Create` discards it,
+  so the second client is silent - only the first client's `output.log` exists. Any assertion
+  about what the SECOND client received has to come from a screenshot or the server log.
+
+### What two clients cannot tell you here
+
+Player sprites do not render in this environment at all: `animations.jar` fails to load
+(`AnimCommunes.anm` FileNotFoundException), so neither coach appears, on either client.
+Verified with two clients logged in simultaneously as Chrono and ExBot - the world draws, the
+players do not.
+
+So anything whose evidence is "does the other player SEE it" (sitting, emotes, walk
+animations) cannot be settled here. Use the server log and the client's own message-handling
+warnings instead: a frame the client could not route logs
+`[DEFAUT DE CONCEPTION] Message (X) non traite, de type N`, and its ABSENCE is meaningful -
+that is how 4601 was confirmed handled and 6029 confirmed unhandled outside the team panel.
