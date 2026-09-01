@@ -11,9 +11,18 @@ decompiled client, no runtime).
 
 ---
 
-### B-137 (OPEN) - re-entering the SAME world duplicates interactive elements
+### B-137 - re-entering the SAME world duplicated interactive elements - FIXED by B-142
 
-**Status: open, not fixed.** Found live; recorded with evidence rather than patched in a hurry.
+**Status: FIXED**, as a side effect of B-142 rather than by the guard I was contemplating.
+The duplication only happened because a same-world teleport re-entered the instance at all.
+Now that `/TP` on the current world uses 4510 instead, there is no second element push to be
+rejected - verified live: the `Impossible d'ajouter un elements interactif` error no longer
+appears after a same-world teleport.
+
+Worth noting the guard I was going to write ("skip the element push when the world is
+unchanged") would have worked, but it would have left the re-enter in place along with its
+roster/preset churn, and carried the first-enter trap described below. Removing the re-enter
+was the better fix and it was not visible until the AoI work made it possible.
 
 **Symptom.** Any code path that calls `sendEnterOverworld` for the world the coach is ALREADY
 on makes the client log:
@@ -186,6 +195,37 @@ belongs to the coach.
 ---
 
 ## Fixed
+
+### B-142 - same-world teleports re-entered the whole instance
+
+**Symptom (invisible to the player, expensive everywhere else).** Every `/TP` within a world
+sent a full ENTER_INSTANCE. That made the client discard and re-fetch its fighter roster and
+team presets (B-124), re-push interactive elements it already held (B-137), and left other
+players' area-of-interest sets to be corrected by a full re-seed rather than incrementally.
+
+**Root cause.** `Registry.UpdatePosition` only records coordinates - it does no AoI work - so
+the re-enter was the only thing keeping observers consistent.
+
+**Fix.** `teleportWithinWorld` uses **4510** (`ActorTeleports`), the frame retail has for
+exactly this: move an actor with no walk animation, recentring the camera for the local
+player. It reuses `ApplyMove`, which is agnostic about HOW the coach reached the new cell and
+already computes the enter/leave diff - so a teleport is now an ordinary AoI update.
+Cross-world teleports still use ENTER_INSTANCE: a different island genuinely is a different
+map.
+
+**Ordering is load-bearing.** A session that only just gained sight must receive ActorSpawn
+BEFORE the 4510 naming the coach. The retail handler resolves the actor id and dereferences
+the result with no null check, so the reverse order is a NullPointerException in someone
+else's client - the same hazard as B-136. `TestTeleportSpawnsBeforeTelling` asserts the ORDER,
+not merely that both frames arrive, and a mutation that inverts it is caught.
+
+**Live-verified**: `/TP 45 -15` moved the coach, the camera followed, the server answered
+`tp -> (45,-15,4)` with the altitude resolved from topology, and the duplicate-element error
+that B-137 recorded no longer appears.
+
+5 mutations caught: self not told (camera stays behind), viewers not told, coach not stood up,
+z written as i32 (the frame must be exactly 18 bytes or the client drops it silently), and
+teleport-before-spawn.
 
 ### B-141 - the statistics panel was never populated (2401)
 

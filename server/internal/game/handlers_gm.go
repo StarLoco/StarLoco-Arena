@@ -153,11 +153,20 @@ func (s *Session) gmTeleport(args []string) error {
 		z, _ = strconv.Atoi(args[2])
 	}
 	s.Coach.PosX, s.Coach.PosY, s.Coach.PosZ = int32(x), int32(y), int16(z)
-	s.deps.World.UpdatePosition(s.Coach.ID, int32(x), int32(y), int16(z))
 	_ = s.deps.Store.Coaches.Save(s.Coach)
 
 	// Stays on the world the coach is currently in (use /WORLD to change island);
 	// sending startWorldID here used to yank the coach back to the start island.
+	//
+	// Same world => 4510, which moves the actor without a walk animation and
+	// maintains every observer's AoI incrementally. The old full instance
+	// re-enter also worked, but it made the client discard and re-fetch its
+	// roster and presets (B-124) and re-pushed elements it already held (B-137).
+	// Falls back to the re-enter if the teleport path cannot run.
+	if world == s.currentWorld && s.teleportWithinWorld(int32(x), int32(y), int16(z)) {
+		return s.gmFeedback(fmt.Sprintf("tp -> (%d,%d,%d)", x, y, z))
+	}
+	s.deps.World.UpdatePosition(s.Coach.ID, int32(x), int32(y), int16(z))
 	return s.sendEnterOverworld(float32(x), float32(y), int16(z), world)
 }
 

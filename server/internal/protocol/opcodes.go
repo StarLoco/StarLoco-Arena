@@ -498,7 +498,12 @@ const (
 	// {[i16 statId][i8 type][value]} with type 1=i32, 2=i64, 3=float32.
 	// Stat ids come from the UNOBFUSCATED PlayerStatisticsReport getters.
 	OpPlayerStatistics = 2401 // S2C uf_0
-	OpSitStand         = 4601 // S2C afV
+	// OpActorTeleports moves an actor with no walk animation:
+	// [i64 actorId][i32 x][i32 y][i16 z], exactly 18 bytes (the client
+	// length-checks it). For the local player the client also recentres the
+	// camera. Only safe for actors the receiver has SPAWNED - see ViewersOf.
+	OpActorTeleports = 4510 // S2C xp_0
+	OpSitStand       = 4601 // S2C afV
 
 	OpFighterOuch             = 4902 // S2C aiz_0
 	OpEmotePlay               = 4701 // C2S JY:     [u8 nameLen][name][i32 emoteId]
