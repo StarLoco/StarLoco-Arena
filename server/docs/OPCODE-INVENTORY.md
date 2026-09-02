@@ -567,12 +567,23 @@ before a byte is sent. Guessing there is how the 8120-vs-8121 mistake happened.
 
 
 
-> **Blind spot in the invariant test.** `TestOpcodeInventoryMarksEveryEmittedFrame`
-> scans `EncodeS2C` call sites for a LITERAL opcode. A helper that takes the opcode
-> as a variable — like `sendChatError(opcode uint16)` — is invisible to it, so 3214
-> was emitted while still marked `-` and the test stayed green. Rows sent that way
-> have to be updated by hand. Worth knowing before trusting a green run to mean
-> "the table matches the code".
+> **Blind spot in the invariant test - now CLOSED.**
+> `TestOpcodeInventoryMarksEveryEmittedFrame` scans `EncodeS2C` call sites for a
+> LITERAL opcode, so a helper taking the opcode as a variable - like
+> `sendChatError(opcode uint16)` - was invisible to it. 3214 was emitted while
+> still marked `-` and the suite stayed green.
+>
+> `TestVariableOpcodeHelpersAreInventoried` covers that case. It DISCOVERS the
+> helpers rather than listing them - any method taking `opcode uint16` whose body
+> reaches `EncodeS2C` - then resolves the `protocol.Op*` constant at each call site
+> and requires the row to be marked `E`. Adding a new helper cannot silently
+> reopen the hole.
+>
+> Two details it has to be correct about, both learned by getting them wrong:
+> taking an opcode is NOT the same as sending one (`Router.Register(opcode
+> uint16, ...)` matches the signature and emits nothing), and it FAILS rather
+> than passes when discovery finds nothing, so a rename cannot turn it into a
+> no-op.
 
 
 > **The `-` status was unreliable for anything sent INDIRECTLY, and 10 rows were wrong.**
