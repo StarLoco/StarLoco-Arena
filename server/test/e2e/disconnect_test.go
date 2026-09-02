@@ -24,6 +24,7 @@ import (
 // exercise (a practice fight has no second real coach, and the MCP harness has no
 // close-client-without-killing-the-server control).
 func TestDisconnectGraceHoldsFightForResume(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(the disconnect/resume logic itself is unit-tested race-clean in internal/game)")

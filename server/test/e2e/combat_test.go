@@ -81,6 +81,7 @@ func matchIntoFight(t *testing.T, addr string, prepare func(c *testclient.Client
 // SPELL_CAST(8110) -> AP debit(8120 id 91) -> HP-loss on the ENEMY fighter
 // (8120 id 1 = neutral HP-loss fallback for the unknown test spell) -> flush(8200).
 func TestCombatSpellDamage(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(server logic itself is race-clean -- internal/game passes -race)")
@@ -262,6 +263,7 @@ type cell struct {
 // TestCombatVictoryByForfeit: after entering the action phase, one coach gives
 // up and BOTH clients receive END_FIGHT(8300).
 func TestCombatVictoryByForfeit(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, b := startFightForCombat(t, addr)
 	a.DrainReceived(150 * time.Millisecond)

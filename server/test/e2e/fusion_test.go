@@ -1,5 +1,11 @@
 package e2e
 
+// NOTE: the tests in this file are deliberately NOT parallel. They seed
+// game.SeedFusionRand, a package-level RNG, with different values to force a
+// success or a failure - so running two of them concurrently makes each observe
+// the other's seed. Sequential tests complete before the parallel phase resumes,
+// which is what keeps that safe.
+
 import (
 	"testing"
 	"time"

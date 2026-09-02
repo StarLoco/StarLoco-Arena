@@ -44,6 +44,7 @@ func createGuild(t *testing.T, c *testclient.Client, name string) int32 {
 // Pacte card dialog, invitation from the social tab, acceptance from the popup,
 // and clan chat from the `/c` pipe.
 func TestGuildCreateInviteAcceptAndClanChat(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "guild_a", "Chef")
 	reachWorld(t, a)
@@ -155,6 +156,7 @@ func TestGuildCreateInviteAcceptAndClanChat(t *testing.T) {
 // must be refused with the same code as a taken name, which is the only "bad
 // name" code the client has.
 func TestGuildCreateRejectsAShortName(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "guild_short", "Court")
 	reachWorld(t, a)
@@ -168,6 +170,7 @@ func TestGuildCreateRejectsAShortName(t *testing.T) {
 // TestGuildNameCannotBeTakenTwice pins the uniqueness the client's single error
 // string implies.
 func TestGuildNameCannotBeTakenTwice(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "guild_x", "Un")
 	reachWorld(t, a)
@@ -188,6 +191,7 @@ func TestGuildNameCannotBeTakenTwice(t *testing.T) {
 // it. Chat scoping is the kind of thing that looks fine in a two-player test and
 // leaks in a three-player one.
 func TestClanChatIsScopedToTheGuild(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "clan_a", "AlphaChef")
 	reachWorld(t, a)

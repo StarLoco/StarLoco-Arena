@@ -19,6 +19,7 @@ func readLadderStr(r *testclient.R) string {
 // with its stats and its own rank. This is the board's whole purpose, and proves
 // the window contract (end = start + rows) end-to-end against the wire.
 func TestLadder1v1ShowsRankedCoach(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, id := dialLogin(t, addr, "lad1", "Ranker")
 	reachWorld(t, c)
@@ -91,6 +92,7 @@ func TestLadder1v1ShowsRankedCoach(t *testing.T) {
 // stream — the guild and 2v2 boards come back well-formed empty, and the seasonal
 // board is deliberately silent (its tab stays blank without breaking the others).
 func TestLadderAllBoardsRenderCleanly(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "lad2", "Boards")
 	reachWorld(t, c)

@@ -29,6 +29,7 @@ func firstUnequippedCard(t *testing.T, s *store.Store, coachID uint) domain.Coac
 // accepts, A stakes a card, both set ready, and the card ownership actually
 // transfers (verified in the DB).
 func TestExchangeTransfersCard(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 
 	a, aID := dialLogin(t, addr, "trader_a", "TraderA")
@@ -112,6 +113,7 @@ func openExchange(t *testing.T, a, b *testclient.Client, bID int64) int64 {
 // TestExchangeRemoveCard: a staked card can be un-staked; both parties see a
 // 5110 CardRemoved and the ownership is untouched (no swap happened).
 func TestExchangeRemoveCard(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "rmcard_a", "RmA")
 	reachWorld(t, a)
@@ -149,6 +151,7 @@ func TestExchangeRemoveCard(t *testing.T) {
 
 // TestExchangeCancel: cancelling (5108) ends the trade for both with reason 1.
 func TestExchangeCancel(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "cancel_a", "CancA")
 	reachWorld(t, a)

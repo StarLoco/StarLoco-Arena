@@ -49,6 +49,7 @@ func challengeServer(t *testing.T) string {
 //
 // Challenge 34 is the "Démon de la 58ème minute" on Totem Arena / world 79.
 func TestChallengeFightStarts(t *testing.T) {
+	t.Parallel()
 	addr := challengeServer(t)
 	c, _ := dialLogin(t, addr, "chal1", "Challenger1")
 	reachWorld(t, c)
@@ -64,6 +65,7 @@ func TestChallengeFightStarts(t *testing.T) {
 // TestBreedMasterChallengeFightStarts: the twelve world-35 breed masters use the
 // same opcode with their own challenge id. Challenge 17 is the Iop master.
 func TestBreedMasterChallengeFightStarts(t *testing.T) {
+	t.Parallel()
 	addr := challengeServer(t)
 	c, _ := dialLogin(t, addr, "chal2", "Challenger2")
 	reachWorld(t, c)
@@ -81,6 +83,7 @@ func TestBreedMasterChallengeFightStarts(t *testing.T) {
 // sends 26330 it has already armed its fight handlers, so dropping the message
 // would leave it waiting forever with no way out.
 func TestUnknownChallengeIsRefused(t *testing.T) {
+	t.Parallel()
 	addr := challengeServer(t)
 	c, _ := dialLogin(t, addr, "chal3", "Challenger3")
 	reachWorld(t, c)
@@ -105,6 +108,7 @@ func TestUnknownChallengeIsRefused(t *testing.T) {
 // fighter. Regression guard — the first implementation asked for team preset id
 // 0, which never exists, and silently sent one fighter against a demon team.
 func TestChallengeFightUsesTitularRoster(t *testing.T) {
+	t.Parallel()
 	addr := challengeServer(t)
 	c, _ := dialLogin(t, addr, "chal5", "Challenger5")
 	reachWorld(t, c)
@@ -142,6 +146,7 @@ func TestChallengeFightUsesTitularRoster(t *testing.T) {
 // session-less, so the engine must pre-mark it ready in all three gates —
 // otherwise the fight would stall at presentation forever.
 func TestChallengeFightIsPlayable(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown")
 	}

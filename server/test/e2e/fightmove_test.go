@@ -10,6 +10,7 @@ import (
 // TestFighterMoveInFight: on a team-A fighter's turn, a move request (4503)
 // is echoed back as a FIGHTER_MOVE (4524) broadcast and debits MP (8120 id 92).
 func TestFighterMoveInFight(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(server logic itself is race-clean -- internal/game passes -race)")
@@ -93,6 +94,7 @@ func TestFighterMoveInFight(t *testing.T) {
 // coordinate on the map, at no MP cost, ignoring rooting, tackle, traps and line
 // of sight. It now asserts the contract instead of the defect.
 func TestPlacementMove(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(server logic itself is race-clean -- internal/game passes -race)")
@@ -168,6 +170,7 @@ func TestPlacementMove(t *testing.T) {
 // stacking two fighters on one cell corrupts targeting, tackle and line of sight
 // for the whole fight, and placing outside the placement phase is a teleport.
 func TestPlacementRejectsIllegalCellsAndPhases(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown")
 	}

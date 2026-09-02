@@ -33,6 +33,7 @@ func buildFighterBlob(name string, breed uint8, spellIDs ...int32) []byte {
 // TestFighterCreateAndList: creating a fighter (6001) returns a result (6000)
 // and the fighter then appears in the roster; deleting removes it.
 func TestFighterCreateAndList(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "roster_a", "Ra")
 	reachWorld(t, a)
@@ -105,6 +106,7 @@ func fighterListCount(payload []byte) int {
 // (6006). The client repopulates its (cleared-on-close) fighter grid from this
 // 6006, so without it the roster is empty after a close/reopen.
 func TestTeamPresetListRequestPushesRoster(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "reopen_a", "ReA")
 	reachWorld(t, a)
@@ -154,6 +156,7 @@ func TestTeamPresetListRequestPushesRoster(t *testing.T) {
 // TestTeamPresetSaveDelete: saving a team preset persists it and it shows in the
 // preset list; deleting removes it (regression guard for the i64 team-id fix).
 func TestTeamPresetSaveDelete(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "team_a", "Ta")
 	reachWorld(t, a)

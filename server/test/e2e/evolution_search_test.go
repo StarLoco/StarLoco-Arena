@@ -53,6 +53,7 @@ func giveTitulars(t *testing.T, st interface {
 // accepted=0 instead would leave the player on a bare screen — the client pops
 // its team panels either way but only opens the overlay on true.
 func TestEvolutionSearchAcceptsAndWaits(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "evo_a", "EvoA")
 	reachWorld(t, c)
@@ -79,6 +80,7 @@ func TestEvolutionSearchAcceptsAndWaits(t *testing.T) {
 // answered with 23002, because that reply is what actually closes the overlay
 // and unregisters the client's search frame.
 func TestEvolutionSearchCancel(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "evo_b", "EvoB")
 	reachWorld(t, c)
@@ -106,6 +108,7 @@ func TestEvolutionSearchCancel(t *testing.T) {
 // reaching the server means something is wrong and the player still deserves to
 // be told.
 func TestEvolutionSearchWithoutATeamIsRefused(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, coachID := dialLogin(t, addr, "evo_c", "EvoC")
 	reachWorld(t, c)
@@ -130,6 +133,7 @@ func TestEvolutionSearchWithoutATeamIsRefused(t *testing.T) {
 // the order. Asking for 8000 and then looking for 23006 among the frames that
 // preceded it is the assertion that actually holds.
 func TestEvolutionSearchPairsAndStartsFight(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "evo_d", "EvoD")
 	reachWorld(t, a)
@@ -188,6 +192,7 @@ const (
 // search (23104) so the overlay opens, and must answer its Cancel (23101 →
 // 23102) so the player can get out of the queue again.
 func TestClassicReadyAcceptsAndCancels(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, coachID := dialLogin(t, addr, "cls_a", "ClsA")
 	reachWorld(t, c)
@@ -219,6 +224,7 @@ func TestClassicReadyAcceptsAndCancels(t *testing.T) {
 // 23106 before CREATE_FIGHT — the same ordering requirement as the evolution
 // twin, asserted the same way (from the frames that preceded 8000).
 func TestClassicReadyPairsAndStartsFight(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, aID := dialLogin(t, addr, "cls_b", "ClsB")
 	reachWorld(t, a)
@@ -253,6 +259,7 @@ func TestClassicReadyPairsAndStartsFight(t *testing.T) {
 // twice, ONE opponent B pairs with it and the queue is then empty — so a third
 // coach C finds nobody and waits.
 func TestClassicReadyTwiceDoesNotQueueTwice(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, aID := dialLogin(t, addr, "cls_d", "ClsD")
 	reachWorld(t, a)
@@ -308,6 +315,7 @@ func tournamentSearchPayload(tid, coachID int64, preset uint16) []byte {
 // The reply must also be TWO bytes: kw_1 reads a code and a sub-code, unlike the
 // classic/evolution error which is one byte. A short frame is a decode failure.
 func TestTournamentSearchIsRefusedVisibly(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, coachID := dialLogin(t, addr, "tsr_a", "TsrA")
 	reachWorld(t, c)
@@ -333,6 +341,7 @@ func TestTournamentSearchIsRefusedVisibly(t *testing.T) {
 // same 28611 with the legend pseudo-preset 9999, so it must not fall through to
 // silence either.
 func TestTournamentSearchFromLegendsTabIsAlsoAnswered(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, coachID := dialLogin(t, addr, "tsr_b", "TsrB")
 	reachWorld(t, c)
@@ -347,6 +356,7 @@ func TestTournamentSearchFromLegendsTabIsAlsoAnswered(t *testing.T) {
 // TestTournamentSearchCancelIsAnswered: the cancel reply is what closes the
 // overlay and unregisters ds_2, so it goes out even though nothing was queued.
 func TestTournamentSearchCancelIsAnswered(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, coachID := dialLogin(t, addr, "tsr_c", "TsrC")
 	reachWorld(t, c)
@@ -367,6 +377,7 @@ func TestTournamentSearchCancelIsAnswered(t *testing.T) {
 // mode. Proven from the outside by its effect: an evolution fight banks XP onto
 // the fighters, a practice fight does not.
 func TestEvolutionFightFeedsProgression(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "evo_f", "EvoF")
 	reachWorld(t, a)
@@ -431,6 +442,7 @@ const (
 // A sole entrant is the extreme case: the byes carry it from slot 16 to the
 // root, so it has won the tournament before playing anything.
 func TestUnopposedTournamentEntrantIsDeclaredWinner(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	tr := &domain.Tournament{
 		DefID: 1, Name: "Lonely Cup", Short: "LC",
@@ -497,6 +509,7 @@ func TestUnopposedTournamentEntrantIsDeclaredWinner(t *testing.T) {
 // the tournament - and its prize - to whoever pressed Combattre first would be
 // both wrong and unrecoverable.
 func TestLoneEntrantWaitsWhileRegistrationIsOpen(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	tr := &domain.Tournament{
 		DefID: 1, Name: "Open Cup", Short: "OC",
@@ -535,6 +548,7 @@ func TestLoneEntrantWaitsWhileRegistrationIsOpen(t *testing.T) {
 // Two entrants seed at slots 16 and 17, so the first to ready up has a real
 // opponent and must wait for it, not be handed the tournament.
 func TestClosedTournamentWithAnOpponentStillWaits(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	tr := &domain.Tournament{
 		DefID: 1, Name: "Duo Cup", Short: "DC",

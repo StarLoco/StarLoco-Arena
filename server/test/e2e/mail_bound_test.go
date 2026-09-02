@@ -21,6 +21,7 @@ import (
 // refuse a card the real client mails happily. Only exercising the handler can
 // tell those two apart.
 func TestMailRefusesBoundCardsButAllowsUndestructible(t *testing.T) {
+	t.Parallel()
 	const (
 		plainCard          int32 = 6001
 		boundCard          int32 = 6002

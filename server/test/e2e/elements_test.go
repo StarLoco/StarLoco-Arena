@@ -55,6 +55,7 @@ func readElementSpawn(t *testing.T, payload []byte) map[int64]bool {
 // (40,-20); its other five elements are 54-98 cells away, i.e. 3-6 chunks, all
 // out of range.
 func TestWorldElementsSpawnedOnEntry(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 
 	// WaitFor immediately after dialLogin: this is a server PUSH, and reachWorld's
@@ -96,6 +97,7 @@ func TestWorldElementsSpawnedOnEntry(t *testing.T) {
 // path a Zaap arrival takes. Standing on the graveyard's own cell (4,45) must
 // bring the graveyard in and drop the now-distant Zaap.
 func TestWorldElementsStreamInOnApproach(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "elem_b", "ElemB")
 	reachWorld(t, a)
@@ -126,6 +128,7 @@ func TestWorldElementsStreamInOnApproach(t *testing.T) {
 // here and silently empties the island after any same-world teleport — which is
 // what a GM /TP does, and what a Zaap landing on the current island does.
 func TestWorldElementsResentOnSameWorldReentry(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "elem_c", "ElemC")
 	reachWorld(t, a)
@@ -154,6 +157,7 @@ func TestWorldElementsResentOnSameWorldReentry(t *testing.T) {
 // driving the retail client: the roster was present after login and gone after
 // a single /WORLD.
 func TestRosterSurvivesAWorldChange(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "roster_w", "RosterW")
 	reachWorld(t, a)

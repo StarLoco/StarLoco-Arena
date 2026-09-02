@@ -62,6 +62,7 @@ func receivedVicinityWithin(c *testclient.Client, d time.Duration) bool {
 // nearby coach's vicinity chat, while a coach close by DOES. Proves overworld
 // chat is area-scoped, not a global broadcast.
 func TestAoIChatScoping(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t) // harness uses AoI radius 150
 
 	// Three coaches, all enter at spawn (1,1).
@@ -96,6 +97,7 @@ func TestAoIChatScoping(t *testing.T) {
 // another coach's AoI receives an ACTOR_SPAWN (4096) for them (dynamic
 // visibility as actors cross the boundary).
 func TestDynamicAoISpawnOnApproach(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t) // AoI radius 75
 
 	// "resident" stays at spawn (1,1). "walker" moves far away first.
@@ -126,6 +128,7 @@ func TestDynamicAoISpawnOnApproach(t *testing.T) {
 // TestDynamicAoIDespawnOnLeave: two adjacent coaches; one walks far away and the
 // other receives an ACTOR_DESPAWN (4098) as it leaves the AoI.
 func TestDynamicAoIDespawnOnLeave(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	a, _ := dialLogin(t, addr, "adja", "Adja")

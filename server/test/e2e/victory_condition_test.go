@@ -28,6 +28,7 @@ import (
 // (TestShippedTimeChallengesResolveToSurvivalRules) separately pins the shipped
 // values at 20/30.
 func TestChallengeVictoryConditionEndsFight(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown")
 	}

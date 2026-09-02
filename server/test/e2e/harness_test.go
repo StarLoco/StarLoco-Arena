@@ -61,7 +61,10 @@ func testServerWithDeps(t *testing.T, customize func(*game.Deps)) (*store.Store,
 	//     control back within its WaitForTurn budget.
 	// Tests that need fast rotation should end their OTHER client's turns
 	// explicitly (see TestCombatSpellDamage) rather than shrink this.
-	t.Cleanup(game.SetTurnClockForTest(12 * time.Second))
+	// The turn clock is set ONCE for the whole package in TestMain, not per test:
+	// it is a package-level global in internal/game, so a per-test override is a
+	// data race the moment any test runs in parallel. Every test wanted the same
+	// 12s anyway, so hoisting it costs nothing and unblocks t.Parallel().
 
 	deps := &game.Deps{
 		Store:       st,

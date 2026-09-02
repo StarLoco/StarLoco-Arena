@@ -61,6 +61,7 @@ func readFighterList(t *testing.T, payload []byte) map[int64]int {
 //  3. using a resurrection card on it (22099) returns it to the bench and
 //     consumes the card.
 func TestGraveyardRosterAndResurrection(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "grave_a", "GraveA")
 	reachWorld(t, c)
@@ -145,6 +146,7 @@ func TestGraveyardRosterAndResurrection(t *testing.T) {
 // graveyard optimistically via 23000 and consumes no reply, so the server must
 // reproduce the transition and persist it.
 func TestGraveyardStateTransitionPersists(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "grave_b", "GraveB")
 	reachWorld(t, c)

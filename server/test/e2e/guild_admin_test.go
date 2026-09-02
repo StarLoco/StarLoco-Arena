@@ -44,6 +44,7 @@ func guildResultCode(t *testing.T, c *testclient.Client, what string) int32 {
 // with code 402 (which is what makes its client drop the membership) and the
 // clan's roster shrinks.
 func TestGuildKickRemovesTheMember(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "kick_a", "Chef")
 	reachWorld(t, a)
@@ -78,6 +79,7 @@ func TestGuildKickRemovesTheMember(t *testing.T) {
 // someone who bypassed it. A plain member must not be able to remove anyone,
 // least of all the leader.
 func TestGuildMemberCannotKickTheLeader(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "auth_a", "Chef")
 	reachWorld(t, a)
@@ -103,6 +105,7 @@ func TestGuildMemberCannotKickTheLeader(t *testing.T) {
 // TestGuildQuitIsAllowedForAnyone: 505 aimed at yourself is quitting, which
 // needs no right at all - and must yield 400, not the kick code.
 func TestGuildQuitIsAllowedForAnyone(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "quit_a", "Chef")
 	reachWorld(t, a)
@@ -128,6 +131,7 @@ func TestGuildQuitIsAllowedForAnyone(t *testing.T) {
 // BEFORE the delete, or the members can never be told - which is the kind of
 // ordering bug that only shows up with someone else online.
 func TestGuildDestroyTellsEveryMember(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "des_a", "Chef")
 	reachWorld(t, a)
@@ -157,6 +161,7 @@ func TestGuildDestroyTellsEveryMember(t *testing.T) {
 
 // TestGuildMemberCannotDestroy: only the leader bit may dissolve a clan.
 func TestGuildMemberCannotDestroy(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "nod_a", "Chef")
 	reachWorld(t, a)
@@ -179,6 +184,7 @@ func TestGuildMemberCannotDestroy(t *testing.T) {
 // TestGuildRankCrud walks add / modify / delete (553/555/557) and checks the
 // guild record the client re-renders from.
 func TestGuildRankCrud(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "rank_a", "Chef")
 	reachWorld(t, a)
@@ -247,6 +253,7 @@ func TestGuildRankCrud(t *testing.T) {
 // and rank 10, and a guild that lost either would be unmanageable or have
 // nowhere to put new members.
 func TestGuildLeaderRankCannotBeDeleted(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "prot_a", "Chef")
 	reachWorld(t, a)

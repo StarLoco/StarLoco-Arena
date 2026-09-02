@@ -10,6 +10,7 @@ import (
 // TestChannelMessageBroadcast: a channel line (3151) is delivered to every
 // online coach as ChannelContent(3140) carrying [channel][sender][message].
 func TestChannelMessageBroadcast(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "chan_a", "ChanA")
 	reachWorld(t, a)
@@ -51,6 +52,7 @@ func TestChannelMessageBroadcast(t *testing.T) {
 // TestChannelMessageEmptyIgnored: a whitespace-only channel line is dropped
 // (no 3140 emitted).
 func TestChannelMessageEmptyIgnored(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "chan_c", "ChanC")
 	reachWorld(t, a)

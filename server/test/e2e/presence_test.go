@@ -11,6 +11,7 @@ import (
 // NotificationFriendOnline(3148) when the friend logs in and a
 // NotificationFriendOffline(3150) when the friend disconnects.
 func TestFriendOnlineOfflineNotify(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	// A is the watcher; create B first so A can befriend it, then take B offline.
@@ -61,6 +62,7 @@ func TestFriendOnlineOfflineNotify(t *testing.T) {
 // TestIgnoreOnlineOfflineNotify: a coach watching an ignored coach receives
 // NotificationIgnoreOnline(3164) / Offline(3166) on that coach's login/logout.
 func TestIgnoreOnlineOfflineNotify(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	a, _ := dialLogin(t, addr, "ipres_a", "IPresA")
@@ -104,6 +106,7 @@ func TestIgnoreOnlineOfflineNotify(t *testing.T) {
 // TestSocialAckLayouts asserts the exact wire layout of the four social acks,
 // which each differ (regression guard for the per-opcode encoder).
 func TestSocialAckLayouts(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "ack_a", "AckA")
 	reachWorld(t, a)

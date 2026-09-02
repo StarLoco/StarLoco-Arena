@@ -23,6 +23,7 @@ func tradePayload(msg string) []byte {
 // TestTradeMessageReachesOtherPlayers: A types in Trade, B receives it, with the
 // sender name and body intact.
 func TestTradeMessageReachesOtherPlayers(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "trade_a", "TradeA")
 	reachWorld(t, a)
@@ -50,6 +51,7 @@ func TestTradeMessageReachesOtherPlayers(t *testing.T) {
 // TestTradeMessageIsNotEchoedToSender: the client prints its own outgoing line, so
 // echoing it back would show the sender's message twice.
 func TestTradeMessageIsNotEchoedToSender(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "trade_c", "TradeC")
 	reachWorld(t, a)
@@ -75,6 +77,7 @@ func TestTradeMessageIsNotEchoedToSender(t *testing.T) {
 // TestTradeMessageEmptyIgnored: whitespace-only lines are dropped rather than
 // broadcast as blank rows.
 func TestTradeMessageEmptyIgnored(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "trade_e", "TradeE")
 	reachWorld(t, a)
@@ -96,6 +99,7 @@ func TestTradeMessageEmptyIgnored(t *testing.T) {
 // u16 counted in ENCODED (cp1252) bytes, so writing raw UTF-8 would both mangle
 // the text and desynchronise the length from the payload.
 func TestTradeMessageAcceptsAccents(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "trade_g", "TradeG")
 	reachWorld(t, a)

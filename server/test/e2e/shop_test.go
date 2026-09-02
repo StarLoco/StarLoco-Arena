@@ -38,6 +38,7 @@ func walletType1(payload []byte) int32 {
 // TestWalletSyncOnLogin: a coach receives a WalletUpdate(4001) at login showing
 // its starter token balance.
 func TestWalletSyncOnLogin(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "wallet_a", "WalletA")
 
@@ -78,6 +79,7 @@ func barterReq(wanted int32, given map[int32]uint16) []byte {
 // TestShopBarterSuccess: trading in cards whose total value >= the wanted card's
 // value grants the wanted card and consumes the given cards.
 func TestShopBarterSuccess(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithDeps(t, func(d *game.Deps) { d.Cards = barterCatalog() })
 	a, aID := dialLogin(t, addr, "bar_a", "BarA")
 	reachWorld(t, a)
@@ -110,6 +112,7 @@ func TestShopBarterSuccess(t *testing.T) {
 // TestShopBarterInsufficientValue: trading in cards worth less than the wanted
 // card is rejected (result 1) and nothing is consumed.
 func TestShopBarterInsufficientValue(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithDeps(t, func(d *game.Deps) { d.Cards = barterCatalog() })
 	a, aID := dialLogin(t, addr, "bar_b", "BarB")
 	reachWorld(t, a)
@@ -147,6 +150,7 @@ const (
 // NOTE opcode 5300 is the client's DEBUG-CONSOLE opener, not a shop request — the
 // server deliberately does not answer it with a catalogue.
 func TestShopOpenCatalog(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithDeps(t, func(d *game.Deps) { d.Cards = shopCatalog() })
 	a, _ := dialLogin(t, addr, "cat_a", "CatA")
 	reachWorld(t, a)
@@ -182,6 +186,7 @@ func TestShopOpenCatalog(t *testing.T) {
 // TestShopBuyCard: buying a card debits tokens, grants the card, and replies
 // ShopResult(5403, result 0) with the new balance.
 func TestShopBuyCard(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithDeps(t, func(d *game.Deps) { d.Cards = shopCatalog() })
 	a, aID := dialLogin(t, addr, "shop_a", "ShopA")
 	reachWorld(t, a)
@@ -225,6 +230,7 @@ func TestShopBuyCard(t *testing.T) {
 // TestShopInsufficientFunds: buying beyond the wallet balance is rejected with
 // ShopResult(5403, result 1) and no card is granted.
 func TestShopInsufficientFunds(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithDeps(t, func(d *game.Deps) { d.Cards = shopCatalog() })
 	a, aID := dialLogin(t, addr, "shop_b", "ShopB")
 	reachWorld(t, a)

@@ -23,6 +23,7 @@ const (
 // incoming/outgoing flag + name) → B accepts (26305) → both get ACCEPTED (26302)
 // → both confirm a team (26303) → both receive CREATE_FIGHT(8000).
 func TestDirectChallenge(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(the challenge logic itself is unit-tested race-clean in internal/game)")
@@ -89,6 +90,7 @@ func TestDirectChallenge(t *testing.T) {
 // TestDirectChallengeDecline asserts that declining a challenge (26307) tells the
 // challenger it was cancelled (26304) and no fight starts.
 func TestDirectChallengeDecline(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive E2E under -race's slowdown")
 	}

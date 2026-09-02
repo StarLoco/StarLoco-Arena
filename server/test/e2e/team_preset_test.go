@@ -25,6 +25,7 @@ const (
 // simply absent from that payload, so nothing ever removes it and it stays on
 // screen until the player relogs. 6022 is what calls `bs_0.IF().as(id)`.
 func TestDeletedTeamPresetIsAcknowledged(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "delp", "DelP")
 	reachWorld(t, c)
@@ -61,6 +62,7 @@ func TestDeletedTeamPresetIsAcknowledged(t *testing.T) {
 // `if (aV == 0)`, so anything appended would be left unread on a message the
 // client considers complete.
 func TestDuplicateTeamNameIsRefused(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "dupn", "DupN")
 	reachWorld(t, c)
@@ -99,6 +101,7 @@ func TestDuplicateTeamNameIsRefused(t *testing.T) {
 // TestDistinctTeamNameStillSaves guards the over-correction: only a DIFFERENT
 // preset with the same name is a clash.
 func TestDistinctTeamNameStillSaves(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	c, coachID := dialLogin(t, addr, "okn", "OkN")
 	reachWorld(t, c)

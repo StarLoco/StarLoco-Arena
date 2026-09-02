@@ -21,6 +21,7 @@ const (
 // receives END_FIGHT(8300) like the players. It also checks that a coach who is
 // NOT in a fight reports not-spectatable (2261=0).
 func TestSpectateFight(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(the spectator logic itself is unit-tested race-clean in internal/game)")

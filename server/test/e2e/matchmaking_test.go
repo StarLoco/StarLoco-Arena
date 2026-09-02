@@ -15,6 +15,7 @@ func searchRequest() []byte {
 // TestSearchInProgressThenCancel: a lone searcher is told the search is live
 // (2304), then cancelling (2303) yields a success CancelResult(2306, 0).
 func TestSearchInProgressThenCancel(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "mm_a", "MmA")
 	reachWorld(t, a)
@@ -40,6 +41,7 @@ func TestSearchInProgressThenCancel(t *testing.T) {
 // TestCancelWithoutSearch: cancelling when nothing is queued replies with the
 // idempotent "nothing" result (2306, 1).
 func TestCancelWithoutSearch(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "mm_b", "MmB")
 	reachWorld(t, a)
@@ -58,6 +60,7 @@ func TestCancelWithoutSearch(t *testing.T) {
 // TestCancelReleasesQueueSlot: after A cancels, a later searcher B is NOT
 // matched with A (A truly left the queue) — B just gets its own in-progress.
 func TestCancelReleasesQueueSlot(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "mm_c", "MmC")
 	reachWorld(t, a)

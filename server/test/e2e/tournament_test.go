@@ -42,6 +42,7 @@ func tournamentStatus(payload []byte, tid int64) (int8, bool) {
 // (28601 -> 28602) returns the standing tournaments, each not-registered (-128) and
 // open for registration, and the payload is consumed exactly.
 func TestTournamentListShowsRegisterableTournaments(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "trn1", "Joiner")
 	reachWorld(t, c)
@@ -87,6 +88,7 @@ func TestTournamentListShowsRegisterableTournaments(t *testing.T) {
 // the standing tournaments as typeId=4 events, each with >=1 registration-period
 // pair (the client reads element 0 of that list unguarded), consumed exactly.
 func TestTournamentCalendarShowsEvents(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "trn2", "Cal")
 	reachWorld(t, c)
@@ -137,6 +139,7 @@ func TestTournamentCalendarShowsEvents(t *testing.T) {
 // TestTournamentRegister: registering (4607) for a listed tournament is accepted
 // (28608 err 0), and the re-fetched list reports that tournament as registered.
 func TestTournamentRegister(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "trn3", "Reg")
 	reachWorld(t, c)
@@ -189,6 +192,7 @@ func TestTournamentRegister(t *testing.T) {
 // TestTournamentTreeEmpty: the bracket request (28649) returns a well-formed empty
 // tree (28650) — the client shows "tree unavailable" and the stream stays aligned.
 func TestTournamentTreeEmpty(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "trn4", "Tree")
 	reachWorld(t, c)

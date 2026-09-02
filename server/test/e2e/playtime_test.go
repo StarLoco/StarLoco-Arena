@@ -11,6 +11,7 @@ import (
 // that completeLogin stamps the clock and onClose banks it through
 // CoachRepo.Save, which is exactly the part that was missing.
 func TestPlayTimeIsPersistedOnDisconnect(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 
 	c, coachID := dialLogin(t, addr, "timer", "Timekeeper")

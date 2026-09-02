@@ -103,6 +103,7 @@ func readMailList(t *testing.T, payload []byte) []mailView {
 // MUST answer 15001 — that reply is what opens the client's mailbox dialog, so
 // silence would make the mailbox look inert.
 func TestMailboxOpensEvenWhenEmpty(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "mail_empty", "MailEmpty")
 	reachWorld(t, a)
@@ -121,6 +122,7 @@ func TestMailboxOpensEvenWhenEmpty(t *testing.T) {
 // TestMailSendReceiveAndDelete drives the full coach-to-coach round trip:
 // recipient lookup, send, the recipient reading it, and deletion.
 func TestMailSendReceiveAndDelete(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "mail_from", "Sender")
 	reachWorld(t, a)
@@ -212,6 +214,7 @@ func TestMailSendReceiveAndDelete(t *testing.T) {
 // TestMailAttachmentsMoveWithTheMail: attached cards leave the sender's inventory
 // and are handed to the receiver only when they collect them.
 func TestMailAttachmentsMoveWithTheMail(t *testing.T) {
+	t.Parallel()
 	_, addr := testServerWithStore(t)
 	a, _ := dialLogin(t, addr, "mail_att_a", "AttSender")
 	reachWorld(t, a)

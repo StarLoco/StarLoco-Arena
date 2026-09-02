@@ -19,6 +19,7 @@ func reachWorld(t *testing.T, c *testclient.Client) {
 // TestTwoClientsMatchAndCreateFight: two coaches search, get matched, both
 // accept, and both receive CREATE_FIGHT(8000).
 func TestTwoClientsMatchAndCreateFight(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	a, _ := dialLogin(t, addr, "p1", "Player1")
@@ -69,6 +70,7 @@ func TestTwoClientsMatchAndCreateFight(t *testing.T) {
 // TestFullFightToVictory drives the whole fight: both clients ready through the
 // phases, one gives up, and both receive END_FIGHT(8300).
 func TestFullFightToVictory(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	a, _ := dialLogin(t, addr, "f1", "Fighter1")

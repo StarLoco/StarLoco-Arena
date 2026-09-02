@@ -13,6 +13,7 @@ import "testing"
 // server — is created as an admin, and logging in never changes the flag.
 
 func TestFirstAccountBecomesAdmin(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 
 	dialLogin(t, addr, "owner", "Owner")
@@ -28,6 +29,7 @@ func TestFirstAccountBecomesAdmin(t *testing.T) {
 }
 
 func TestLaterAccountsAreNotAdmin(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 
 	dialLogin(t, addr, "owner", "Owner")
@@ -46,6 +48,7 @@ func TestLaterAccountsAreNotAdmin(t *testing.T) {
 // *every* login, so a second connection by an already-existing ordinary account
 // was what actually leaked the flag.
 func TestLoginDoesNotGrantAdmin(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 
 	dialLogin(t, addr, "owner", "Owner")

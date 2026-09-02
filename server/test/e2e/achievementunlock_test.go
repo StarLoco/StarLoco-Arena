@@ -45,6 +45,7 @@ func setCriterion(c *testclient.Client, statID, value uint16) {
 
 // TestAchievementUnlockIsAnnounced: crossing the threshold produces 22000.
 func TestAchievementUnlockIsAnnounced(t *testing.T) {
+	t.Parallel()
 	addr := achievementServer(t)
 	c, _ := dialLogin(t, addr, "ach_unlock", "AchUnlock")
 	reachWorld(t, c)
@@ -70,6 +71,7 @@ func TestAchievementUnlockIsAnnounced(t *testing.T) {
 // Completion is recomputed from the criteria every time, so without the record
 // the player would be re-toasted on every evaluation — including every login.
 func TestAchievementUnlockFiresOnce(t *testing.T) {
+	t.Parallel()
 	addr := achievementServer(t)
 	c, _ := dialLogin(t, addr, "ach_once", "AchOnce")
 	reachWorld(t, c)
@@ -92,6 +94,7 @@ func TestAchievementUnlockFiresOnce(t *testing.T) {
 // must not re-announce. This is the case a purely in-memory guard would pass and
 // a real player would notice immediately.
 func TestAchievementUnlockSurvivesRelog(t *testing.T) {
+	t.Parallel()
 	addr := achievementServer(t)
 	c, _ := dialLogin(t, addr, "ach_relog", "AchRelog")
 	reachWorld(t, c)
@@ -115,6 +118,7 @@ func TestAchievementUnlockSurvivesRelog(t *testing.T) {
 // (zN gates its whole 22000 body on !isHidden), so sending one is pure noise.
 // 7002 shares 7001's trigger, so exactly one frame must arrive, not two.
 func TestHiddenAchievementIsNotAnnounced(t *testing.T) {
+	t.Parallel()
 	addr := achievementServer(t)
 	c, _ := dialLogin(t, addr, "ach_hidden", "AchHidden")
 	reachWorld(t, c)
@@ -137,6 +141,7 @@ func TestHiddenAchievementIsNotAnnounced(t *testing.T) {
 // TestCardGatedAchievementStaysLocked: 7003 has the same criterion as 7001 but
 // also requires a card, so meeting the criterion alone must not unlock it.
 func TestCardGatedAchievementStaysLocked(t *testing.T) {
+	t.Parallel()
 	addr := achievementServer(t)
 	c, _ := dialLogin(t, addr, "ach_card", "AchCard")
 	reachWorld(t, c)

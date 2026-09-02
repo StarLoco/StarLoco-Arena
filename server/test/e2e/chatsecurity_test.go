@@ -41,6 +41,7 @@ func ignore(t *testing.T, by *testclient.Client, name string) {
 // receiving one force-maximises and force-opens the chat window. Without server
 // filtering, an ignored player can pop the recipient's UI at will.
 func TestIgnoredWhisperIsDropped(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "ign_a", "IgnA")
 	reachWorld(t, a)
@@ -69,6 +70,7 @@ func TestIgnoredWhisperIsDropped(t *testing.T) {
 // TestIgnoredTradeLineIsDropped: the same edge must filter a broadcast pipe, and
 // must not affect anybody else.
 func TestIgnoredTradeLineIsDropped(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "ign_c", "IgnC")
 	reachWorld(t, a)
@@ -100,6 +102,7 @@ func TestIgnoredTradeLineIsDropped(t *testing.T) {
 // is defence in depth — but it costs nothing and a modified client is exactly
 // what an ignore list is for.
 func TestIgnoredVicinityLineIsDropped(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "ign_f", "IgnF")
 	reachWorld(t, a)
@@ -123,6 +126,7 @@ func TestIgnoredVicinityLineIsDropped(t *testing.T) {
 // escaping, so '<' from an untrusted source is a live tag. The stock client's
 // input widget strips them; a modified one would not, so the server must.
 func TestChatMarkupIsStrippedOnTheWire(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "mk_a", "MkA")
 	reachWorld(t, a)
@@ -155,6 +159,7 @@ func TestChatMarkupIsStrippedOnTheWire(t *testing.T) {
 // per 30 s, so a second line arriving immediately can only come from a modified
 // client. The server must not relay it.
 func TestTradeCooldownIsEnforcedOverTheWire(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "cd_a", "CdA")
 	reachWorld(t, a)
@@ -194,6 +199,7 @@ func containsRune(s, sub string) bool {
 // 3214 carries an EMPTY payload: om_0 discards the decoded body and renders a
 // fixed string, so the opcode is the whole message.
 func TestWhisperToYourselfIsRefusedVisibly(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "self_w", "SelfW")
 	reachWorld(t, a)
@@ -215,6 +221,7 @@ func TestWhisperToYourselfIsRefusedVisibly(t *testing.T) {
 // self-check must compare against the SENDER's own name, not refuse every
 // whisper.
 func TestWhisperToSomeoneElseStillWorks(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "w_from", "WFrom")
 	reachWorld(t, a)
@@ -234,6 +241,7 @@ func TestWhisperToSomeoneElseStillWorks(t *testing.T) {
 // used to get an invented English private message from "Server". The client has
 // its own localised string for exactly this, so send that instead.
 func TestNonAdminGMCommandGetsThePrivilegeError(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	// The FIRST account on a fresh database is made admin (handlers_connection.go),
 	// and every test gets a fresh database - so burn one login before testing the
@@ -257,6 +265,7 @@ func TestNonAdminGMCommandGetsThePrivilegeError(t *testing.T) {
 // TestBareSlashIsAnsweredNotIgnored: "/" on its own returned nil, so the player
 // typed a command and the server said nothing at all.
 func TestBareSlashIsAnsweredNotIgnored(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	// Promote BEFORE logging in: the session caches the account at login.
 	acc, err := st.Accounts.CreateAccount("adm_u", "pw", true)
@@ -279,6 +288,7 @@ func TestBareSlashIsAnsweredNotIgnored(t *testing.T) {
 // panel and force-opens chatDialog - so it must reach everyone, and only admins
 // must be able to fire it.
 func TestAnnounceReachesEveryConnectedSession(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	adm, _ := dialLogin(t, addr, "ann_adm", "AnnAdm") // first account => admin
 	reachWorld(t, adm)
@@ -308,6 +318,7 @@ func TestAnnounceReachesEveryConnectedSession(t *testing.T) {
 // TestAnnounceIsAdminOnly: a non-admin must get the privilege error, not a
 // server-wide broadcast.
 func TestAnnounceIsAdminOnly(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	first, _ := dialLogin(t, addr, "ann_first", "AnnFirst") // burns the admin slot
 	reachWorld(t, first)

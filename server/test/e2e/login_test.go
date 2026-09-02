@@ -9,6 +9,7 @@ import (
 // TestLoginToWorld: a fresh account logs in, is prompted to create a coach,
 // creates one, and reaches the world (EnterInstance 4600).
 func TestLoginToWorld(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	c, err := testclient.Dial(addr)
@@ -38,6 +39,7 @@ func TestLoginToWorld(t *testing.T) {
 // TestReconnectKeepsCoach: after creating a coach, a second login for the SAME
 // account skips creation (existing coach) and goes straight to the world.
 func TestReconnectKeepsCoach(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 
 	// First login: create coach.

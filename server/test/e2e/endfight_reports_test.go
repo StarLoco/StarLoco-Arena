@@ -87,6 +87,7 @@ func assertEndFightReportsAreRosterIDs(t *testing.T, st *store.Store, payload []
 // roster fighters (progression skips placeholder fighters with id 0) and a
 // RANKED fight (fightFeedsProgression excludes practice and challenge bouts).
 func TestEndFightReportsResolveInTheRecipientsRoster(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown")
 	}

@@ -526,3 +526,22 @@ Open follow-ups, none blocking:
    the binaries are automated.
 3. **First release must be cut manually-ish**: `.release-please-manifest.json` starts at
    `0.0.0`, so the first `feat:` commit produces `v0.1.0`.
+
+### e2e suite runtime
+
+The wire suite runs **parallel** (`t.Parallel()` on every test) and takes ~15-20s, down from
+~140s. Each test already had its own store, its own TCP port and its own server, so they were
+independent in everything except two package-level globals in `internal/game`:
+
+- `turnClock` - every test set it to the same 12s, so it is set ONCE in `TestMain` rather than
+  per test. A per-test override is a data race the moment anything runs in parallel.
+- `fusionRand` - the fusion tests seed it to *different* values on purpose (one to force a
+  success, one a failure), so **`fusion_test.go` is deliberately NOT parallel** and says so at
+  the top of the file. Sequential tests complete before the parallel phase resumes, which is
+  what keeps that safe.
+
+Verified with `-race` (clean) and six consecutive runs (no failures) before landing, because
+the previous flakiness episode (B-126..B-129) came from tests that passed once.
+
+The `-timeout 25m` in CI stays. It was a mitigation for a slow suite and is now enormous
+headroom; removing it would only buy a worse failure mode on a loaded runner.

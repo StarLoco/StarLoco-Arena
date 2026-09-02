@@ -34,6 +34,7 @@ func createFighter(t *testing.T, a *testclient.Client, st *store.Store, coachID 
 // blob, called it "cards", and asserted the server stored it as cards. It passed,
 // because the server made exactly the same mistake. Both are fixed together.
 func TestFighterEquipLoadout(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "load_a", "LoadA")
 	reachWorld(t, a)
@@ -120,6 +121,7 @@ func TestFighterEquipLoadout(t *testing.T) {
 // caps used to be applied to the opposite blob, so a 6th piece of equipment was
 // accepted that the client would refuse on arrival.
 func TestFighterLoadoutCap(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "load_b", "LoadB")
 	reachWorld(t, a)

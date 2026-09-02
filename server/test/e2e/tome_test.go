@@ -36,6 +36,7 @@ func tomeServer(t *testing.T) (*store.Store, string) {
 // it must not revoke the achievement it completed. A "distinct templates
 // currently held" implementation passes every other test here and fails this one.
 func TestTomeRemembersSoldCards(t *testing.T) {
+	t.Parallel()
 	st, addr := tomeServer(t)
 	c, coachID := dialLogin(t, addr, "tome_sold", "TomeSold")
 	reachWorld(t, c)
@@ -91,6 +92,7 @@ func TestTomeRemembersSoldCards(t *testing.T) {
 // TestTomeIsNotGrantedForUnownedCards: the tome must not invent membership, or
 // every card-gated achievement would unlock for everyone.
 func TestTomeIsNotGrantedForUnownedCards(t *testing.T) {
+	t.Parallel()
 	_, addr := tomeServer(t)
 	c, _ := dialLogin(t, addr, "tome_none", "TomeNone")
 	reachWorld(t, c)
@@ -106,6 +108,7 @@ func TestTomeIsNotGrantedForUnownedCards(t *testing.T) {
 // aQm()), so a server-side tome the client never sees would show 0% on rows the
 // server considers complete.
 func TestTomeReachesTheClient(t *testing.T) {
+	t.Parallel()
 	st, addr := tomeServer(t)
 	c, coachID := dialLogin(t, addr, "tome_wire", "TomeWire")
 	reachWorld(t, c)

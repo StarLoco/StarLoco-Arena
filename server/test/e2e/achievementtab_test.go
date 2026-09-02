@@ -47,6 +47,7 @@ func readCriteria(t *testing.T, payload []byte) map[uint16]uint16 {
 // reply, so this asserts the server answers 22001 at all. A unit test of the
 // encoder cannot see a missing handler registration.
 func TestAchievementTabOpens(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "achv_open", "AchvOpen")
 	reachWorld(t, c)
@@ -69,6 +70,7 @@ func TestAchievementTabOpens(t *testing.T) {
 // TestAchievementTabShowsEarnedCriteria: a criterion reported since login must
 // appear in the snapshot, not just after a relog.
 func TestAchievementTabShowsEarnedCriteria(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "achv_earn", "AchvEarn")
 	reachWorld(t, c)
@@ -98,6 +100,7 @@ func TestAchievementTabShowsEarnedCriteria(t *testing.T) {
 // running client. Here: earning a new criterion must not cost the coach the Zaap
 // criterion it logged in with, which would silently re-lock the island Zaap.
 func TestAchievementSnapshotIsCompleteNotADelta(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, _ := dialLogin(t, addr, "achv_full", "AchvFull")
 	reachWorld(t, c)

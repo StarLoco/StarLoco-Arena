@@ -10,6 +10,7 @@ import (
 // TestWhisperDelivered: a whisper (3155) reaches the named online target as a
 // PrivateContent (3154).
 func TestWhisperDelivered(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "whisper_a", "Wa")
 	reachWorld(t, a)
@@ -45,6 +46,7 @@ func TestWhisperDelivered(t *testing.T) {
 // TestWhisperUserNotFound: whispering an offline/unknown name returns
 // UserNotFound (3204).
 func TestWhisperUserNotFound(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	a, _ := dialLogin(t, addr, "whisper_c", "Wc")
 	reachWorld(t, a)
@@ -61,6 +63,7 @@ func TestWhisperUserNotFound(t *testing.T) {
 // TestFriendAddRemove: adding a friend acks (3156), and the persisted friend
 // then appears in the FriendList (3144) on relogin.
 func TestFriendAddRemove(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "friend_a", "Fa")
 	reachWorld(t, a)
@@ -106,6 +109,7 @@ func TestFriendAddRemove(t *testing.T) {
 // TestIgnoreAddRemove: adding an ignore acks (3158) and persists the directed
 // edge; removing acks (3162) and drops it.
 func TestIgnoreAddRemove(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	a, aID := dialLogin(t, addr, "ignore_a", "Ia")
 	reachWorld(t, a)

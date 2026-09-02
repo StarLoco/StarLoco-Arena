@@ -40,6 +40,7 @@ func hasTemplateID(list []int32, tmpl int32) bool {
 // answered with a CoachInventoryUpdate(5200) listing the coach's unequipped
 // cards.
 func TestInventoryRequestReturnsCards(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	// Create the coach, seed a card in the DB, then reconnect so the session
 	// loads the inventory fresh (the harness has no gamedata, so no starter
@@ -65,6 +66,7 @@ func TestInventoryRequestReturnsCards(t *testing.T) {
 // slots a template equips it — the card leaves the unequipped list in the
 // resulting 5200 and its Pos is persisted.
 func TestEquipMovesCardOutOfInventory(t *testing.T) {
+	t.Parallel()
 	st, addr := testServerWithStore(t)
 	_, aID := dialLogin(t, addr, "equip_a", "EquipA")
 	st.DB().Create(&domain.CoachCard{CoachID: uint(aID), TemplateID: 8888, Quantity: 1})

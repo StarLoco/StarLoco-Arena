@@ -11,6 +11,7 @@ import (
 // instead of being silently allowed to proceed to auth. (The accept path is
 // covered by every other e2e test, which log in with version 70.)
 func TestInvalidClientVersionRejected(t *testing.T) {
+	t.Parallel()
 	addr := testServer(t)
 	c, err := testclient.Dial(addr)
 	if err != nil {

@@ -20,6 +20,7 @@ const (
 // 8000 + the current turn 8104) and the fight keeps going (the opponent gets NO
 // END_FIGHT).
 func TestReconnectResumeFight(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(the reconnect/resume logic itself is unit-tested race-clean in internal/game)")
@@ -59,6 +60,7 @@ func TestReconnectResumeFight(t *testing.T) {
 // TestReconnectDeclineForfeits asserts that declining the reconnect (26334=0)
 // forfeits the abandoned fight, so the surviving opponent receives END_FIGHT.
 func TestReconnectDeclineForfeits(t *testing.T) {
+	t.Parallel()
 	if raceEnabled {
 		t.Skip("timing-sensitive full-fight E2E; flaky under -race's slowdown " +
 			"(the forfeit logic itself is unit-tested race-clean in internal/game)")
