@@ -116,6 +116,17 @@ type TournamentRegistration struct {
 
 	TournamentWireID int64 `gorm:"index;not null;uniqueIndex:idx_tourn_reg_coach_tid"`
 
+	// PrizeAwarded records that this coach has already been paid this
+	// tournament's reward card.
+	//
+	// SECURITY: awardTournamentPrize had no already-paid record at all, and the
+	// path that reaches it (28611, the tournament search) re-derives
+	// "unopposed in this tournament" from persisted bracket state - so it stays
+	// true forever once you hold the root slot, and each packet paid another copy
+	// of the reward card. This row already carries a unique (coach, tournament)
+	// index, which makes it the natural place to make payment idempotent.
+	PrizeAwarded bool `gorm:"not null;default:false"`
+
 	CreatedAt time.Time
 }
 

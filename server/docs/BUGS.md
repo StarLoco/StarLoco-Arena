@@ -11,6 +11,247 @@ decompiled client, no runtime).
 
 ---
 
+### B-152 - SECURITY: repeatable tournament reward cards (28611)
+
+**Symptom.** A tournament winner could mint its reward card without limit.
+
+**Cause.** `awardTournamentPrize` had no already-paid record. Its reachable
+caller, `handleTournamentSearchRequest` (28611), re-derives "unopposed in this
+tournament" purely from persisted bracket state - registration closed and the
+root slot held by this coach - so it stays true indefinitely and each packet
+granted another copy. `IsRegistered` is never cleared on winning either.
+
+**Fix.** `TournamentRepo.ClaimTournamentPrize` makes payment idempotent, with the
+guard in the UPDATE's WHERE clause so two concurrent claims cannot both match.
+Deliberately a pay-once LEDGER, not an eligibility check: my first version
+refused when no registration row existed, which broke three existing prize tests.
+That was the useful signal - requiring registration adds a second rule about WHO
+may be paid, and unregistration happens elsewhere in the lifecycle, so a
+legitimate winner could have been silently denied.
+
+**Verified.** unit (store: repeat claims, per-coach/per-tournament isolation) +
+unit (game: `awardTournamentPrize` five times grants once). Mutation-verified.
+
+---
+
+### B-151 - SECURITY: unpriced cards were purchasable for free (5450)
+
+**Symptom.** Most of the card catalogue could be minted at no cost.
+
+**Cause.** `handleShopBuy` derived cost solely from the template's `Price` map,
+and `BuyCards` skips entries with `amount <= 0`. A card whose price map is empty
+or all-zero therefore cost nothing. Live against shipped data: of 907 cards, 62
+sit in a card set with NO price and 702 more carry an all-zero price - 764
+templates, 64 per packet. `shopID` is unvalidated, so the attacker picks whichever
+set holds the card it wants and never approaches a Card Master.
+
+Confirmed these are not-for-sale rather than free by reading the records: card 51
+has `price map[1:0]` with `value 36200`; card 449 `price map[1:0]` with `value
+17234`. A zero entry means "no price in this currency".
+
+**Fix.** `cardIsPurchasable` in `handleShopBuy` rejects any card with no strictly
+positive price. The shop CATALOGUE is deliberately unchanged - I briefly filtered
+it too and broke `TestCardMasterStockIsItsCardSet`, which documents an unpriced
+in-set card as "still stocked". What retail displayed is a parity question with no
+client evidence; what the server hands over is not.
+
+**Verified.** unit (`cardIsPurchasable` table, plus
+`TestStockedIsNotTheSameAsPurchasable` recording the asymmetry).
+**Gap, honestly recorded:** no test drives opcode 5450 end-to-end with an
+unpriced card id, so removing the guard from the handler does NOT fail the suite.
+Follow-up.
+
+---
+
+### B-150 - SECURITY: the client could clear the server's anti-replay flags (22003)
+
+**Symptom.** PvE challenge reward cards could be farmed indefinitely.
+
+**Cause.** The server records "challenge N already cleared" as stat id
+`2000 + N` in the same `coach_stats` table opcode 22003 lets the client write, and
+`UpsertStat` OVERWRITES rather than maxes. Beat a challenge, send 22003 with
+`statID = 2000+N, value = 0`, re-run it, get paid again.
+
+The namespace was documented as un-collidable because 2000 exceeds the client's
+`MaxCriterionID` (1007). That only held for OUTPUT - `buildCriteriaBlob` drops ids
+above 1007 - and said nothing about input. `su.StatID` is a full `int16`.
+
+**Fix.** Writes restricted to the client's own criterion range, which the client
+never exceeds, so no legitimate flow changes. A test asserts the two id spaces
+cannot overlap, so raising `MaxCriterionID` past 2000 fails loudly.
+
+**Verified.** e2e (real 22003 frame: bookkeeping id rejected, criterion 213 still
+accepted) + unit (namespace separation). Mutation-verified.
+
+---
+
+### B-149 - SECURITY: duplicate logins leaked coach state into every subsystem
+
+**Symptom.** Re-logging in while queued left a ghost that other players were
+matched against; the second session was also invisible to the whole world.
+
+**Cause.** Two halves.
+`onClose` returned EARLY for a session displaced by a newer login, skipping its
+entire teardown - deterministic, not a race, because `handleAuthentication` calls
+`Sessions.Swap` BEFORE `old.kick()`, so `Sessions.Remove` always reports false
+there. The matchmaker kept a searcher holding a dead socket, and challenges,
+exchanges and 2v2 pairings kept their counterparties waiting on someone gone.
+Separately, `World.Add` refuses a coach already present, so the NEW session lost
+permanently: full login sequence, but no AoI, and every world-scoped delivery
+routed to the dead socket.
+
+**Fix.** `releaseSubsystems()` extracted and run on BOTH paths.
+`Registry.TakeOver` re-points the existing entry at the new session, preserving
+position and AoI known-set so nobody sees a spurious despawn/respawn.
+`Registry.RemoveIfSession` stops a closing session tearing down an entry a newer
+login already owns.
+
+**Verified.** e2e (`TestReplacedSessionReleasesItsChallenge`: two sockets, live
+challenge, second login) + unit. The e2e test uses the CHALLENGE rather than the
+matchmaker queue on purpose - the matchmaker's own ghost purge would have masked
+the queue case, so the queue is not proof the release runs.
+
+---
+
+### B-148 - SECURITY: 6021 team-preset IDOR and roster duplication
+
+**Symptom.** Any client could overwrite and take ownership of another coach's team
+preset, and could field a roster of duplicated fighters.
+
+**Cause.** `TeamRepo.Upsert`'s doc comment claimed it was "scoped to the owning
+coach"; the code had no `coach_id` predicate at all. The team id arrives on the
+wire, and `gorm.Save` with a non-zero PK issues `UPDATE teams SET * WHERE id = ?`,
+so naming a victim's id deleted their members and rewrote `coach_id`, `name`,
+`game_mode`, appearance and `ally_coach_id` (destroying their 2v2 pairing). Team
+ids are small sequential integers.
+
+Separately, member building checked ownership but nothing else. The fighter count
+is a `u8`, so the same owned fighter could be sent 255 times. Beyond an unfair
+roster this corrupts the fight: `WireID = base + fighterID*16 + side*8 + i`
+collides with another fighter's space past `i=16`, and placement does
+`cells[i%len(cells)]`, stacking fighters on one cell.
+
+**Fix.** `Upsert` requires the row to already belong to the caller, and a miss is
+indistinguishable from a nonexistent id so it cannot enumerate other coaches'
+ids. `presetMembers` applies the same rules the drag-and-drop path already
+enforced via `canPlaceFighter` - 6 members, no duplicates, 2 per breed - with the
+two limits promoted to named constants so the paths cannot drift again.
+
+Refusals are silent by design: retail validates rosters LOCALLY (`hu_2` shows
+`error.teamManagement.fightersCountExploded` itself and never sends), so no
+"invalid preset" status exists on the wire. Same precedent as chat flood.
+
+**Verified.** e2e (steal attempt leaves the victim's team owned and named as
+before; 20 copies of one fighter save as 1; 8 fighters over 4 breeds cap at 6; 5
+of one breed cap at 2). Mutation-verified.
+**Note:** the dedup test alone was insufficient - with 20 copies of ONE fighter,
+dedup leaves a single member and the size cap is never reached, so a mutation
+disabling it survived. The cap tests use distinct fighters for that reason.
+
+---
+
+### B-147 - SECURITY: channel chat was unsanitized and unthrottled (3140)
+
+**Symptom.** One client could inject markup into every online player's chat, and
+spam a global broadcast with no limit.
+
+**Cause.** `buildChannelMessage` was the only chat builder that sanitized
+nothing, while vicinity, trade, clan, group and private all did - and it is the
+widest pipe of the set. All three fields are attacker-chosen: the channel KEY and
+body come straight off the wire, and the sender name is only as trustworthy as
+coach-name validation. The client renderer (`rw_2.bJ`) parses `<b>`, `<c>`,
+`<text color=...>` and `<image pixmap=...>` in the body AND the sender name with
+no escaping (B-104); the input widget's `restrict="[.*&[^<>]]"` is client-side
+only. The pipe also had no throttle at all.
+
+**Fix.** All three fields through `sanitizeChatText`; `allowRepeat` shared with
+its siblings.
+
+**Verified.** unit. Two corrections worth keeping: `maxChannelField` is defence in
+depth and NOT the live protection (`Writer.StringU8` already truncates at 127, and
+its comment records being hardened for this exact case), and my first length test
+checked for a NEGATIVE prefix - wrong, since `byte(len(s))` wraps modulo 256, so a
+300-byte field yields 44: positive but describing fewer bytes than follow. The
+test now asserts the three fields consume the payload EXACTLY, and fires when both
+clamps are removed.
+
+---
+
+### B-146 - SECURITY: empty and impersonating coach names accepted (2049)
+
+**Symptom.** A coach could be created with an empty name, with markup, or with a
+name that renders identically to another player's.
+
+**Cause.** `CoachRepo.Create` applied only `strings.TrimSpace`, so a
+whitespace-only name collapsed to `""` and stored fine - NOT NULL is satisfied by
+the empty string and the uniqueness count is 0. (`sendGuildMembers` already had to
+skip blank member names, which was this leaking through.) Also accepted: markup,
+C0 controls including newlines, and U+00AD SOFT HYPHEN, which is not
+`unicode.IsSpace` so it survived TrimSpace and renders as nothing - `Ad<AD>min` is
+a distinct row displaying as `Admin`.
+
+2049 could also be replayed indefinitely: it checked only that the account was
+authenticated, so a loop minted unlimited coaches, each re-pointing the account
+and each collecting starter cards and wallet.
+
+**Fix.** `validateCoachName`, built from the CLIENT's own rule
+(`aBC.validateCoachCreationForm`: `length <= 20` against
+`([\p{L}]|[\p{L}][-]){2,}\p{L}`). The server rule is a deliberate SUPERSET that
+also allows digits: being stricter than the client would reject names a
+legitimate client can produce, while being looser only risks accepting one retail
+would not have made, and digits enable none of the attacks. `clientCoachNameRE` is
+kept alongside for strict parity, with a test pinning that we are never stricter.
+The client's error string `error.coachCreation.invalidName` reads "Nom de coach
+invalide ou deja utilise", so result code 11 already covers "invalid" and no
+server prose was invented. One coach per account now enforced.
+`sanitizeFighterName` also fixed: it cut at 16 BYTES, splitting runes and
+persisting invalid UTF-8, and stripped no markup.
+
+**Verified.** e2e (six hostile names via the real 2049 frame; replay refused) +
+unit. Mutation-verified.
+**Note:** the replay guard first tested `s.Account.CoachID`, which
+`CoachRepo.Create` updates in the DATABASE but not in memory - it read correctly
+and never fired. Only the e2e test caught it. And my first mutation check reported
+CAUGHT because the mutant did not COMPILE; rewritten to compile it reported
+MISSED, revealing nothing exercised 2049 with hostile input at all.
+
+---
+
+### B-145 - SECURITY: no panic containment; two remote full-server crashes
+
+**Symptom.** Three packets from a throwaway account killed the entire server
+process - every logged-in player and every fight in progress - and it was
+re-armable at will.
+
+**Cause.** There was no `recover()` anywhere in production code, and Go
+terminates the whole process on an unrecovered panic in ANY goroutine. Two
+reachable nil dereferences:
+
+1. **Matchmaker.** Queue for a fight (2301), then destroy your own coach (27529).
+   `handleDestroyCoach` set `Session.Coach = nil` without cleaning the matchmaker,
+   and `onClose`'s cleanup is gated on `s.Coach != nil` so disconnecting did not
+   clean it either. The next honest player to search dereferenced the ghost at
+   `matchmaker.go:115`.
+2. **ChallengeManager.** Same shape: invite someone, destroy your coach, and the
+   victim's accept/decline - or any third party's logout touching that challenge -
+   dereferenced `c.challenger.Coach.ID`.
+
+**Fix.** Coach ids now resolve through `searcherCoachID` / `sessionCoachID`, which
+report absence instead of dereferencing; the matchmaker purges ghosts on the
+Search path so the queue self-heals. `handleDestroyCoach` releases every subsystem
+before nilling the coach. Containment added independently:
+`Session.dispatchSafely` (drops that one session, logs opcode + stack) and
+`Fight.runEvent` (keeps the fight running - one bad event must not void a match
+players are minutes into).
+
+**Verified.** unit, with the panic reproduced BEFORE the fix. Every guard is
+mutation-verified.
+**Note:** two of these tests were initially vacuous. The `ConfirmTeam` subtest
+never accepted the challenge, so it returned early and never reached the guarded
+line; and I only ever nil'd the CHALLENGER's coach, leaving the mirror deref on
+`c.target` untested. Both mutations survived until the fixtures were fixed.
+
+---
 ### B-137 - re-entering the SAME world duplicated interactive elements - FIXED by B-142
 
 **Status: FIXED**, as a side effect of B-142 rather than by the guard I was contemplating.

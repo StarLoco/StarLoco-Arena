@@ -3,7 +3,15 @@
 Single entry point for picking the 2.70 server back up cold. Everything else is
 detail; this is state.
 
-**Updated:** 2026-08-23
+**Updated:** 2026-09-02
+
+> **Security:** a full hostile-client audit landed on 2026-09-02. Eight issues
+> are fixed (`BUGS.md` B-145 … B-152, five of them remotely exploitable by any
+> authenticated client, two of them full-server crashes). The findings that are
+> **still open** — including client-authored spell loadouts, no rate limiting or
+> connection cap on the game socket, and auto-registration granting the first
+> account admin — are catalogued with severities in
+> [`SECURITY.md`](./SECURITY.md). Read that before exposing an instance publicly.
 
 ---
 

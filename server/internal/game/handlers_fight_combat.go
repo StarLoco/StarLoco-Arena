@@ -1010,6 +1010,27 @@ func (d *Deps) awardTournamentPrize(tid int64, coachID uint, sess *Session) {
 			"tournament", tid, "def", t.DefID, "card", def.RewardCard)
 		return
 	}
+	// SECURITY: pay at most once, ever.
+	//
+	// There was no already-paid record here. The reachable caller is 28611 (the
+	// tournament search), which re-derives "unopposed in this tournament" purely
+	// from persisted bracket state - registration closed and the root slot held by
+	// this coach - so it stays true indefinitely and each packet granted another
+	// copy of the reward card. IsRegistered is never cleared on winning either.
+	//
+	// ClaimTournamentPrize puts the guard in the UPDATE's WHERE clause, so two
+	// concurrent claims cannot both succeed.
+	claimed, err := d.Store.Tournaments.ClaimTournamentPrize(coachID, tid)
+	if err != nil {
+		d.Log.Warn("claim tournament prize", "coach", coachID, "tournament", tid, "err", err)
+		return
+	}
+	if !claimed {
+		d.Log.Info("tournament prize already awarded; ignoring repeat claim",
+			"coach", coachID, "tournament", tid)
+		return
+	}
+
 	grants := []store.GrantCard{{TemplateID: def.RewardCard, Quantity: 1}}
 	if err := d.Store.Coaches.GrantCards(coachID, grants); err != nil {
 		d.Log.Warn("award tournament prize", "coach", coachID,

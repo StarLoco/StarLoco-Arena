@@ -206,3 +206,59 @@ func (r *TournamentRepo) SetSlot(tid int64, slot int32, coachID uint) error {
 		TournamentWireID: tid, Slot: slot, CoachID: coachID,
 	}).Error
 }
+
+// ClaimTournamentPrize atomically records that a coach has been paid a
+// tournament's reward, and reports whether THIS call was the one that claimed it.
+// A second call returns false, so the reward can only ever be granted once.
+//
+// SECURITY: awardTournamentPrize had no already-paid record at all, and the path
+// that reaches it (28611, the tournament search) re-derives "unopposed in this
+// tournament" from persisted bracket state - so it stays true once you hold the
+// root slot and each packet paid another copy of the reward card.
+//
+// This is a pay-once LEDGER, not an eligibility check: if no registration row
+// exists it inserts one rather than refusing. That distinction matters. Requiring
+// a registration would have added a second rule about WHO may be paid, and
+// unregistration happens elsewhere in the lifecycle - so a legitimate winner
+// could have been silently denied their prize. Eligibility is the caller's
+// business; this function only guarantees "at most once".
+//
+// Both paths are race-safe: the UPDATE carries prize_awarded = false in its WHERE
+// clause so exactly one of two concurrent claims can match, and the INSERT is
+// protected by the unique (coach_id, tournament_wire_id) index, whose violation
+// is treated as "someone else claimed it".
+func (r *TournamentRepo) ClaimTournamentPrize(coachID uint, tid int64) (bool, error) {
+	res := r.db.Model(&domain.TournamentRegistration{}).
+		Where("coach_id = ? AND tournament_wire_id = ? AND prize_awarded = ?",
+			coachID, tid, false).
+		Update("prize_awarded", true)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	if res.RowsAffected > 0 {
+		return true, nil
+	}
+
+	// No unpaid row matched: either it is already paid, or there is no row.
+	var existing int64
+	if err := r.db.Model(&domain.TournamentRegistration{}).
+		Where("coach_id = ? AND tournament_wire_id = ?", coachID, tid).
+		Count(&existing).Error; err != nil {
+		return false, err
+	}
+	if existing > 0 {
+		return false, nil // already paid
+	}
+
+	reg := &domain.TournamentRegistration{
+		CoachID:          coachID,
+		TournamentWireID: tid,
+		PrizeAwarded:     true,
+	}
+	if err := r.db.Create(reg).Error; err != nil {
+		// Unique-index violation means a concurrent claim won; anything else is a
+		// real error, but either way this call did not claim.
+		return false, nil
+	}
+	return true, nil
+}
