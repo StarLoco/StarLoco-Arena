@@ -132,12 +132,15 @@ func handleChannelMessage(s *Session, f *protocol.C2SFrame) error {
 	if strings.HasPrefix(msg, "/") {
 		return handleGMCommand(s, msg)
 	}
-	// The client's 3140 decoder reads each field length as a single signed
-	// byte, so clamp to 127 to avoid a wrapped length prefix corrupting the
-	// frame.
-	if len(msg) > 127 {
-		msg = msg[:127]
+	// SECURITY: this pipe fans out to EVERY online coach and was the only chat
+	// path with no throttle whatsoever, while trade, clan and group all had one.
+	// Unthrottled global broadcast is a griefing primitive on its own.
+	if !s.chat.allowRepeat(msg, time.Now()) {
+		return nil
 	}
+	// Field lengths are clamped inside buildChannelMessage (see maxChannelField):
+	// doing it there covers the channel key and sender name too, which this
+	// function used to pass through unbounded.
 
 	frame, err := buildChannelMessage(channel, s.Coach.Name, msg)
 	if err != nil {
@@ -152,13 +155,37 @@ func handleChannelMessage(s *Session, f *protocol.C2SFrame) error {
 	return nil
 }
 
+// maxChannelField is 127 because the client's 3140 decoder reads each of the
+// three field lengths as a SIGNED byte, so anything above 127 would wrap negative
+// and corrupt the frame for every recipient.
+//
+// This is defence in depth, NOT the live protection: Writer.StringU8 already
+// truncates at MaxStringU8 (127), and its doc comment records that it was
+// hardened precisely because THIS path echoed an unclamped channel name. Stating
+// that plainly matters - a mutation widening this constant does not reproduce the
+// bug, because the writer still clamps. It is here so the intent is visible at
+// the call site and so a future switch to a wider writer cannot silently
+// reintroduce the wrap.
+const maxChannelField = 127
+
 // buildChannelMessage builds ChannelContent (3140):
 // [u8 channelLen][channel][u8 senderLen][sender][u8 msgLen][message].
+// SECURITY: all three fields are sanitized, and all three are attacker-chosen -
+// the channel KEY and the message body come straight off the wire, and the sender
+// name is only as trustworthy as coach-name validation.
+//
+// This builder was the one chat pipe that sanitized nothing, while every sibling
+// (vicinity, trade, clan, group, private) already did. That made it the widest
+// hole of the set, because a channel line fans out to EVERY online coach. The
+// client's renderer (rw_2.bJ) parses <b>, <c>, <text color=...> and
+// <image pixmap=...> in the message body AND in the sender name with no escaping
+// (B-104); the stock input widget's restrict="[.*&[^<>]]" is client-side only and
+// a modified client simply omits it.
 func buildChannelMessage(channel, sender, msg string) ([]byte, error) {
 	w := protocol.NewWriter().
-		StringU8(channel).
-		StringU8(sender).
-		StringU8(msg)
+		StringU8(sanitizeChatText(channel, maxChannelField)).
+		StringU8(sanitizeChatText(sender, maxChannelField)).
+		StringU8(sanitizeChatText(msg, maxChannelField))
 	return protocol.EncodeS2C(protocol.OpChannelContentMessage, w.Bytes())
 }
 
