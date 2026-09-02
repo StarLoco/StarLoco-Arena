@@ -1317,6 +1317,29 @@ is a signing certificate or SignPath); no published Docker image.
     pass over living visible enemies, no lookahead, no movement search. That is
     both fast (tiny sets) and the depth a human actually plays at.
 
+    **Spell targeting was already correct, and is now complete.** The AI could
+    never aim a support spell at an enemy (`aiSpellCastableFrom` gates every
+    candidate on `aiSpellHarmsEnemy`) and never splashes its own team with the
+    harmful half of an area spell (`aiWouldHitOwnTeam`, strict: any friendly
+    splash disqualifies). Both were already pinned by tests. What was missing was
+    the other direction - because the attack path requires "harms an enemy",
+    support spells were filtered out and never cast AT ALL, so the AI never
+    healed a dying teammate. `aiSupportCast` fills that, ally-only, with the
+    threshold and overheal cap that stop it topping up scratches.
+
+    **Heals only, deliberately.** A heal's value is readable from the data: the
+    effect rolls an amount and the useful part is bounded by the ally's missing
+    HP, so "was that worth an action" is answerable. A buff's is not - nothing in
+    the record says what +damage% for 3 turns is worth against spending the same
+    AP attacking now. Buffs stay unused until there is a basis for valuing them
+    rather than a guess.
+
+    **On the target masks.** `TargetMasks` (field 22) is present on 202 of 203
+    spells but `EnforceTargetMasks` (field 19) is set on only 3 - the retail
+    client applies the cast-level check for those three alone. So the mask is
+    good evidence of INTENT and cannot be used as a hard gate; the per-effect
+    `Effect.Targets` mask is the enforceable one and already filters areas.
+
     What is left here is **strength, not correctness**: AP-efficiency (several
     cheap casts can out-damage one expensive one), target selection (nearest
     rather than most-killable), and positioning quality. Each makes the AI

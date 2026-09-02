@@ -484,6 +484,14 @@ func (f *Fight) castAISpellRepeatedly(ff *FightFighter) {
 	if f.deps == nil || f.deps.Spells == nil {
 		return
 	}
+	// Support first: a teammate about to die is worth more than another hit.
+	// Bounded by AP like everything else, and it only fires when an ally is
+	// genuinely hurt (see aiHealThresholdPct), so a healthy team costs nothing.
+	for ff.AP > 0 && f.isCurrentTurn(ff.WireID) && ff.HP > 0 {
+		if !f.aiSupportCast(ff) {
+			break
+		}
+	}
 	maxCasts := int(ff.MaxAP) + 1 // hard safety cap; every cast must spend AP
 	for i := 0; i < maxCasts; i++ {
 		if ff.HP <= 0 || !f.isCurrentTurn(ff.WireID) || ff.AP <= 0 {
