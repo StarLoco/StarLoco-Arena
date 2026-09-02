@@ -1210,24 +1210,37 @@ is a signing certificate or SignPath); no published Docker image.
     premise is false.** No shipped spell uses action 76/77 (0 of 533 effect
     rows), the client's timeline interface has no comparator or sort, and no
     wire message reorders it. See §8.2. Gear initiative already works.
-14. ⛔ **5203 destructive/lock inventory ops** — **blocked by the wire, and the
-    premise was wrong twice.** 5203 is not "remove/lock": `sj_1.yG` builds it
-    from the cards missing from the client's current inventory view, so it is a
-    **removal** notice with no action discriminator — it would never have given
-    `CardLocked` a writer. And its uids are **unusable**: the client's card
-    object reads only the i32 reference-card id off the wire and then assigns its
-    own id from `uq_1.ahR()`, a client-local counter, so the server has never
-    seen the number and cannot map it to a `CoachCard` row. Acting on it would
-    mean guessing which card to destroy, against an inventory containing bound
-    The old prerequisite - "give inventory cards a server-assigned identity
-    in the 5200 push" - is now **ruled out with evidence**, so this item is
-    CLOSED rather than deferred. eb_1.b(ByteBuffer) reads only the i32
-    reference-card id and then does 	his.aFL = uq_1.ahR() UNCONDITIONALLY:
-    a server-supplied uid would be discarded even if we added a field for it,
-    and adding one would break the sacred wire regardless. There is no
-    fallback route either - 5203 echoes ONLY those uids, with no template id
-    to reconcile against. Our current handling (accept the frame, act
-    destructively on nothing) is the correct end state, not a stopgap.
+14. ⛔ **5203 destructive/lock inventory ops** - **IMPOSSIBLE on this wire, not
+    unbuilt. Verified end-to-end and now CI-enforced.** The premise was wrong
+    twice, so the evidence is spelled out.
+
+    **It is not "remove/lock".** `sj_1.yG` builds the frame from the cards that
+    were in the client's reference set but are no longer in its current inventory
+    view, and sends it right after the 5201 equipment layout. So it is a
+    **removal notice** with no action discriminator anywhere in the payload -
+    there is no lock, and `CardLocked` would never have had a writer.
+
+    **Its uids cannot be resolved.** `eb_1.b(ByteBuffer)` reads only the i32
+    reference-card id, and then does `this.aFL = uq_1.ahR()` UNCONDITIONALLY.
+    `uq_1.ahR()` is a client-local monotonic counter (`bRK + (bRI & 0xFFFFFF)`,
+    incrementing on every call). The server has never seen that number and
+    cannot map it to a `CoachCard` row. A server-supplied uid would be discarded
+    even if we added a field for it - and adding one would break the sacred wire
+    regardless. There is no fallback route: `fh_0.encode()` writes
+    `[i16 count][i64 uid x count]` and nothing else, so there is no template id
+    to reconcile against. Acting on the frame would mean guessing which card to
+    destroy, against an inventory that can hold several copies of the same
+    reference card - the one case where guessing wrong is unrecoverable for the
+    player.
+
+    **Current handling is the correct end state, not a stopgap:** accept the
+    frame, re-push the inventory, act destructively on nothing.
+
+    `TestCardUIDsAreClientLocal` pins all of it against the decompiled client
+    (uid assigned from the local counter, counter increments, 5203 carries only
+    those uids). Each assertion was mutation-verified. If one ever fails, the
+    wire changed or the reading was wrong and this item deserves a fresh look -
+    do not adjust the test to make it pass.
 15. ~~**AoE shape 8 (point-list)** and the asymmetric 2-/4-param crosses.~~ —
     **done (B-080)**. Shape 8 is directional (the client's symmetry flag `fi()`
     is false for it, as for the T shapes); the cross accepts 1/2/4 arm lengths
