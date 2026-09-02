@@ -65,3 +65,35 @@ func (f *Fight) aiKnownHazardAt(ff *FightFighter, p Pos) (lethal, damaging bool)
 	}
 	return lethal, damaging
 }
+
+// aiCellRisk scores how dangerous it is to STAND on `p`, using only what `ff` is
+// allowed to know. Lower is safer; the units are arbitrary and only ever compared
+// against each other.
+//
+// Two components, both things a player weighs without thinking:
+//
+//   - adjacent living enemies, because standing next to someone invites a melee
+//     hit and, in this game, being surrounded is how fights are lost;
+//   - a KNOWN damaging area on the cell - the fighter's own team's trap. This is
+//     a penalty rather than a veto: a human will step on their own trap if that
+//     is the only way to reach the fight, they just prefer not to.
+//
+// Enemy traps contribute nothing, by construction (ai_knowledge.go).
+func (f *Fight) aiCellRisk(ff *FightFighter, p Pos) int32 {
+	if ff == nil {
+		return 0
+	}
+	var risk int32
+	for _, fr := range f.allFighters() {
+		if fr.HP <= 0 || fr == ff || !f.areOpponents(ff, fr) || fr.hasState(stateInvisible) {
+			continue
+		}
+		if manhattanDist(p, fr.Pos) <= 1 {
+			risk += 2
+		}
+	}
+	if _, damaging := f.aiKnownHazardAt(ff, p); damaging {
+		risk += 3 // worse than one adjacent enemy, cheaper than being surrounded
+	}
+	return risk
+}

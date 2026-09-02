@@ -1340,6 +1340,31 @@ is a signing certificate or SignPath); no published Docker image.
     good evidence of INTENT and cannot be used as a hard gate; the per-effect
     `Effect.Targets` mask is the enforceable one and already filters areas.
 
+    **Tactics (closing pass).** Three things a person does without thinking, now
+    done: AP is spent by damage-per-AP rather than raw damage (with 6 AP a
+    2-AP/30 spell beats a 4-AP/40 one - 90 vs 70 over the turn) EXCEPT when a
+    spell finishes the target, because a dead enemy stops attacking; the fighter
+    prefers a firing cell that is not next to an enemy when one scores equally;
+    and a known friendly trap makes a cell less attractive without ever making it
+    unreachable, since a player steps on their own trap rather than refusing to
+    move.
+
+    That last distinction is the shape of the whole knowledge model: LETHAL
+    hazards veto a cell, KNOWN-damaging ones only cost it points, and enemy traps
+    do neither because the AI cannot see them.
+
+    **A duplication worth remembering:** the spell ranking existed in two copies,
+    one used to pick the TARGET and one to pick the CAST. The efficiency work
+    landed in the first, so the AI valued targets by the new rule and still spent
+    greedily. Reading the code missed it twice; a test measuring damage-per-turn
+    caught it immediately. `chooseAISpell` now delegates to `bestSpellAgainst` so
+    there is exactly one ranking.
+
+    **Naming trap (documented in place):** `FightFighter.SummonSpellID` is the
+    AI's SIGNATURE spell, not just a summon's. Challenge demons set it from
+    `pickBreedSpell` precisely because a fighter with 0 there is classified a
+    blocker and never casts at all - its `Fighter.Spells` are never reached.
+
     What is left here is **strength, not correctness**: AP-efficiency (several
     cheap casts can out-damage one expensive one), target selection (nearest
     rather than most-killable), and positioning quality. Each makes the AI

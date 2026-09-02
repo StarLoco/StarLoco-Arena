@@ -113,8 +113,19 @@ type FightFighter struct {
 	// A fighter with a Father is a server-AI-driven summon: no client sends its
 	// input, so the built-in AI plays its turn (see ai.go).
 	Father *FightFighter
-	// SummonSpellID is the single spell a summoned creature casts (0 = a spell-less
-	// blocker). Set from its Summoning template; drives the summon AI's behaviour.
+	// SummonSpellID is the AI fighter's SIGNATURE spell - the one classifyAI reads
+	// to decide the archetype (aggressive / kite / self-buff / blocker). 0 means a
+	// spell-less blocker.
+	//
+	// The name is narrower than the use, and that has misled before: it is set BOTH
+	// from a summon's Summoning template (summon.go) AND from pickBreedSpell for
+	// challenge demons (challenge_fights.go), which are not summons at all. A demon
+	// with a full breed loadout still needs this set, because a fighter with 0 here
+	// is classified as a blocker and never casts anything - its other spells are
+	// never reached.
+	//
+	// So: if an AI fighter is silently doing nothing but walking and punching, this
+	// field being 0 is the first thing to check.
 	SummonSpellID int32
 }
 

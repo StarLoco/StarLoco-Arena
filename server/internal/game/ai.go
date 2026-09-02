@@ -78,6 +78,11 @@ func (f *Fight) runAITurn(ff *FightFighter) {
 // damage -> aggressive (or kite if very mobile); a debuff -> kite; a self-only
 // buff -> self-buff.
 func (f *Fight) classifyAI(ff *FightFighter) aiBehavior {
+	// No signature spell => blocker: walk in and use close combat. Note this is
+	// reached by any AI fighter whose SummonSpellID is 0, INCLUDING one that has a
+	// full Fighter.Spells loadout - the repertoire is never consulted from the
+	// blocker branch. Challenge demons therefore have a breed spell assigned for
+	// exactly this reason (challenge_fights.go pickBreedSpell).
 	if ff.SummonSpellID == 0 || f.deps == nil || f.deps.Spells == nil {
 		return behaviorBlocker
 	}
@@ -421,13 +426,57 @@ func (f *Fight) bestSpellAgainst(ff, target *FightFighter) (int32, int32) {
 		}
 		cost := aiSpellAPCost(sp)
 		dmg := f.aiEstimatedDamage(ff, target, sp)
-		if bestID == 0 || dmg > bestDmg ||
-			(dmg == bestDmg && cost < bestCost) ||
-			(dmg == bestDmg && cost == bestCost && id < bestID) {
+		if better := f.aiSpellBetter(target, dmg, cost, id, bestDmg, bestCost, bestID); better {
 			bestID, bestDmg, bestCost = id, dmg, cost
 		}
 	}
 	return bestID, bestDmg
+}
+
+// aiSpellBetter ranks two candidate casts against the same target.
+//
+// Two rules, in order, both of them how a person actually decides:
+//
+//  1. If a spell FINISHES the target, take it. A kill removes an attacker from
+//     the fight; nothing measured in raw damage competes with that, and spending
+//     leftover AP on a corpse is the classic bot mistake.
+//  2. Otherwise prefer damage per AP, not raw damage. With 6 AP, a 2-AP spell
+//     for 30 beats a 4-AP spell for 40: three casts is 90, and greedy-by-damage
+//     scores 70. Raw damage only wins ties.
+//
+// Deterministic throughout - equal on every measure falls back to the lower id -
+// so a fight replays identically.
+func (f *Fight) aiSpellBetter(target *FightFighter, dmg, cost, id, bestDmg, bestCost, bestID int32) bool {
+	if bestID == 0 {
+		return true
+	}
+	kills := target != nil && dmg >= target.HP
+	bestKills := target != nil && bestDmg >= target.HP
+	if kills != bestKills {
+		return kills // a finisher beats anything that is not one
+	}
+	if kills && bestKills {
+		// Both finish it: take the cheaper, so the leftover AP buys something else.
+		if cost != bestCost {
+			return cost < bestCost
+		}
+		return id < bestID
+	}
+	// Neither finishes it: efficiency decides. Compared as a cross-product to
+	// stay in integers (dmg/cost > bestDmg/bestCost).
+	if cost > 0 && bestCost > 0 {
+		l, r := dmg*bestCost, bestDmg*cost
+		if l != r {
+			return l > r
+		}
+	}
+	if dmg != bestDmg {
+		return dmg > bestDmg
+	}
+	if cost != bestCost {
+		return cost < bestCost
+	}
+	return id < bestID
 }
 
 // aiEstimatedDamage is what the AI expects `sp` to take off `target`, through the
@@ -457,24 +506,14 @@ func (f *Fight) chooseAISpell(ff *FightFighter, target *FightFighter) int32 {
 	if ff == nil || target == nil || f.deps == nil || f.deps.Spells == nil {
 		return 0
 	}
-	var bestID, bestDmg, bestCost int32
-	for _, id := range f.aiRepertoire(ff) {
-		sp := f.deps.Spells.Get(id)
-		if sp == nil || !f.aiSpellCastableFrom(ff, ff.Pos, sp, target) {
-			continue
-		}
-		cost := aiSpellAPCost(sp)
-		dmg, _, ok := sp.Damage()
-		if !ok {
-			dmg = 0
-		}
-		if bestID == 0 || dmg > bestDmg ||
-			(dmg == bestDmg && cost < bestCost) ||
-			(dmg == bestDmg && cost == bestCost && id < bestID) {
-			bestID, bestDmg, bestCost = id, dmg, cost
-		}
-	}
-	return bestID
+	// Delegates to bestSpellAgainst so there is exactly ONE ranking. There used to
+	// be two copies of it here, and the moment they disagreed the AI chose by one
+	// rule and valued the target by the other - the AP-efficiency work landed in
+	// the copy that picks TARGETS while the copy that picks the CAST kept spending
+	// greedily. A test measuring damage-per-turn caught it; reading the code did
+	// not, twice.
+	id, _ := f.bestSpellAgainst(ff, target)
+	return id
 }
 
 // castAISpellRepeatedly spends the fighter's AP on the best spell available each
@@ -577,15 +616,22 @@ func (f *Fight) moveIntoSpellRange(ff, target *FightFighter) {
 	bestCanFire := false
 	bestScore := f.aiFiringGap(ff, ff.Pos, target)
 	bestLen := 0
+	bestRisk := f.aiCellRisk(ff, ff.Pos)
 	for _, path := range f.orderedReachablePaths(ff, ff.MP) {
 		cell := path[len(path)-1]
 		canFire := f.aiCanFireFrom(ff, cell, target)
 		score := f.aiFiringGap(ff, cell, target)
+		risk := f.aiCellRisk(ff, cell)
 		better := (canFire && !bestCanFire) ||
 			(canFire == bestCanFire && score >= 0 && (bestScore < 0 || score < bestScore)) ||
-			(canFire == bestCanFire && score == bestScore && bestPath != nil && len(path) < bestLen)
+			// Same firing quality: take the SAFER cell. A player who can shoot from
+			// two places picks the one that is not surrounded, and this is where
+			// a known friendly trap costs the cell without ever blocking a move.
+			(canFire == bestCanFire && score == bestScore && risk < bestRisk) ||
+			(canFire == bestCanFire && score == bestScore && risk == bestRisk &&
+				bestPath != nil && len(path) < bestLen)
 		if better {
-			bestPath, bestCanFire, bestScore, bestLen = path, canFire, score, len(path)
+			bestPath, bestCanFire, bestScore, bestLen, bestRisk = path, canFire, score, len(path), risk
 		}
 	}
 	if len(bestPath) > 0 {
@@ -689,7 +735,11 @@ func (f *Fight) orderedReachablePaths(ff *FightFighter, mp int32) [][]Pos {
 	reachable := f.reachableCells(ff, ff.Pos, mp)
 	paths := make([][]Pos, 0, len(reachable))
 	for _, p := range reachable {
-		if len(p) > 0 && !f.aiCellIsSuicide(p[len(p)-1]) {
+		// Knowledge-aware: f may only avoid hazards it is allowed to see, so
+		// this filters arena killer tiles for everyone and the fighter's OWN
+		// team's lethal areas for it alone. Enemy traps are invisible here by
+		// design (ai_knowledge.go).
+		if len(p) > 0 && !f.aiCellIsSuicideFor(ff, p[len(p)-1]) {
 			paths = append(paths, p)
 		}
 	}
