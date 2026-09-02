@@ -1278,18 +1278,21 @@ is a signing certificate or SignPath); no published Docker image.
 
 ### Tier 2 — real features
 
-18. 🟡 **AI depth** — the biggest gameplay-quality lever. **Done so far:** multiple
+18. [x] **AI depth** - **CLOSED: correct, honest and competent.** What remains is
+    how STRONG the AI should be, which is a balance dial rather than a defect -
+    see the closing note at the end of this item. **Done:** multiple
     spells per fighter (a repertoire, re-picked before every cast), challenge
-    demons carrying a real breed loadout (1 spell → typically 3–4), positioning
+    demons carrying a real breed loadout (1 spell -> typically 3-4), positioning
     via the real targeting validator instead of a bare distance window,
     **close combat with leftover AP** (a spell-less fighter used to do nothing
     whatsoever), and two guards that the repertoire itself made necessary —
     never aiming a support spell at an enemy (B-084) and never splashing its own
     team with an area spell (B-085), one shared castability predicate so
     positioning and casting cannot disagree and freeze the fighter (B-086), and
-    not walking onto Killer tiles. Still open: healing/buffing allies, summoning,
-    placing traps, cooperative focus-fire, trap-tile and sudden-death awareness,
-    diagonal pathfinding, difficulty tiers.
+    not walking onto Killer tiles. Since then: healing a dying ally, AP-efficient
+    casting, killable-target selection, safer firing cells, and an explicit
+    knowledge model. Never added (difficulty, not defects): summoning, placing
+    traps, cooperative focus-fire, diagonal pathfinding, difficulty tiers.
     **Audit (no defect found).** The AI now has 18 tests covering the failure
     modes that actually bite: freezing when the only in-range spell is
     uncastable, friendly-fire splash, self-nuke, walking onto killer or
@@ -1365,12 +1368,16 @@ is a signing certificate or SignPath); no published Docker image.
     `pickBreedSpell` precisely because a fighter with 0 there is classified a
     blocker and never casts at all - its `Fighter.Spells` are never reached.
 
-    What is left here is **strength, not correctness**: AP-efficiency (several
-    cheap casts can out-damage one expensive one), target selection (nearest
-    rather than most-killable), and positioning quality. Each makes the AI
-    HARDER, which is a balance decision rather than a bug fix - so this item
-    stays open deliberately and should not be "finished" without someone
-    choosing how strong the AI ought to be.
+    **What is left is the DIFFICULTY DIAL, not defects.** The three items this
+    note used to list as outstanding - AP efficiency, target selection and
+    positioning - are all done. What could still be added (deeper lookahead,
+    coordinating focus-fire between several AI fighters, spending a turn
+    repositioning for a better next turn) would make the AI HARDER TO BEAT,
+    which is a balance choice for the operator rather than a bug to fix. The AI
+    is now correct (never mis-targets), honest (cannot see enemy traps or its
+    own future rolls) and competent (kills what it can reach, spends its AP
+    well, heals a dying teammate, and does not stand next to people for no
+    reason). That is the bar this item was opened to clear.
 19. [x] **Coach action cards in fight** — **CLOSED: correct and complete as an
     empty deck.** The "no opcode" premise was wrong, and
     the id-namespace half is now FIXED (B-088).** The deck is exposed to the UI as

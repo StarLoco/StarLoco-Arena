@@ -124,3 +124,106 @@ func truncateItem(s string) string {
 	}
 	return s[:max] + "..."
 }
+
+// TestClosedRoadmapItemsDoNotClaimToBeOpen catches the failure that slipped past
+// TestNoRoadmapItemContradictsItsOwnMarker: that one reads only an item's FIRST
+// line, and the contradiction had settled at the BOTTOM of item 18.
+//
+// Item 18 was marked [x] while its closing paragraph still read "this item stays
+// open deliberately" and listed as outstanding three things that had just been
+// implemented. A reader who scrolls - which is what you do when the item is 90
+// lines long - gets the stale answer.
+func TestClosedRoadmapItemsDoNotClaimToBeOpen(t *testing.T) {
+	items := roadmapItemBodies(t)
+	if len(items) == 0 {
+		t.Fatal("parsed 0 roadmap items - the format changed and this test is vacuous")
+	}
+
+	// Phrases that assert an item is still open. Deliberately narrow: prose about
+	// what a FUTURE change could add is fine, claiming the item itself is
+	// unfinished is not.
+	// Narrowed on purpose. "Still open: <sub-part>" is legitimate and common -
+	// item 22 says the fusion probability curve is unknowable, item 32 says 28646
+	// is blocked - and flagging those would make this test cry wolf, which is how
+	// a check gets ignored. Only phrases that claim the ITEM ITSELF is unfinished
+	// count. That is still enough: the contradiction this test was written for
+	// read "this item stays open deliberately".
+	openClaims := []string{
+		"stays open deliberately",
+		"this item stays open",
+		"this item remains open",
+		"item is not finished",
+	}
+
+	checked := 0
+	for num, body := range items {
+		first := body
+		if i := strings.Index(body, "\n"); i >= 0 {
+			first = body[:i]
+		}
+		if !strings.Contains(first, "[x]") && !strings.Contains(first, "~~") {
+			continue // not marked closed; nothing to contradict
+		}
+		checked++
+		low := strings.ToLower(body)
+		for _, claim := range openClaims {
+			if strings.Contains(low, claim) {
+				t.Errorf("roadmap item %d is marked CLOSED but its body still says %q.\n"+
+					"  A stale claim at the bottom of a long item is worse than none: it is\n"+
+					"  what a reader finds after scrolling past the marker.", num, claim)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no closed items were examined - the marker detection is not working")
+	}
+	t.Logf("checked %d closed roadmap item(s) for stale open-claims", checked)
+}
+
+// roadmapItemBodies returns each backlog item's FULL text (first line through to
+// the next item), keyed by number. roadmapBacklog only yields first lines, which
+// is precisely how a stale claim at the bottom of a 90-line item went unnoticed.
+func roadmapItemBodies(t *testing.T) map[int]string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "ROADMAP.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Skipf("ROADMAP.md not readable: %v", err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	start := -1
+	for i, ln := range lines {
+		if strings.HasPrefix(ln, "### Tier 0") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatal(`ROADMAP.md has no "### Tier 0" heading`)
+	}
+	out := map[int]string{}
+	curNum := -1
+	var buf []string
+	flush := func() {
+		if curNum >= 0 {
+			out[curNum] = strings.Join(buf, "\n")
+		}
+	}
+	for _, ln := range lines[start:] {
+		clean := strings.TrimRight(ln, "\r")
+		if m := roadmapItemRE.FindStringSubmatch(clean); m != nil {
+			flush()
+			n, err := strconv.Atoi(m[1])
+			if err != nil {
+				continue
+			}
+			curNum, buf = n, []string{clean}
+			continue
+		}
+		if curNum >= 0 {
+			buf = append(buf, clean)
+		}
+	}
+	flush()
+	return out
+}
