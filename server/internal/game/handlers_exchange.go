@@ -126,6 +126,16 @@ func (s *Session) exchangeMoveCard(f *protocol.C2SFrame, add bool) error {
 	if ex == nil {
 		return nil
 	}
+	// SECURITY: nothing may happen until the invited side has ACCEPTED.
+	//
+	// ex.accepted was set by handleExchangeAnswer and then read nowhere, so both
+	// staging and readying up worked on an unanswered invitation. Not exploitable
+	// on its own - a swap still needs both sides to send 5109 - but the gate the
+	// code appeared to have simply did not exist.
+	if !ex.Accepted() {
+		return nil
+	}
+
 	side := ex.sideOf(s.Coach.ID)
 	if side < 0 {
 		return nil
@@ -216,6 +226,16 @@ func handleExchangeSetReady(s *Session, f *protocol.C2SFrame) error {
 	if ex == nil {
 		return nil
 	}
+	// SECURITY: nothing may happen until the invited side has ACCEPTED.
+	//
+	// ex.accepted was set by handleExchangeAnswer and then read nowhere, so both
+	// staging and readying up worked on an unanswered invitation. Not exploitable
+	// on its own - a swap still needs both sides to send 5109 - but the gate the
+	// code appeared to have simply did not exist.
+	if !ex.Accepted() {
+		return nil
+	}
+
 	side := ex.sideOf(s.Coach.ID)
 	if side < 0 {
 		return nil
@@ -285,7 +305,7 @@ func (s *Session) refreshExchangeInventory(sess *Session) {
 		return
 	}
 	if fresh, err := s.deps.Store.Coaches.Get(sess.Coach.ID); err == nil {
-		sess.Coach.Inventory = fresh.Inventory
+		sess.Coach.SetInventory(fresh.Inventory)
 	}
 	_ = sess.pushInventory(sess.Coach)
 }

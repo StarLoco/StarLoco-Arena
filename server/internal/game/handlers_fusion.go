@@ -110,6 +110,28 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 		return s.sendFusionResult(fusionResultOK, 0, target, 0) // altar not fine enough
 	}
 
+	// SECURITY: the target may not be worth more than what was consumed.
+	//
+	// The two gates above are the client's own formula, and they are no-ops for
+	// ~900 of 907 cards (only 7 carry FusionPower/FusionQuality, and 543 have
+	// RequiredLevel 0) - so for nearly the whole catalogue both evaluated 0 >= 0.
+	// The target is player-supplied, so two cheap commons of a set could be fused
+	// into the most valuable card in that set at a flat 60%, repeatedly. Card
+	// CONSERVATION was always correct (ConsumeAndGrant is transactional and tallies
+	// duplicates); this was a VALUE break, and it fed handleDemonAffiliate, which
+	// scores clan reputation by card value.
+	//
+	// A value ceiling is the smallest rule that closes it without inventing a new
+	// mechanic: fusion may transform what you own, not multiply its worth. The
+	// allowance keeps ordinary fusion useful - the point of the feature is to trade
+	// several cards for one better one - while removing the unbounded jump.
+	if inVal, outVal := s.cardsValue(inputs), int64(tc.Value); outVal > inVal*fusionValueAllowance {
+		s.log.Info("fusion refused: target worth more than the inputs",
+			"coach", s.Coach.ID, "target", target, "target_value", outVal,
+			"inputs_value", inVal)
+		return s.sendFusionResult(fusionResultOK, 0, target, 0)
+	}
+
 	// Roll the altar. The probability CURVE is the one piece of this mechanic the
 	// data does not settle: the panel shows "labPower" beside "kardsPower" and
 	// "quality", but the server owns the roll and no client code reveals how they
@@ -230,7 +252,27 @@ func (s *Session) sendFusionResult(result uint8, obtained, notObtained, recovere
 // pushes a fresh CoachInventoryUpdate(5200).
 func (s *Session) refreshAndPushInventory() {
 	if fresh, err := s.deps.Store.Coaches.Get(s.Coach.ID); err == nil {
-		s.Coach.Inventory = fresh.Inventory
+		s.Coach.SetInventory(fresh.Inventory)
 	}
 	_ = s.pushInventory(s.Coach)
+}
+
+// fusionValueAllowance is how much more the fused card may be worth than the sum
+// of its inputs. Fusion is meant to trade several cards for one better one, so
+// the ceiling is deliberately above 1x; it exists to stop an unbounded jump from
+// two commons to a set's best card, not to make fusion break even.
+const fusionValueAllowance = 3
+
+// cardsValue sums the catalogue value of the consumed cards.
+func (s *Session) cardsValue(ids []int32) int64 {
+	if s.deps.Cards == nil {
+		return 0
+	}
+	var total int64
+	for _, id := range ids {
+		if c := s.deps.Cards.Get(id); c != nil {
+			total += int64(c.Value)
+		}
+	}
+	return total
 }

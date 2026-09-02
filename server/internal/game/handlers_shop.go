@@ -34,6 +34,10 @@ const maxBarterCards = 64
 // (and wanted.value > 0); we enforce the same server-side, then consume the
 // given cards and grant the wanted card. Replies ShopResult(5403) + pushes the
 // updated inventory (5200).
+// maxBarterQtyPerCard bounds how many copies of ONE card a single barter may
+// offer. Well above any real inventory; see handleShopBarter for why it exists.
+const maxBarterQtyPerCard uint16 = 1000
+
 func handleShopBarter(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
@@ -76,7 +80,23 @@ func handleShopBarter(s *Session, f *protocol.C2SFrame) error {
 		if card == nil {
 			return s.sendShopResult(shopResultError)
 		}
+		// SECURITY: cap the per-entry quantity before expanding it.
+		//
+		// readCardQtyList caps the number of ENTRIES at 64 but never the quantity
+		// within one, and each unit became a separate slice element: 64 x 65535 is
+		// 4.19M int32, about 16.8 MB, from a ~400-byte frame - roughly 42,000x
+		// amplification, repeatable. ConsumeAndGrant would then correctly refuse
+		// for lack of ownership, so the damage was purely allocation.
+		//
+		// Nobody owns more than maxBarterQtyPerCard copies of one card, so this
+		// cannot refuse a real barter; it only stops the request being used as an
+		// allocator.
 		qty := givenQty[i]
+		if qty > maxBarterQtyPerCard {
+			s.log.Warn("barter quantity clamped", "coach", s.Coach.ID,
+				"card", id, "requested", qty)
+			qty = maxBarterQtyPerCard
+		}
 		givenValue += int64(card.Value) * int64(qty)
 		for j := uint16(0); j < qty; j++ {
 			inputs = append(inputs, id)
@@ -99,7 +119,7 @@ func handleShopBarter(s *Session, f *protocol.C2SFrame) error {
 	// The wallet is unchanged by a barter; still send a success 5403 so the
 	// client closes the dialog and refreshes.
 	if fresh, err := s.deps.Store.Coaches.Get(s.Coach.ID); err == nil {
-		s.Coach.Wallet = fresh.Wallet
+		s.Coach.SetWallet(fresh.Wallet)
 	}
 	return s.sendShopResult(shopResultOK)
 }
@@ -314,8 +334,8 @@ func handleShopBuy(s *Session, f *protocol.C2SFrame) error {
 
 	// Reload the coach so inventory + wallet reflect the purchase, then push.
 	if fresh, err := s.deps.Store.Coaches.Get(s.Coach.ID); err == nil {
-		s.Coach.Inventory = fresh.Inventory
-		s.Coach.Wallet = fresh.Wallet
+		s.Coach.SetInventory(fresh.Inventory)
+		s.Coach.SetWallet(fresh.Wallet)
 	}
 	if err := s.pushInventory(s.Coach); err != nil {
 		return err
@@ -388,7 +408,7 @@ func (d *Deps) awardFightWin(coachID uint, sess *Session) {
 		return
 	}
 	if sess.Coach != nil {
-		sess.Coach.Wallet = fresh.Wallet
+		sess.Coach.SetWallet(fresh.Wallet)
 	}
 	if frame, err := buildWalletUpdate(fresh.Wallet); err == nil {
 		_ = sess.Send(frame)

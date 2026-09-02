@@ -94,7 +94,9 @@ func handleFighterMoveInFight(s *Session, frame *protocol.C2SFrame) error {
 
 	f.Post(func(f *Fight) {
 		ff := f.fighterByWireID(wireID)
-		if ff == nil || ff.CoachID != cid || !f.isCurrentTurn(wireID) {
+		// See handleSpellCast: a fighter that died during its own turn must stop
+		// acting immediately, not at the next turn boundary.
+		if ff == nil || ff.CoachID != cid || ff.HP <= 0 || !f.isCurrentTurn(wireID) {
 			deps.Log.Debug("fight move ignored", "wireID", wireID,
 				"haveFighter", ff != nil, "currentTurn", f.isCurrentTurn(wireID))
 			return
@@ -464,7 +466,12 @@ func handleSpellCast(s *Session, frame *protocol.C2SFrame) error {
 
 	f.Post(func(f *Fight) {
 		caster := f.fighterByWireID(casterID)
-		if caster == nil || caster.CoachID != cid || !f.isCurrentTurn(casterID) {
+		// HP > 0: a fighter reduced to 0 during its OWN turn keeps the turn -
+		// applyHPDelta marks it dead and broadcasts, but death is only acted on at
+		// turn start and when skipping in endTurn. Without this it could keep
+		// casting from beyond the grave until the clock ran out. 8107 and 4521
+		// already checked; 8109, 8111 and 4503 did not.
+		if caster == nil || caster.CoachID != cid || caster.HP <= 0 || !f.isCurrentTurn(casterID) {
 			return
 		}
 		f.castSpellByFighter(caster, spellID, target)
@@ -669,7 +676,9 @@ func handleCloseCombat(s *Session, frame *protocol.C2SFrame) error {
 	cid := s.Coach.ID
 	f.Post(func(f *Fight) {
 		ff := f.fighterByWireID(wireID)
-		if ff == nil || ff.CoachID != cid || !f.isCurrentTurn(wireID) {
+		// See handleSpellCast: a fighter that died during its own turn must stop
+		// acting immediately, not at the next turn boundary.
+		if ff == nil || ff.CoachID != cid || ff.HP <= 0 || !f.isCurrentTurn(wireID) {
 			return
 		}
 		f.closeCombat(ff, target)
@@ -1047,7 +1056,7 @@ func (d *Deps) awardTournamentPrize(tid int64, coachID uint, sess *Session) {
 		return
 	}
 	if sess.Coach != nil {
-		sess.Coach.Inventory = fresh.Inventory
+		sess.Coach.SetInventory(fresh.Inventory)
 	}
 	if err := sess.pushInventory(fresh); err != nil {
 		d.Log.Warn("push inventory after tournament prize", "coach", coachID, "err", err)

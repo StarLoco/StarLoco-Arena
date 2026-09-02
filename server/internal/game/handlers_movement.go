@@ -9,6 +9,17 @@ func registerMovementHandlers(r *Router, d *Deps) {
 	r.Register(protocol.OpCoachMovementRequest, handleMovement)
 }
 
+// maxOverworldJump caps how far one 4501 may displace a coach, in cells.
+//
+// Generous on purpose - comfortably beyond the default AoI radius of 75 - because
+// it exists to remove "teleport anywhere in one packet", not to police pathing,
+// and a false refusal would be worse than the hole it closes.
+//
+// It is not merely cosmetic: handleFusionRequest gates on proximity to an altar
+// (handlers_fusion.go), so an unbounded jump is a real bypass of a real check.
+// See handleMovement for why a displacement cap rather than path validation.
+const maxOverworldJump int32 = 100
+
 // handleMovement records a CoachActorMovementRequest(4501) and broadcasts it to
 // OTHER overworld coaches as ActorMovement(4500) so they see the walk. Movement
 // is otherwise unvalidated for now.
@@ -39,6 +50,33 @@ func handleMovement(s *Session, f *protocol.C2SFrame) error {
 	// Update position + compute the area-of-interest diff (who enters/leaves
 	// view) in one pass, then send the exact spawn/despawn/move frames.
 	last := steps[len(steps)-1]
+
+	// SECURITY: bound the DISPLACEMENT, not the path.
+	//
+	// This handler took the last step verbatim - no adjacency, walkability or
+	// speed check - so a single 4501 carrying one arbitrary cell teleported a
+	// coach anywhere in the overworld, including into position-gated areas, and
+	// let AoI membership be manipulated at will.
+	//
+	// Full path validation is deliberately NOT the fix: overworld movement is
+	// client-authoritative by design (see the comment above - the client starts
+	// walking locally before it sends 4501, and echoing corrections makes it
+	// stutter). Rejecting paths the client already committed to would break normal
+	// play to close a griefing hole.
+	//
+	// A displacement cap keeps that design and still removes the primitive: a real
+	// walk moves a bounded distance per request, an arbitrary jump does not. The
+	// bound is deliberately generous so it cannot bite a legitimate long walk, and
+	// it logs when it trips so an operator can tell if it ever does. Fight
+	// movement is separately and fully validated (validateFightMove).
+	if cur := s.deps.World.Get(s.Coach.ID); cur != nil && cur.Coach != nil {
+		if dx, dy := last.X-cur.Coach.PosX, last.Y-cur.Coach.PosY; dx*dx+dy*dy > maxOverworldJump*maxOverworldJump {
+			s.log.Warn("overworld move refused: implausible displacement",
+				"coach", s.Coach.ID, "from_x", cur.Coach.PosX, "from_y", cur.Coach.PosY,
+				"to_x", last.X, "to_y", last.Y)
+			return nil
+		}
+	}
 	// Walking stands the coach up. A coach that walks off while still flagged
 	// sitting would slide across the ground in a sitting pose on every client
 	// that has it spawned. Done BEFORE the move so the 4601 reaches the viewers

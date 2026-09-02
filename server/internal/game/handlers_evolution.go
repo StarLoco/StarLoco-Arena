@@ -1,6 +1,7 @@
 package game
 
 import (
+	"gorm.io/gorm"
 	"math/rand"
 	"time"
 
@@ -237,19 +238,40 @@ func (s *Session) countFightersInState(state uint8) (int, error) {
 
 // consumeCard removes one unit of an unequipped card from the coach's inventory,
 // reporting whether it was actually owned.
+// SECURITY: this was a read-then-write with no transaction, no guard on the value
+// it read, and discarded write errors - so it returned true even when nothing had
+// been written. Two goroutines acting for the same coach could both read
+// quantity=1 and both "succeed": the card is consumed once and its effect applied
+// twice, or a delete runs twice and both callers believe they spent something.
+//
+// The window is real. kick() closes the socket but the old session's bufio.Reader
+// keeps serving frames already buffered (up to 4 KB), so pipelining consumable
+// uses on one socket and re-authenticating on another runs two goroutines for one
+// coach. Callers are 22099, 5470 and 23009 - all client-reachable.
+//
+// It is now a single conditional UPDATE. The decrement happens in the database
+// (quantity = quantity - 1, not a value read earlier) and the WHERE clause carries
+// the precondition, so exactly one of two concurrent callers can match. Errors are
+// propagated rather than dropped.
 func (s *Session) consumeCard(templateID int32) bool {
 	db := s.deps.Store.DB()
-	var card domain.CoachCard
-	err := db.Where("coach_id = ? AND template_id = ? AND pos = 0 AND quantity > 0",
-		s.Coach.ID, templateID).First(&card).Error
-	if err != nil {
+	res := db.Model(&domain.CoachCard{}).
+		Where("coach_id = ? AND template_id = ? AND pos = 0 AND quantity > 0",
+			s.Coach.ID, templateID).
+		UpdateColumn("quantity", gorm.Expr("quantity - 1"))
+	if res.Error != nil {
+		s.log.Warn("consume card", "coach", s.Coach.ID, "template", templateID, "err", res.Error)
 		return false
 	}
-	if card.Quantity > 1 {
-		db.Model(&domain.CoachCard{}).Where("id = ?", card.ID).
-			Update("quantity", card.Quantity-1)
-	} else {
-		db.Delete(&domain.CoachCard{}, card.ID)
+	if res.RowsAffected == 0 {
+		return false // not owned, or someone else took the last one first
+	}
+	// Tidy up a row that has reached zero. Losing this delete is harmless (the
+	// quantity > 0 predicate above already makes an empty row unusable), so its
+	// failure must not turn a successful consume into a reported failure.
+	if err := db.Where("coach_id = ? AND template_id = ? AND pos = 0 AND quantity <= 0",
+		s.Coach.ID, templateID).Delete(&domain.CoachCard{}).Error; err != nil {
+		s.log.Warn("prune empty card row", "coach", s.Coach.ID, "template", templateID, "err", err)
 	}
 	return true
 }

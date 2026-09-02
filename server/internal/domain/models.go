@@ -333,3 +333,55 @@ type BugReport struct {
 }
 
 func (BugReport) TableName() string { return "bug_reports" }
+
+// SetInventory / SetWallet / Inventories are the guarded accessors for the two
+// slices that other goroutines write.
+//
+// SECURITY / CORRECTNESS: Coach.Mu existed but was taken only for the scalar
+// snapshot in CoachRepo.Save. Meanwhile the fight actor, the exchange peer's
+// goroutine and the shop all assigned sess.Coach.Inventory / .Wallet directly
+// while the owning session read them - an unsynchronised slice-header write,
+// which is undefined behaviour in Go, not merely a stale read.
+//
+// The economy itself was never at risk (every mutation goes through a
+// transactional repo method that re-reads inside the transaction), so the
+// exposure was torn reads and a wrong inventory on screen. That is still worth
+// removing, and it is cheap.
+func (c *Coach) SetInventory(inv []CoachCard) {
+	if c == nil {
+		return
+	}
+	c.Mu.Lock()
+	c.Inventory = inv
+	c.Mu.Unlock()
+}
+
+func (c *Coach) SetWallet(w []CoachCurrency) {
+	if c == nil {
+		return
+	}
+	c.Mu.Lock()
+	c.Wallet = w
+	c.Mu.Unlock()
+}
+
+// SnapshotInventory returns the inventory slice header under the lock. Callers
+// must not mutate the returned slice's elements.
+func (c *Coach) SnapshotInventory() []CoachCard {
+	if c == nil {
+		return nil
+	}
+	c.Mu.Lock()
+	defer c.Mu.Unlock()
+	return c.Inventory
+}
+
+// SnapshotWallet is SnapshotInventory's sibling for currencies.
+func (c *Coach) SnapshotWallet() []CoachCurrency {
+	if c == nil {
+		return nil
+	}
+	c.Mu.Lock()
+	defer c.Mu.Unlock()
+	return c.Wallet
+}

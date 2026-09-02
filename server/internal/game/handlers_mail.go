@@ -2,6 +2,7 @@ package game
 
 import (
 	"errors"
+	"gorm.io/gorm"
 	"time"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
@@ -162,12 +163,23 @@ func handleMailSend(s *Session, f *protocol.C2SFrame) error {
 		Body:         in.body,
 		SentAtMillis: time.Now().UnixMilli(),
 	}
-	// Resolve/repair the recipient from its name so a stale id can't misdeliver.
-	if coach, err := s.deps.Store.Coaches.GetByName(in.receiverName); err == nil && coach != nil {
-		mail.ReceiverID, mail.ReceiverName = coach.ID, coach.Name
-	} else if mail.ReceiverID == 0 {
-		return s.sendMailSendResult(protocol.MailSendFull, mail, nil) // no such coach
+	// SECURITY: the recipient is resolved by NAME, server-side, or the send fails.
+	//
+	// The old fallback kept the CLIENT's receiverID whenever the name did not
+	// resolve, so a forged frame could deliver to an arbitrary coach id under an
+	// attacker-chosen display name. Worse for the sender, an id belonging to no
+	// coach was accepted too: the mail was stored undeliverable while
+	// takeCardsForMail (just below) had already consumed the attachments, so the
+	// cards were destroyed with nothing to show for it.
+	//
+	// Refusing here, BEFORE the attachments are taken, is what makes that safe.
+	// Sender identity was always read from the session; the receiver now is too.
+	coach, cErr := s.deps.Store.Coaches.GetByName(in.receiverName)
+	if cErr != nil || coach == nil {
+		s.log.Info("mail refused: unknown receiver", "name", in.receiverName)
+		return s.sendMailSendResult(protocol.MailSendFull, mail, nil)
 	}
+	mail.ReceiverID, mail.ReceiverName = coach.ID, coach.Name
 
 	// Only cards the sender actually owns may be attached, and each is consumed.
 	attach := s.takeCardsForMail(in.cards)
@@ -237,11 +249,25 @@ func (s *Session) takeCardsForMail(want []int32) []int32 {
 		if s.deps.cardIsBound(id) {
 			continue
 		}
-		if card.Quantity > 1 {
-			db.Model(&domain.CoachCard{}).Where("id = ?", card.ID).
-				Update("quantity", card.Quantity-1)
-		} else {
-			db.Delete(&domain.CoachCard{}, card.ID)
+		// SECURITY: guarded, in-database decrement rather than a read-then-write of
+		// a value read earlier, and errors are checked. The old form could lose an
+		// update against a concurrent consumer for the same coach (see consumeCard),
+		// and it appended to `taken` even when the write had failed - so a card
+		// could be attached to a mail without ever being removed from the
+		// inventory.
+		res := db.Model(&domain.CoachCard{}).
+			Where("coach_id = ? AND template_id = ? AND pos = 0 AND quantity > 0",
+				s.Coach.ID, id).
+			UpdateColumn("quantity", gorm.Expr("quantity - 1"))
+		if res.Error != nil || res.RowsAffected == 0 {
+			if res.Error != nil {
+				s.log.Warn("take card for mail", "coach", s.Coach.ID, "card", id, "err", res.Error)
+			}
+			continue
+		}
+		if err := db.Where("coach_id = ? AND template_id = ? AND pos = 0 AND quantity <= 0",
+			s.Coach.ID, id).Delete(&domain.CoachCard{}).Error; err != nil {
+			s.log.Warn("prune empty card row", "coach", s.Coach.ID, "card", id, "err", err)
 		}
 		taken = append(taken, id)
 	}
@@ -260,13 +286,20 @@ func (s *Session) restoreCardsFromFailedMail(cards []int32) {
 		err := db.Where("coach_id = ? AND template_id = ? AND pos = 0", s.Coach.ID, id).
 			First(&card).Error
 		if err == nil {
-			db.Model(&domain.CoachCard{}).Where("id = ?", card.ID).
-				Update("quantity", card.Quantity+1)
+			if uErr := db.Model(&domain.CoachCard{}).Where("id = ?", card.ID).
+				UpdateColumn("quantity", gorm.Expr("quantity + 1")).Error; uErr != nil {
+				// Losing this restore DESTROYS a player's card, so it must be loud.
+				s.log.Error("failed to restore mail attachment", "coach", s.Coach.ID,
+					"card", id, "err", uErr)
+			}
 			continue
 		}
-		db.Create(&domain.CoachCard{
+		if cErr := db.Create(&domain.CoachCard{
 			CoachID: s.Coach.ID, TemplateID: id, Quantity: 1,
-		})
+		}).Error; cErr != nil {
+			s.log.Error("failed to restore mail attachment", "coach", s.Coach.ID,
+				"card", id, "err", cErr)
+		}
 	}
 	s.refreshAndPushInventory()
 }

@@ -382,7 +382,7 @@ func (d *Deps) awardChallengeRewards(coachID uint, sess *Session, challengeID in
 		return granted
 	}
 	if sess.Coach != nil {
-		sess.Coach.Inventory = fresh.Inventory
+		sess.Coach.SetInventory(fresh.Inventory)
 	}
 	if err := sess.pushInventory(fresh); err != nil {
 		d.Log.Warn("push inventory after challenge reward", "coach", coachID, "err", err)

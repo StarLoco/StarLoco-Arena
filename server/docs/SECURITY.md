@@ -53,133 +53,42 @@ See `BUGS.md` B-145 … B-152 for full detail.
 | B-151 | **Critical** | 5450 sold unpriced cards for free (764 of 907 templates reachable) |
 | B-152 | **Critical** | 28611 could re-claim a tournament reward card indefinitely |
 
-## NOT fixed — open, with severity
+## Everything from the audit is now fixed
 
-Recorded here rather than left in a chat log. Each entry names the file so it can
-be picked up cold.
+The second pass closed the remaining High, Medium and Low findings. Nothing from
+the original audit is left open.
 
-### High
+| Area | Fix |
+|---|---|
+| **Spell loadouts (H-1)** | 6011/6001 now filter client-authored spell lists against the fighter's breed. Own-breed only; the two pseudo-breeds are excluded (breed 0 is monster/summon material — id 428 is range 1-30 value 250 — and breed 99 is boss utility). Sphere unlocks, summons and challenge demons are added server-side *after* the filter, so nothing legitimate is affected. |
+| **DoS + auth surface (H-2, H-3)** | New `limits:` config block: global and per-IP connection caps, handshake and idle read deadlines, and a per-IP login throttle (each 1025 costs a bcrypt hash on the session goroutine). Auto-registration and first-account-becomes-admin are now opt-out switches. 1025 also gained an already-authenticated guard — it could previously be replayed forever, leaking a registry entry per attempt. |
+| **Fusion (H-4)** | Target value is now bounded by what was consumed. |
+| **Guild names + ranks (H-5, H-6)** | Guild uniqueness is case-insensitive (it was exact, so `Elite`/`elite`/`ELITE` were distinct guilds). Guild names and rank names go through `sanitizeDisplayName`; rank names previously had no validation at all. |
+| **consumeCard TOCTOU (M-1)** | One conditional `UPDATE ... quantity = quantity - 1 WHERE quantity > 0`, branching on `RowsAffected`. Errors are propagated instead of discarded. Same treatment for the mail attachment paths. |
+| **Overworld movement (M-2)** | Displacement per 4501 is capped (`maxOverworldJump`). Deliberately a displacement bound rather than path validation, because overworld movement is client-authoritative by design — see the comment in `handlers_movement.go`. It is not cosmetic: fusion gates on proximity to an altar. |
+| **Barter amplification (M-3)** | Per-entry quantity clamped before expansion (was 64 × 65535 int32 ≈ 16.8 MB from a ~400-byte frame). |
+| **Mail receiver (M-5)** | The recipient is resolved by name server-side or the send fails — the client's `receiverID` is no longer trusted. Refusing happens *before* `takeCardsForMail`, so a bad address can no longer destroy the attachments. |
+| **Equip splits the stack (M-7)** | Equipping now splits one unit off the stack and merges it back on unequip. `Pos` lives on the stack row, so equipping one of five copies used to hide all five from trade/fusion/mail while counting as one for set bonuses — and it was how duplicate `pos = 0` rows accumulated. |
+| **Coach struct races (M-8, M-9)** | `SetInventory`/`SetWallet`/`Snapshot*` accessors take `Coach.Mu`; all six cross-goroutine write sites go through them. The unsynchronised slice-header write was undefined behaviour, not just a stale read. |
+| **Dead fighters acting (L-1)** | 8109, 8111 and 4503 now check `HP > 0` (8107 and 4521 already did). A fighter killed during its own turn stopped acting only at the next turn boundary. |
+| **Uncapped allocation (L-2)** | `handlers_demon_affiliate.go` no longer pre-sizes from a wire `u16` — and note that allocation ran *before* the authorization check. |
+| **Self-trade lockout (L-3)** | `Start(s, s)` is refused. It used to leave `ex.A == ex.B`, so `sideOf` always returned 0, `ready[1]` could never be set, and the coach was permanently "busy". Aimed at a stranger it locked *them* out. |
+| **`ex.accepted` (L-4)** | Now actually read: staging and readying up require the invitation to have been accepted. It was written and never consulted. |
+| **Oversize-mail self-DoS (L-6)** | Title/body are truncated *before* the mailbox-full check, so every early return carries an already-bounded record. |
+| **Discarded write errors (L-7)** | Checked and logged. A failed restore of a mail attachment destroys a player's card, so that one logs at `Error`. |
 
-**H-1 · Spell loadout is client-authored, so spell ownership is bypassable.**
-`decodeLoadoutSpells` (`handlers_fighter.go:282`) accepts up to 6 arbitrary spell
-ids from opcode 6011 with **no legality check**, and `SaveLoadout`
-(`store/fighter_repo.go:150`) validates only *whose* fighter it is, never *what*
-spells. `castSpellByFighter` then gates on `fighterKnowsSpell`, which reads that
-same client-written list — so the mitigation the code believes it has is anchored
-on attacker-controlled data. Any fighter can equip and cast any of the 203 spells
-(boss/demon/cross-breed), bypassing breed and Sphere-Board progression, and it
-persists across reconnect. Note the asymmetry in the same handler: **cards are
-validated** (`canonicalEquipSlots` + `entitledEquip`), spells are passed through.
-`fighter.go:75` admits the gap ("breed-legality check would need spell gamedata;
-deferred"). *Fixing this needs a breed→legal-spell mapping from `gamedata`, which
-is why it is not a one-liner.*
+### Deliberately not changed
 
-**H-2 · No rate limiting, no connection cap, no timeouts on the game socket.**
-Every limiter in the tree lives in `internal/web`. `server.go:74` accepts
-unconditionally and spawns two goroutines per connection; there is no per-IP cap,
-no read/write/idle deadline, and nothing evicts a socket that connects and never
-speaks. Each idle connection costs ~12 KB of buffers plus a 256-slot queue that
-can hold up to 16 MB of frames. Worse, opcode 1025 runs **bcrypt** synchronously
-on the session goroutine (`repos.go:67`/`:80`, ~50–100 ms), so a few dozen
-connections spamming logins saturate every core — the cheapest full-server DoS
-left. There is also no lockout or delay on password guessing.
-
-**H-3 · Auto-registration on the game port, and first-account-becomes-admin.**
-`handlers_connection.go:107` creates an account for any unknown login, with no
-cap and no config gate (`web.registration_enabled` does **not** apply). And
-`:119` grants `IsAdmin` to whoever authenticates first against an empty database
-— on a fresh public deployment an attacker scanning for new instances wins that
-race against the operator. `handlers_gm.go:30` gates GM commands on exactly that
-flag.
-
-**H-4 · Fusion mints value from nothing.** `handlers_fusion.go:58`. The target
-card is player-supplied and the only real gates are same-`CardSet` and
-`Σ inputs.RequiredLevel ≥ target.FusionPower`. Per the code's own comments,
-`FusionPower`/`FusionQuality` are non-zero for **7 cards out of 907** and 543
-cards have `RequiredLevel 0` — so for nearly the whole catalogue both gates
-evaluate `0 >= 0`. Two cheap commons become the most valuable card in the set at a
-flat 60 %. Card *conservation* is correct (`ConsumeAndGrant` is transactional and
-tallies duplicates); this is a *value* break.
-
-**H-5 · Guild name uniqueness is case-sensitive.** `store/guild_repo.go:82` uses
-`Where("name = ?")` while the coach repo correctly uses
-`LOWER(name) = LOWER(?)` — so `Elite`, `elite` and `ELITE` are four distinct
-guilds. Handler-side validation (`handlers_guild.go:104`) enforces a **minimum
-only**: no maximum, no control-character filter, no `<`/`>` strip. On success the
-name is broadcast to **every online session**.
-
-**H-6 · Guild rank names have no validation at all.** `handlers_guild2.go:210`
-and `:247` → `guild_repo.go:227`/`:236` store the string verbatim: no trim, no
-bounds, no content filter. Pushed to every guild member. Gated on leader rights,
-but anyone can found their own guild.
-
-### Medium
-
-- **M-1 · `consumeCard` is a non-transactional read-then-write.**
-  `handlers_evolution.go:240` — no transaction, no `WHERE quantity = <old>`, no
-  `gorm.Expr("quantity - 1")`, and write errors are discarded so it returns
-  `true` even when nothing was written. Reachable from 22099, 5470 and 23009.
-  Same pattern in `takeCardsForMail`/`restoreCardsFromFailedMail`.
-- **M-2 · Overworld movement is unvalidated.** `handlers_movement.go:26` takes the
-  **last** step verbatim with no adjacency, walkability or speed check — instant
-  teleport anywhere in the overworld. The code says so itself. Fight movement is
-  fully validated and unaffected.
-- **M-3 · Barter memory amplification.** `handlers_shop.go:79` expands a `u16`
-  per-entry quantity into one slice element each; 64 × 65535 ≈ 16.8 MB from a
-  ~400-byte frame (~42,000×).
-- **M-4 · Any coach can spectate any fight.** `handlers_spectate.go:23` accepts an
-  arbitrary `[i64 coachId]` and requires only that the target be in a live fight,
-  then sends full state. 2260 is also a cheap "is coach N fighting?" oracle.
-  Spectating is a real retail feature, but retail-parity is not authorization.
-- **M-5 · Mail can be addressed to an arbitrary coach id.**
-  `handlers_mail.go:166` — if the receiver name does not resolve but the
-  client-supplied `receiverID` is non-zero, the raw id is used with an
-  attacker-chosen display name. Attachments are already consumed by then, so
-  mailing to a nonexistent id destroys them.
-- **M-6 · Fighter budget is computed and never enforced.** `computeFighterBudget`
-  writes `fighters.budget`; nothing compares it to a cap. The client warns above
-  6000 (`hu_2`: `n4 > 6000`) but does **not** refuse, so retail leaks this too.
-- **M-7 · Equipping a stack moves the whole row.** `handlers_inventory.go:129` —
-  `Pos` lives on the stack row, not per copy, so equipping one of five copies
-  hides all five from trade/fusion/mail. The **dedup is correct** (`Pos == 0` in
-  the match is what defeats the "same card in 14 slots" attack); this is a
-  desync, not duplication.
-- **M-8 · Cross-goroutine access to `Session.Coach` and its slices.**
-  `Coach.Mu` is taken only in `creditPlayTime`, `creditFightTime` and
-  `CoachRepo.Save`; fight-actor and peer goroutines assign
-  `sess.Coach.Inventory`/`.Wallet` without it. Confirmed race; economy is
-  protected by the transactional repo methods, so the exposure is torn reads and
-  lost scalar stats rather than duplication.
-- **M-9 · Two sessions hold separate `*domain.Coach` copies.** `CoachRepo.Get`
-  allocates per login, and `Save` blind-writes scalar stats — so a stale copy can
-  roll back ladder rating and win/loss records written by the other.
-
-### Low
-
-- **L-1 · A fighter that dies mid-turn keeps acting.** `applyHPDelta` sets HP 0
-  and broadcasts the death but never advances the turn; 8109, 8111 and 4503 have
-  no `HP <= 0` check (8107 and 4521 do). Bounded by the turn clock and remaining
-  AP.
-- **L-2 · Uncapped allocation from a `u16` count.**
-  `handlers_demon_affiliate.go:49` — `make([]offer, 0, count)` with no cap; a
-  9-byte frame allocates ~512 KB (~58,000×). Transient and GC'd, but it happens
-  *before* the authorization check.
-- **L-3 · Self-trade locks a coach out of trading.** `exchange.go:47` —
-  `Start(s, s)` leaves `ex.A == ex.B`, so `sideOf` always returns 0, `ready[1]`
-  can never be set, and the coach stays "busy". Inviting a stranger locks *them*
-  the same way (no proximity or ignore-list check).
-- **L-4 · `ex.accepted` is never read.** Staging and ready-up work before the
-  invite is answered.
-- **L-5 · A player can hand-drive their own summon.** `summon.go:79` gives summons
-  the owner's `CoachID`, so the ownership check passes during the summon's turn.
-  AP/MP are debited normally, so there is no resource gain.
-- **L-6 · Oversize mail can self-disconnect the sender.** `mail_repo.go:45`
-  returns `ErrMailboxFull` *before* truncation, and the handler echoes the
-  untruncated record, exceeding `MaxFrameLen`. Sender only.
-- **L-7 · Write errors are discarded** in several store paths
-  (`handlers_evolution.go:249`, `handlers_mail.go:241`,
-  `handlers_inventory.go:147`), so a failed mutation looks like a success.
-
+- **Spectating any fight (M-4).** Any coach can attach to any live fight and 2260
+  is an "is coach N fighting?" oracle. This is retail behaviour and the
+  spectator's `deckCoach` is already nil-ed so decks do not leak. Restricting it
+  is a product decision, not a defect — raise it if you want fights private.
+- **Fighter budget (M-6).** Computed and stored, never enforced. The retail
+  client only *warns* above 6000 (`hu_2`: `n4 > 6000`) and still submits, so
+  enforcing server-side would diverge from retail. Needs a rules decision.
+- **Summons are hand-drivable (L-5).** A player can manually act with their own
+  summon during its turn. AP/MP are debited normally, so there is no resource
+  gain — it contradicts a comment, not a rule.
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped

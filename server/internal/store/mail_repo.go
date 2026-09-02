@@ -42,6 +42,22 @@ func (r *MailRepo) InboxCount(coachID uint) (int64, error) {
 // Attachments are capped at domain.MailMaxAttachments; title/body are truncated
 // to the client's own input limits. Returns the stored mail (with its new id).
 func (r *MailRepo) Send(m *domain.Mail, cardIDs []int32) (*domain.Mail, error) {
+	// SECURITY: truncate BEFORE the mailbox-full check.
+	//
+	// The order used to be reversed, and the handler echoes the record back on
+	// ErrMailboxFull - so a ~64 KB body made that reply exceed MaxFrameLen,
+	// EncodeS2C errored, and the error propagated up to kill the session. Only the
+	// sender was affected, but it was a self-inflicted disconnect reachable from
+	// one frame, and it existed purely because the size bound came second.
+	//
+	// Bounding first also means every early return below carries an already-safe
+	// record, which is the property worth having rather than a fix for one path.
+	if len(cardIDs) > domain.MailMaxAttachments {
+		cardIDs = cardIDs[:domain.MailMaxAttachments]
+	}
+	m.Title = truncate(m.Title, domain.MailMaxTitle)
+	m.Body = truncate(m.Body, domain.MailMaxBody)
+
 	n, err := r.InboxCount(m.ReceiverID)
 	if err != nil {
 		return nil, err
@@ -49,11 +65,6 @@ func (r *MailRepo) Send(m *domain.Mail, cardIDs []int32) (*domain.Mail, error) {
 	if n >= domain.MailboxCapacity {
 		return nil, ErrMailboxFull
 	}
-	if len(cardIDs) > domain.MailMaxAttachments {
-		cardIDs = cardIDs[:domain.MailMaxAttachments]
-	}
-	m.Title = truncate(m.Title, domain.MailMaxTitle)
-	m.Body = truncate(m.Body, domain.MailMaxBody)
 	if m.SentAtMillis == 0 {
 		m.SentAtMillis = time.Now().UnixMilli()
 	}

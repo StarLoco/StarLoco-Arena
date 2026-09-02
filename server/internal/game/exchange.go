@@ -47,6 +47,20 @@ func NewExchangeManager() *ExchangeManager {
 func (m *ExchangeManager) Start(a, b *Session) *Exchange {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// SECURITY: a coach cannot trade with itself.
+	//
+	// Start(s, s) passed both busy checks (nothing is inserted until after them)
+	// and then wrote byCoach[id] twice, leaving ex.A == ex.B. sideOf then always
+	// returned 0, so ready[1] could never be set and the exchange could never
+	// commit or complete - but the coach was now permanently "busy" and unable to
+	// trade with anyone until it disconnected. A self-inflicted lockout, and the
+	// same shape aimed at a stranger locked THEM out instead, since the invite
+	// path checks neither proximity nor the ignore list.
+	aID, aok := sessionCoachID(a)
+	bID, bok := sessionCoachID(b)
+	if !aok || !bok || aID == bID {
+		return nil
+	}
 	if _, busy := m.byCoach[a.Coach.ID]; busy {
 		return nil
 	}
@@ -149,4 +163,18 @@ func (ex *Exchange) stagedCards(side int) []StagedCard {
 		out = append(out, c)
 	}
 	return out
+}
+
+// Accepted reports whether the invited side has answered yes.
+//
+// SECURITY: this flag was written by setAccepted and never read anywhere, so
+// staging cards and readying up both worked BEFORE the invitation was answered.
+// Not exploitable alone - a swap still needs both sides to send 5109 - but the
+// gate the code appeared to have did not exist, and "an invite you never accepted
+// can already hold your trade slot" is the kind of thing that becomes exploitable
+// once something else changes.
+func (ex *Exchange) Accepted() bool {
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+	return ex.accepted
 }

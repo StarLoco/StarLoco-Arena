@@ -46,7 +46,13 @@ func handleDemonAffiliate(s *Session, f *protocol.C2SFrame) error {
 		card int32
 		qty  int16
 	}
-	offers := make([]offer, 0, count)
+	// SECURITY: do not pre-size from a wire count.
+	//
+	// count is a u16 and this ran BEFORE the guild-leader authorization check, so
+	// any logged-in account could turn a 9-byte frame into a ~512 KB allocation
+	// (~58,000x amplification) and repeat it for GC pressure. The loop below is
+	// bounded by the reader anyway, so growing the slice naturally costs nothing.
+	offers := make([]offer, 0, 16)
 	for i := 0; i < int(count); i++ {
 		card, err := r.I32()
 		if err != nil {

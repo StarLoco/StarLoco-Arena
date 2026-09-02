@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -30,11 +31,66 @@ func receivedOpWithin(c *testclient.Client, opcode uint16, d time.Duration) bool
 	return false
 }
 
-// moveTo teleports a coach in the overworld by sending a single-step move
-// request (movement is unvalidated). The step is [i32 x][i32 y][i16 z].
+// moveTo walks a coach to (x,y) in the overworld using 4501 move requests. The
+// step is [i32 x][i32 y][i16 z].
+//
+// It moves in HOPS rather than one jump because the server now bounds how far a
+// single 4501 may displace a coach (maxOverworldJump): an unbounded jump was a
+// real bypass, since fusion gates on proximity to an altar. This helper used to
+// teleport in one packet, which is exactly the primitive that was closed - so the
+// test walks like a client instead, which still exercises the AoI diff it is
+// actually about.
 func moveTo(c *testclient.Client, x, y int32) {
-	p := testclient.NewW().I32(x).I32(y).U16(0).Bytes()
-	_ = c.Send(3, opMoveReq, p)
+	// 60 per axis is ~85 cells diagonally, inside the server's 100-cell Euclidean
+	// cap. My first attempt used 80 per axis, which is 113 diagonally - every hop
+	// was refused and the AoI assertions failed for a reason unrelated to AoI.
+	const hop = 60
+	cx, cy := currentPos(c)
+	for cx != x || cy != y {
+		cx = stepToward(cx, x, hop)
+		cy = stepToward(cy, y, hop)
+		p := testclient.NewW().I32(cx).I32(cy).U16(0).Bytes()
+		_ = c.Send(3, opMoveReq, p)
+		recordPos(c, cx, cy)
+		time.Sleep(15 * time.Millisecond)
+	}
+}
+
+// walkedTo tracks where moveTo has walked each client, so successive hops start
+// from the right place.
+//
+// My first version returned the spawn cell unconditionally, so the SECOND moveTo
+// computed its hops from (1,1) and stopped short - the AoI assertions then failed
+// for a reason that had nothing to do with AoI. Position has to be remembered.
+var (
+	walkedMu sync.Mutex
+	walked   = map[*testclient.Client][2]int32{}
+)
+
+func currentPos(c *testclient.Client) (int32, int32) {
+	walkedMu.Lock()
+	defer walkedMu.Unlock()
+	if p, ok := walked[c]; ok {
+		return p[0], p[1]
+	}
+	return 1, 1 // spawn
+}
+
+func recordPos(c *testclient.Client, x, y int32) {
+	walkedMu.Lock()
+	walked[c] = [2]int32{x, y}
+	walkedMu.Unlock()
+}
+
+func stepToward(from, to, max int32) int32 {
+	d := to - from
+	if d > max {
+		d = max
+	}
+	if d < -max {
+		d = -max
+	}
+	return from + d
 }
 
 func sendChat(c *testclient.Client, msg string) {

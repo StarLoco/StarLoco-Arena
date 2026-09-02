@@ -1,8 +1,10 @@
 package game
 
 import (
+	"errors"
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"gorm.io/gorm"
 )
 
 func registerInventoryHandlers(r *Router, d *Deps) {
@@ -126,27 +128,111 @@ func handleEquipmentRequest(s *Session, f *protocol.C2SFrame) error {
 
 // applyEquipment sets Pos for each inventory card according to the 14 wire
 // slots (slot value = card TemplateID; Pos = slotIndex+1; 0 = unequipped).
+// applyEquipment writes the coach's 14 equipment slots.
+//
+// CORRECTNESS: Pos lives on the STACK row, not on a copy, so setting it used to
+// equip the whole stack. A CoachCard{TemplateID: X, Quantity: 5, Pos: 0} became
+// Pos: 3 in one write and all five copies vanished from pushInventory (which
+// filters Pos == 0), became untradeable (handlers_exchange keys on pos = 0),
+// unfusable and unmailable - while counting as ONE for set bonuses. Unequipping
+// restored them, so it was loss-of-availability rather than destruction, but the
+// inventory a player saw did not match the one they had.
+//
+// It also produced duplicate rows: BuyCards stacks only onto a pos = 0 row, so
+// buying X while X was equipped created a second row, and a later "unequip all"
+// reset both to pos = 0. Nothing enforces uniqueness on (coach, template, pos),
+// so downstream First() lookups then saw only one of them.
+//
+// Equipping now SPLITS one unit off the stack and merges it back on unequip, so a
+// row is only ever wholly equipped or wholly not.
 func (s *Session) applyEquipment(coach *domain.Coach, slots [14]int32) {
 	db := s.deps.Store.DB()
-	// Reset all to unequipped first.
-	for i := range coach.Inventory {
-		coach.Inventory[i].Pos = 0
-	}
-	for slotIdx, templateID := range slots {
-		if templateID == 0 {
-			continue
-		}
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		// Unequip everything first, merging each freed unit back into the coach's
+		// unequipped stack for that template so stacks do not fragment over time.
 		for i := range coach.Inventory {
-			if coach.Inventory[i].TemplateID == templateID && coach.Inventory[i].Pos == 0 {
-				coach.Inventory[i].Pos = int16(slotIdx + 1)
-				break
+			row := &coach.Inventory[i]
+			if row.Pos == 0 {
+				continue
+			}
+			if err := mergeIntoUnequippedStack(tx, coach.ID, row); err != nil {
+				return err
 			}
 		}
+		// Re-read: merging may have deleted rows and changed quantities.
+		var inv []domain.CoachCard
+		if err := tx.Where("coach_id = ?", coach.ID).Find(&inv).Error; err != nil {
+			return err
+		}
+
+		for slotIdx, templateID := range slots {
+			if templateID == 0 {
+				continue
+			}
+			pos := int16(slotIdx + 1)
+			if err := equipOneUnit(tx, coach.ID, templateID, pos, inv); err != nil {
+				return err
+			}
+		}
+		return tx.Where("coach_id = ?", coach.ID).Find(&coach.Inventory).Error
+	})
+	if err != nil {
+		// SECURITY/OBSERVABILITY: these writes used to be fire-and-forget, so a
+		// failed equip looked exactly like a successful one and the client's view
+		// silently diverged from the database.
+		s.log.Warn("apply equipment", "coach", coach.ID, "err", err)
 	}
-	for i := range coach.Inventory {
-		db.Model(&domain.CoachCard{}).Where("id = ?", coach.Inventory[i].ID).
-			Update("pos", coach.Inventory[i].Pos)
+}
+
+// mergeIntoUnequippedStack returns one equipped row's unit to the coach's
+// unequipped stack for the same template, deleting the now-empty equipped row.
+func mergeIntoUnequippedStack(tx *gorm.DB, coachID uint, row *domain.CoachCard) error {
+	var base domain.CoachCard
+	err := tx.Where("coach_id = ? AND template_id = ? AND pos = 0", coachID, row.TemplateID).
+		First(&base).Error
+	switch {
+	case err == nil:
+		if uErr := tx.Model(&domain.CoachCard{}).Where("id = ?", base.ID).
+			UpdateColumn("quantity", gorm.Expr("quantity + ?", row.Quantity)).Error; uErr != nil {
+			return uErr
+		}
+		return tx.Delete(&domain.CoachCard{}, row.ID).Error
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// No unequipped stack yet: this row simply becomes it.
+		return tx.Model(&domain.CoachCard{}).Where("id = ?", row.ID).
+			UpdateColumn("pos", 0).Error
+	default:
+		return err
 	}
+}
+
+// equipOneUnit moves exactly ONE copy of templateID into pos, splitting the
+// unequipped stack when it holds more than one.
+func equipOneUnit(tx *gorm.DB, coachID uint, templateID int32, pos int16, inv []domain.CoachCard) error {
+	var stack domain.CoachCard
+	err := tx.Where("coach_id = ? AND template_id = ? AND pos = 0 AND quantity > 0",
+		coachID, templateID).First(&stack).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil // not owned; silently ignore, as the old code did
+	}
+	if err != nil {
+		return err
+	}
+	if stack.Quantity <= 1 {
+		return tx.Model(&domain.CoachCard{}).Where("id = ?", stack.ID).
+			UpdateColumn("pos", pos).Error
+	}
+	if err := tx.Model(&domain.CoachCard{}).Where("id = ?", stack.ID).
+		UpdateColumn("quantity", gorm.Expr("quantity - 1")).Error; err != nil {
+		return err
+	}
+	return tx.Create(&domain.CoachCard{
+		CoachID:    coachID,
+		TemplateID: templateID,
+		Quantity:   1,
+		Pos:        pos,
+	}).Error
 }
 
 // sortInt32 sorts a slice of int32 ascending (small, no import needed).
