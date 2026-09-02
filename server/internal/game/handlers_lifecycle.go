@@ -45,6 +45,28 @@ func handleStatisticUpdate(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
+	// SECURITY: only ids the CLIENT's own criterion enum defines may be written.
+	//
+	// The server keeps its own bookkeeping in this same table, namespaced above
+	// MaxCriterionID - statChallengeDoneBase (2000) + challengeID marks a PvE
+	// challenge as already cleared, which is what stops its reward cards being
+	// paid twice. That namespacing was documented as making collision impossible,
+	// but it only stops the server from ECHOING those ids in buildCriteriaBlob; it
+	// never stopped the client from WRITING them. su.StatID is a full int16 and
+	// UpsertStat overwrites rather than maxes, so:
+	//
+	//   1. beat a challenge with reward cards -> paid once, flag set
+	//   2. send 22003 with statID = 2000+challengeID, value = 0 -> flag cleared
+	//   3. re-run the challenge -> paid again. Loop.
+	//
+	// Unbounded card creation, fully client-driven, no race needed. Rejecting the
+	// server's namespace here is the fix; the client never sends those ids, so no
+	// legitimate flow is affected.
+	if su.StatID <= 0 || uint16(su.StatID) > handshake.MaxCriterionID {
+		s.log.Warn("rejected out-of-range statistic update",
+			"coach", s.Coach.ID, "stat", su.StatID, "value", su.Value)
+		return nil
+	}
 	if err := s.deps.Store.Coaches.UpsertStat(s.Coach.ID, su.StatID, int32(su.Value)); err != nil {
 		s.log.Warn("persist statistic update", "coach", s.Coach.Name,
 			"stat", su.StatID, "err", err)

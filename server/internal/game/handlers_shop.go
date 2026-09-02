@@ -178,6 +178,16 @@ func cardMasterStock(cards *gamedata.Cards, cardListID int32) []int32 {
 		return nil
 	}
 	if cardListID != 0 {
+		// NOTE: the stock deliberately stays the card set VERBATIM, including
+		// cards with no chargeable price. A Card Master advertises its whole
+		// "panoplie" (TestCardMasterStockIsItsCardSet pins this), and I have no
+		// client evidence that retail filtered the displayed list - changing what
+		// we advertise is a retail-parity question, not a security one.
+		//
+		// The security guard lives at the PURCHASE instead: cardIsPurchasable in
+		// handleShopBuy. Stocked and purchasable are therefore not the same set,
+		// and a client that asks to buy an unpriced card gets a refusal rather
+		// than a free card.
 		if ids := cards.CardsInSet(cardListID); len(ids) > 0 {
 			return ids
 		}
@@ -262,6 +272,24 @@ func handleShopBuy(s *Session, f *protocol.C2SFrame) error {
 		}
 		if !shopSells(s.deps.Cards, shopID, cardID) {
 			// This Card Master does not stock that card (forged/stale request).
+			return s.sendShopResult(shopResultError)
+		}
+		// SECURITY: a card with no POSITIVE price is not purchasable.
+		//
+		// Cost was derived solely from the template's Price map, and BuyCards
+		// skips any entry with amount <= 0, so a card whose Price map is empty or
+		// all-zero was granted for nothing. That is not theoretical against
+		// shipped data: of 907 cards, 62 are in a card set with NO price at all
+		// and 702 more carry an all-zero price - so 764 templates were mintable in
+		// batches of 64 per packet. shopID arrives unvalidated, so the attacker
+		// picks whichever set contains the card it wants; no proximity to a Card
+		// Master is checked or needed.
+		//
+		// Anything genuinely meant to be free must be granted by a reward path,
+		// not by the shop.
+		if !cardIsPurchasable(card) {
+			s.log.Warn("rejected purchase of an unpriced card",
+				"coach", s.Coach.ID, "card", cardID, "shop", shopID)
 			return s.sendShopResult(shopResultError)
 		}
 		qtyByCard[cardID]++
@@ -380,4 +408,20 @@ func (s *Session) grantStarterWallet(coach *domain.Coach) {
 		CoachID: coach.ID, CurrencyType: primaryCurrency, Amount: starterTokens,
 	})
 	s.log.Info("granted starter wallet", "coach", coach.Name, "tokens", starterTokens)
+}
+
+// cardIsPurchasable reports whether a card template has a price a shop can
+// actually charge: at least one currency with a strictly positive amount.
+//
+// See handleShopBuy for why this is a security guard rather than a tidiness one.
+func cardIsPurchasable(card *gamedata.CoachCard) bool {
+	if card == nil {
+		return false
+	}
+	for _, amount := range card.Price {
+		if amount > 0 {
+			return true
+		}
+	}
+	return false
 }
