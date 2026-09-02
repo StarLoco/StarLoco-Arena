@@ -68,6 +68,19 @@ func handleFighterCreate(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return s.sendFighterCreateError()
 	}
+	// SECURITY: cap the fighter pool. The client refuses to even OPEN the creation
+	// dialog past 100 (hu_2.java:30-43) and retail answered 6000 with status 20
+	// ("Nombre maximum de combattants atteint"), so this is a retail rule, not a
+	// new one. Unbounded creation grows the DB, makes every relog serialize the
+	// whole roster into 6006, and supplies the ammunition for an oversized fight
+	// roster since ownership is all buildFightTeamFor requires.
+	if existing, err := s.deps.Store.Fighters.ListByCoach(s.Coach.ID); err == nil &&
+		len(existing) >= maxFightersPerCoach {
+		s.log.Warn("fighter creation refused: pool full",
+			"coach", s.Coach.ID, "have", len(existing))
+		return s.sendFighterCreateStatus(fighterCreateNoMoreRoom)
+	}
+
 	// An empty or unusable fighter name is REFUSED, not silently renamed.
 	// buildFighter used to fall back to "Noob", which accepted the input and
 	// merely disguised it; the retail client refuses its own form with
@@ -126,6 +139,13 @@ func (s *Session) sendFighterCreateError() error {
 func handleFighterDelete(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
+	}
+	// SECURITY: no roster or loadout edits while queued / in a fight. The
+	// matchmaker snapshots fighter IDS but the fight re-reads their STATS, so
+	// editing while queued swaps a cheap legal roster for an expensive one
+	// after pairing. Retail refused this with code 69.
+	if s.rosterLocked() {
+		return s.refuseRosterEdit("fighter delete")
 	}
 	r := protocol.NewReader(f.Payload)
 	fighterID, err := r.I64()
@@ -212,6 +232,13 @@ func (s *Session) pushFighterList() error {
 func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
+	}
+	// SECURITY: no roster or loadout edits while queued / in a fight. The
+	// matchmaker snapshots fighter IDS but the fight re-reads their STATS, so
+	// editing while queued swaps a cheap legal roster for an expensive one
+	// after pairing. Retail refused this with code 69.
+	if s.rosterLocked() {
+		return s.refuseRosterEdit("loadout")
 	}
 	r := protocol.NewReader(f.Payload)
 	fighterID, err := r.I64()
@@ -436,4 +463,24 @@ func (s *Session) canonicalEquipSlots(cards []domain.FighterObject) []domain.Fig
 		out = append(out, c)
 	}
 	return out
+}
+
+// maxFightersPerCoach mirrors the client's own pool limit (hu_2.java:30:
+// `adY.atu().amq().size() <= 100`), which retail also enforced server-side via
+// FighterCreateResult status 20.
+const maxFightersPerCoach = 100
+
+// fighterCreateNoMoreRoom is the client's status 20 on 6000, rendered as
+// "Nombre maximum de combattants atteint !" (ce_1.java:76-79).
+const fighterCreateNoMoreRoom uint8 = 20
+
+// sendFighterCreateStatus answers 6001 with a specific failure status, so the
+// client shows the right reason instead of a generic error.
+func (s *Session) sendFighterCreateStatus(status uint8) error {
+	frame, err := protocol.EncodeS2C(protocol.OpFighterCreateResult,
+		protocol.NewWriter().U8(status).Bytes())
+	if err != nil {
+		return err
+	}
+	return s.Send(frame)
 }

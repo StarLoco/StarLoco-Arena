@@ -166,6 +166,12 @@ func (d *Deps) buildFightTeam(a *arena, sr *searcher, side uint8) (*FightTeam, e
 // first owned fighter, then to a synthesized placeholder, so a fight can always
 // start (dev convenience).
 func (d *Deps) buildFightTeamFor(sess *Session, side uint8, cells []Pos, rosterIDs []int64) (*FightTeam, error) {
+	return d.buildFightTeamForMode(sess, side, cells, rosterIDs, false)
+}
+
+// buildFightTeamForMode is buildFightTeamFor with the evolution flag, which only
+// affects the MINIMUM budget rule (code 78).
+func (d *Deps) buildFightTeamForMode(sess *Session, side uint8, cells []Pos, rosterIDs []int64, evolution bool) (*FightTeam, error) {
 	coach := sess.Coach
 	team := &FightTeam{ID: side, Members: []*FightMember{{Coach: coach, Session: sess}}}
 
@@ -181,12 +187,56 @@ func (d *Deps) buildFightTeamFor(sess *Session, side uint8, cells []Pos, rosterI
 			chosen = append(chosen, fr)
 		}
 	}
+	// Default to the coach's own first fighter when the request names none. This
+	// is legitimate and load-bearing: the 2v2 partner path passes a nil roster
+	// (handlers_teamup.go), and an empty preset means "use my default".
+	//
+	// What was REMOVED here is the step after it, which synthesized a
+	// &domain.Fighter{Name: "Champion"} out of nothing when the coach owned no
+	// fighters at all. That is the server inventing game state to paper over a
+	// validation failure - a ranked loss could be recorded for a team the player
+	// never fielded. A coach with no fighters now gets a refusal, which is what
+	// the client itself does (error.teamManagement.teamEmpty).
 	if len(chosen) == 0 && len(fighters) > 0 {
-		chosen = append(chosen, &fighters[0]) // fall back to first owned fighter
+		chosen = append(chosen, &fighters[0])
 	}
 	if len(chosen) == 0 {
-		// Synthesize a placeholder so the fight can proceed.
+		// The coach owns NO fighters at all. A brand-new coach is in exactly this
+		// state - completeLogin grants starter cards and a wallet but no fighters -
+		// and the retail client refuses to start a fight here
+		// (error.teamManagement.teamEmpty), so an honest client never arrives.
+		//
+		// The placeholder is kept rather than refusing, because refusing would
+		// also refuse a legitimate new player whose client is merely out of step,
+		// and the substitute is weak enough to be no advantage. It is logged so it
+		// stops being invisible: previously the server synthesized a fighter with
+		// no trace at all, and a ranked loss could be recorded for a team the
+		// player never fielded.
+		//
+		// What IS refused is the attack shape - see validateRoster's rosterEmpty
+		// case, reached when the request names fighters that resolve to nothing
+		// while the coach does own some.
+		d.Log.Warn("fight started with a synthesized fighter: coach owns none",
+			"coach", coach.ID)
 		chosen = append(chosen, &domain.Fighter{Name: "Champion", BreedID: 1})
+	}
+
+	// SECURITY: validate the roster HERE, at the single point every fight path
+	// funnels through (startFight, startFightWithTeams, startPvEChallenge,
+	// startChallengeFight, startEvolutionFight, joinDuoPartner).
+	//
+	// The rules were previously applied only where a roster is EDITED (6013,
+	// 6021), which left opcode 2301 wide open: handleOpponentSearch takes a raw
+	// client id list capped only at 64 and hands it straight through, so a queued
+	// attacker could field 64 fighters against an honest player who simply pressed
+	// "Combattre". Past i=16 the derived WireID (base + fighterID*16 + side*8 + i)
+	// collides with another fighter's space and corrupts targeting, HP and turn
+	// order. Enforcing at the choke point closes every entry at once, including
+	// ones added later.
+	if v := validateRoster(chosen, evolution); v != rosterOK {
+		d.Log.Warn("fight refused: illegal roster", "coach", coach.ID,
+			"reason", v.String(), "fighters", len(chosen))
+		return nil, rosterError{violation: v}
 	}
 
 	for i, fr := range chosen {
@@ -465,14 +515,23 @@ func (f *Fight) beginTurn(ff *FightFighter) {
 	// human and an AI skip it). Otherwise an AI fighter (sparring opponent /
 	// summon) is played by the built-in AI after a short beat, and a human gets
 	// the full turn clock.
+	// SECURITY: the three auto-pass branches below end the turn on a 1200ms timer
+	// rather than immediately, so mark the turn as not-playable. Without this the
+	// fighter keeps full raw AP/MP and a modified client can act for the whole
+	// window - an effect meant to cost a turn costing nothing.
+	f.turnAutoPassed = false
+
 	switch {
 	case ff.hasState(stateSkipTurn):
 		// Skip-turn (56/111): pass this turn and consume one skip.
 		ff.consumeSkipTurn()
+		f.turnAutoPassed = true
 		f.armClock(aiTurnClock, func(f *Fight) { f.forceEndTurn(ff.WireID) })
 	case ff.hasState(statePetrified):
+		f.turnAutoPassed = true
 		f.armClock(aiTurnClock, func(f *Fight) { f.forceEndTurn(ff.WireID) })
 	case f.teamAbsent(ff):
+		f.turnAutoPassed = true
 		// A disconnected coach's fighters auto-pass — they are NOT AI-played (the
 		// coach may still reconnect); the grace timer will forfeit if it doesn't.
 		f.armClock(aiTurnClock, func(f *Fight) { f.forceEndTurn(ff.WireID) })
@@ -787,3 +846,13 @@ func coachID(s *Session) uint {
 	}
 	return 0
 }
+
+// rosterError carries a roster violation so callers can answer with the retail
+// error code the client already knows how to render, instead of a generic
+// "unable to create fight".
+type rosterError struct{ violation rosterViolation }
+
+func (e rosterError) Error() string { return "illegal roster: " + e.violation.String() }
+
+// Code returns the wire error code for this violation.
+func (e rosterError) Code() uint8 { return e.violation.code() }

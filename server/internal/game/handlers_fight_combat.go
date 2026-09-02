@@ -96,7 +96,8 @@ func handleFighterMoveInFight(s *Session, frame *protocol.C2SFrame) error {
 		ff := f.fighterByWireID(wireID)
 		// See handleSpellCast: a fighter that died during its own turn must stop
 		// acting immediately, not at the next turn boundary.
-		if ff == nil || ff.CoachID != cid || ff.HP <= 0 || !f.isCurrentTurn(wireID) {
+		if ff == nil || ff.CoachID != cid || !ff.canAct() ||
+			f.turnAutoPassed || !f.isCurrentTurn(wireID) {
 			deps.Log.Debug("fight move ignored", "wireID", wireID,
 				"haveFighter", ff != nil, "currentTurn", f.isCurrentTurn(wireID))
 			return
@@ -191,10 +192,12 @@ func (f *Fight) validateFightMove(ff *FightFighter, path []Pos) bool {
 	if ff == nil || len(path) < 1 {
 		return false
 	}
-	if ff.hasState(stateRooted) {
+	// effectiveMP() below already returns 0 for a rooted or petrified fighter, so
+	// this explicit test is defence in depth and a clearer refusal reason.
+	if ff.hasState(stateRooted) || ff.hasState(statePetrified) {
 		return false // a rooted fighter cannot move
 	}
-	if int32(len(path))*defaultMPPerCell > ff.MP {
+	if int32(len(path))*defaultMPPerCell > ff.effectiveMP() {
 		return false
 	}
 	prev := ff.Pos // the origin (not part of the wire path)
@@ -437,7 +440,7 @@ func handleFighterCardUse(s *Session, frame *protocol.C2SFrame) error {
 
 	f.Post(func(f *Fight) {
 		user := f.fighterByWireID(userID)
-		if user == nil || user.CoachID != cid || user.HP <= 0 {
+		if user == nil || user.CoachID != cid || !user.canAct() || f.turnAutoPassed {
 			return
 		}
 		f.useFighterCard(user, cardID, target)
@@ -471,7 +474,8 @@ func handleSpellCast(s *Session, frame *protocol.C2SFrame) error {
 		// turn start and when skipping in endTurn. Without this it could keep
 		// casting from beyond the grave until the clock ran out. 8107 and 4521
 		// already checked; 8109, 8111 and 4503 did not.
-		if caster == nil || caster.CoachID != cid || caster.HP <= 0 || !f.isCurrentTurn(casterID) {
+		if caster == nil || caster.CoachID != cid || !caster.canAct() ||
+			f.turnAutoPassed || !f.isCurrentTurn(casterID) {
 			return
 		}
 		f.castSpellByFighter(caster, spellID, target)
@@ -568,7 +572,7 @@ func (f *Fight) castSpellByFighter(caster *FightFighter, spellID int32, target P
 		sp.CastMaxPerTurn, sp.CastMaxPerTarget, f.tableTurn, targetID, hasTarget) {
 		return false
 	}
-	if caster.AP < apCost {
+	if caster.effectiveAP() < apCost {
 		return false // not enough AP
 	}
 
@@ -678,7 +682,8 @@ func handleCloseCombat(s *Session, frame *protocol.C2SFrame) error {
 		ff := f.fighterByWireID(wireID)
 		// See handleSpellCast: a fighter that died during its own turn must stop
 		// acting immediately, not at the next turn boundary.
-		if ff == nil || ff.CoachID != cid || ff.HP <= 0 || !f.isCurrentTurn(wireID) {
+		if ff == nil || ff.CoachID != cid || !ff.canAct() ||
+			f.turnAutoPassed || !f.isCurrentTurn(wireID) {
 			return
 		}
 		f.closeCombat(ff, target)
@@ -692,7 +697,7 @@ func handleCloseCombat(s *Session, frame *protocol.C2SFrame) error {
 // (closeCombatDamages, or closeCombatCritDamages on a crit) through the elemental
 // formula. Must run on the fight actor.
 func (f *Fight) closeCombat(ff *FightFighter, target Pos) {
-	if ff.AP < closeCombatAP || posManhattan(ff.Pos, target) != 1 {
+	if ff.effectiveAP() < closeCombatAP || posManhattan(ff.Pos, target) != 1 {
 		return // not enough AP, or the target is not orthogonally adjacent
 	}
 	victim := f.fighterAtCell(target)

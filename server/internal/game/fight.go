@@ -287,6 +287,12 @@ type Fight struct {
 	Teams     [2]*FightTeam
 	Timeline  []*FightFighter // initiative-descending turn order
 
+	// turnAutoPassed marks the CURRENT turn as one the server is passing on the
+	// fighter's behalf (skip-turn, petrified, or a disconnected team). The turn is
+	// ended by a 1200ms timer rather than immediately, so without this flag the
+	// fighter can still act during that window. Owned by the actor goroutine.
+	turnAutoPassed bool
+
 	phase atomic.Int32 // read from any goroutine; written only by the actor
 	deps  *Deps
 

@@ -49,6 +49,18 @@ func (f *Fight) applySummon(caster *FightFighter, ef gamedata.Effect, target Pos
 	if !f.Arena().walkable(target.X, target.Y) || f.cellOccupied(target) {
 		return
 	}
+	// SECURITY (defence in depth): the summon cap is otherwise purely DATA-driven -
+	// it lives in the `canSummon` cast criterion, which 18 spells carry. If any
+	// summon spell ever ships without that token, or a fighter CARD gains a summon
+	// effect (8107 resolves effects with no criteria check at all), the cap simply
+	// would not exist and each summon appends to team.Fighters and the Timeline:
+	// an unbounded, client-driven allocation.
+	//
+	// Re-checking here costs nothing when the token is present and closes the
+	// data-drift hole.
+	if f.summonCount(caster) >= 1+caster.nbSummons() {
+		return
+	}
 	var templateID int32
 	if len(ef.Params) > 0 {
 		templateID = int32(ef.Params[0])

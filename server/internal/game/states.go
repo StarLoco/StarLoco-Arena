@@ -232,3 +232,22 @@ func (ff *FightFighter) effectiveMP() int32 {
 	}
 	return ff.MP
 }
+
+// canAct reports whether this fighter may take a combat action right now.
+//
+// SECURITY: being "on turn" is not the same as being able to act. beginTurn does
+// not skip a petrified or skipping fighter synchronously - it broadcasts
+// FIGHTER_TURN_BEGIN, refills raw AP/MP, and ARMS a 1200 ms timer to end the turn
+// (handlers_fight.go). For those 1200 ms isCurrentTurn is true and the resources
+// are full, so a modified client could cast, use cards and move freely: an effect
+// whose entire purpose is to cost a turn cost nothing.
+//
+// The retail client refuses a petrified caster in both of its validators
+// (mv_1.java:298-300 for spells, :415-417 for cards) and its pathfinder returns 0
+// MP for petrified or rooted, so no honest client ever sends these.
+func (ff *FightFighter) canAct() bool {
+	if ff == nil || ff.HP <= 0 {
+		return false
+	}
+	return !ff.hasState(statePetrified)
+}

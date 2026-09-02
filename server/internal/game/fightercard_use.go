@@ -50,7 +50,7 @@ func (f *Fight) useFighterCard(user *FightFighter, cardID int32, target Pos) boo
 		f.logCardUse("refused: illegal target", user, cardID)
 		return false
 	}
-	if user.AP < card.APCost {
+	if user.effectiveAP() < card.APCost {
 		f.logCardUse("refused: not enough AP", user, cardID)
 		return false
 	}

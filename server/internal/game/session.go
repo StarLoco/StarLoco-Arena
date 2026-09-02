@@ -396,3 +396,30 @@ func (s *Session) allowLoginAttempt() bool {
 	}
 	return s.guard.allowLogin(s.remoteIP)
 }
+
+// rosterLocked reports whether this coach may not currently edit its roster or
+// fighter loadouts: while queued for a fight, holding a pending match, or already
+// in one. See Matchmaker.IsBusyMatchmaking for why.
+//
+// It answers with the retail error code (69) the client already renders, so the
+// player sees "Action impossible pendant une recherche de combat" rather than
+// silence.
+func (s *Session) rosterLocked() bool {
+	if s.Coach == nil || s.deps == nil {
+		return false
+	}
+	if s.deps.Matchmaker != nil && s.deps.Matchmaker.IsBusyMatchmaking(s.Coach.ID) {
+		return true
+	}
+	if s.deps.Fights != nil && s.deps.Fights.ByCoach(s.Coach.ID) != nil {
+		return true
+	}
+	return false
+}
+
+// refuseRosterEdit tells the client why an edit was rejected.
+func (s *Session) refuseRosterEdit(what string) error {
+	s.log.Info("roster edit refused: busy matchmaking or in a fight",
+		"coach", s.Coach.ID, "what", what)
+	return s.sendFightCreationError(protocol.FightErrMatchfinderOccuring)
+}

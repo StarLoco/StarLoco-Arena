@@ -30,6 +30,13 @@ func handleFighterAssignTeam(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
 	}
+	// SECURITY: no roster or loadout edits while queued / in a fight. The
+	// matchmaker snapshots fighter IDS but the fight re-reads their STATS, so
+	// editing while queued swaps a cheap legal roster for an expensive one
+	// after pairing. Retail refused this with code 69.
+	if s.rosterLocked() {
+		return s.refuseRosterEdit("team assign")
+	}
 	r := protocol.NewReader(f.Payload)
 	fid64, err := r.I64()
 	if err != nil {
@@ -127,6 +134,13 @@ func canPlaceFighter(t *domain.Team, fighter *domain.Fighter, roster []domain.Fi
 func handleTeamPresetSave(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
+	}
+	// SECURITY: no roster or loadout edits while queued / in a fight. The
+	// matchmaker snapshots fighter IDS but the fight re-reads their STATS, so
+	// editing while queued swaps a cheap legal roster for an expensive one
+	// after pairing. Retail refused this with code 69.
+	if s.rosterLocked() {
+		return s.refuseRosterEdit("preset save")
 	}
 	tp, err := decodeTeamPreset(f.Payload)
 	if err != nil {

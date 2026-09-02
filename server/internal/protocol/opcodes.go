@@ -254,6 +254,16 @@ const (
 	FightErrInternal       = 38
 	FightErrNoInstance     = 39
 	FightErrCancelled      = 40
+	// The retail SERVER re-validated the roster rules the client also checks
+	// locally, and the client still renders every one of these codes in the same
+	// switch as 34/38/39/40 above (zN.java:214-322). Implementing them therefore
+	// RESTORES retail behaviour rather than diverging from it - which is the
+	// opposite of what this project previously assumed about the team budget.
+	FightErrInvalidFightersCount = 45 // "Le nombre de combattants est invalide"
+	FightErrInvalidTeamBudget    = 46 // "error.fight.creation.invalidTeamBudget"
+	FightErrTooManySameBreed     = 63 // "tooMuchSameBreedFighters"
+	FightErrMatchfinderOccuring  = 69 // "Action impossible pendant une recherche de combat."
+	FightErrMinEvolutionBudget   = 78 // "invalidMinimalEvolutionTeamBudget"
 
 	// Fireworks (the overworld "cardUsingSwitch" element, env type 12).
 	OpFireworkShow   = 22094 // S2C la_1: [i32 cardId][i32 x][i32 y][i32 z][i64 elementId]

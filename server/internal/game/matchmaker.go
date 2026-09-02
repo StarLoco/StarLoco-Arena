@@ -281,3 +281,31 @@ func (m *Matchmaker) purgeGhostsLocked() {
 	}
 	m.queue = kept
 }
+
+// IsBusyMatchmaking reports whether a coach is queued for a fight or holds a
+// pending match.
+//
+// SECURITY: this closes a TOCTOU bait-and-switch. The matchmaker snapshots a
+// roster's fighter IDS at queue time (and the coach's strength, for band
+// pairing), but buildFightTeamFor re-reads each fighter's STATS from the database
+// when the fight actually starts. So an attacker could queue with a cheap, legal,
+// low-strength roster, then re-equip those same fighter ids with maximum-cost
+// gear via 6011 while waiting, and the fight would be built from the updated rows
+// - defeating both the budget rule and rating-band matchmaking at once.
+//
+// Retail refused roster edits during a search and had a dedicated error for it
+// (code 69, "Action impossible pendant une recherche de combat"), which the
+// client still renders. So this restores a retail rule rather than inventing one.
+func (m *Matchmaker) IsBusyMatchmaking(coachID uint) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.byCoach[coachID]; ok {
+		return true
+	}
+	for _, sr := range m.queue {
+		if id, ok := searcherCoachID(sr); ok && id == coachID {
+			return true
+		}
+	}
+	return false
+}
