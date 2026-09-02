@@ -147,24 +147,60 @@ Worse for the "it would diverge" reading: on two paths the retail client only
 | Exchange staging ≤ 5 | blocks | — | `Exchange.stageCard` |
 | Summon cap | data token only | — | backstop in `applySummon` |
 
-### Known remaining gaps
+### The retail server's own validator is in the client jar
 
-- **Codes 62 (`equipmentForbidden`) and 66 (`badCoachCardQuantity`)** appear in the
-  25000 switch, so retail validated two further rules we do not. Their exact
-  conditions were not recovered.
-- **`RequiredLevel` on coach cards** is decoded but never filtered in
-  `equippedCountsPerSet`, so a level-1 coach gets set bonuses from cards it cannot
-  benefit from. The retail client only *warns* on equip and then silently drops
-  the card from its own bonus maths (`sj_1.java:347`), so honest clients are
-  affected too — it is a fidelity gap as much as a security one.
-- **Bench/titular caps** (7 bench, 6 titular, 9 legendary bench) are enforced on
-  resurrection and the graveyard, but not on the plain state toggle.
-- **`CooldownUnlockDelay`** (spell field 11) is decoded and never read. Impact
-  depends on whether any shipped spell has it non-zero while `Cooldown` is zero —
-  that data query was not run.
-- **Target-mask bits 49-62** (states, HP/AP/MP, elemental resist) are
-  unrepresentable server-side, so a mask using them is skipped whole. Only three
-  spells set `EnforceTargetMasks` today and none rely on those bits.
+`client/decompiled/core/je_2.java` is a **shared client/server class that ships
+inside `core.jar` with no caller on the client side**. It is the retail server's
+team validator, and it is the authoritative spec for everything above — it
+literally contains `return 45; … return 46; … return 63;`.
+
+Its defaults (`clear()`, lines 40-60) independently confirm every constant this
+server now enforces: budget **6000**, **1-6** fighters, **2** per breed. It also
+documents rules we do not implement, and the data says why we do not need to:
+
+| Code | Rule | Reachable with shipped data? |
+|---|---|---|
+| 61 | `spellForbidden` — ruleset spell blacklist/whitelist | **No.** Needs rule types 4/6/8 |
+| 62 | `equipmentForbidden` — ruleset equipment blacklist/whitelist | **No.** Needs rule types 5/7/9 |
+| 75 | `tooMuchDifferentBreed` — max distinct breeds (default 8) | **No.** Max 6 fighters < 8 |
+| 71 / 77 | evolution league / season limits | Needs league + season data |
+
+**Verified, not assumed:** the shipped `FIGHT_PARAMETER` record (type 1, the
+global ruleset for ordinary fights) decodes to **four elements, all rule type 12**
+("cast an effect on every fighter at fight creation") — which the server already
+handles. There are no restrictive rule types in the default data, so 61/62 cannot
+fire in ordinary play. They belong to custom tournament rulesets, a feature this
+server does not implement at all; with no ruleset, nothing is forbidden.
+
+### Closed since
+
+- **`CooldownUnlockDelay`** (spell field 11) is now folded into
+  `Spell.EffectiveCooldown()`. The data query settled it: 25 spells carry it, and
+  exactly **two rely on it alone** — spell **476** had *no* enforced limit
+  whatsoever (Cooldown 0, CastMaxPerTurn 0, CastMaxPerTarget 0) at 2 AP and range
+  1-2, so with 6 AP it was castable three times in a turn where retail allows one.
+- **Coach-card `RequiredLevel`** now filters `equippedCountsPerSet`, mirroring
+  `sj_1.java:346-366`. This one also affected honest clients: the client warns on
+  equip and equips anyway, then silently drops the card from its own bonus maths —
+  so server truth and client display disagreed.
+- **Bench / titular / legendary capacities** are enforced on the state toggle, not
+  just on resurrection and the graveyard. The titular cap mattered most:
+  `titularRoster` feeds evolution and PvE challenge fights, and its 6-limit came
+  only from a caller's argument — the stored line-up itself was unbounded.
+
+### Still open
+
+- **Code 66 `badCoachCardQuantity`** — deliberately NOT implemented. It is the one
+  code absent from `je_2`, so it is server-only logic with no client counterpart.
+  Two hypotheses survive (custom-tournament rule cards on opcode 17010; coach
+  equipped-card quantity at fight creation) and the evidence does not separate
+  them. Both would gate an action honest clients already pre-check, so a wrong
+  reading would refuse legitimate fights for no gain. **"I could not determine
+  this" is the correct answer here** — revisit only with new evidence.
+- **Target-mask bits 49-62** (states, HP/AP/MP, elemental resist) remain
+  unrepresentable, so a mask using them is skipped whole. Only three spells set
+  `EnforceTargetMasks` today and none rely on those bits; the real-data canary test
+  is the mitigation.
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped

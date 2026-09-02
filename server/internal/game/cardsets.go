@@ -59,9 +59,24 @@ func (s *Session) setBonusFor(action int32) int32 {
 }
 
 // equippedCountsPerSet counts the coach's equipped cards by their set id. A card
-// with no set (CardSet 0) is skipped.
+// with no set (CardSet 0) is skipped, and so is one the coach's evolution level
+// is too low to benefit from.
+//
+// SECURITY / FIDELITY: the level filter mirrors the client's own bonus
+// aggregator, sj_1.java:346-366, which skips a card entirely when
+// `((xj)card.NR()).tr() > aet_0.nJ(standing)` - dropping it from BOTH its own
+// bonuses AND its set's threshold count. The i18n string says so plainly:
+// "Your evolution level is too low to benefit from this equipment's bonuses."
+//
+// This one is not purely an attacker's rule. The retail client only WARNS on
+// equip (agn_0.java:32-35 shows error.equipment.levelToLow and equips anyway),
+// so an honest level-1 player could equip end-game cards and the server counted
+// them - unlocking set thresholds that feed resurrection chance, XP, morale,
+// fatigue, reputation and wound/death chance, while the client refused to display
+// any of it. Server truth and client display disagreed.
 func (s *Session) equippedCountsPerSet() map[int32]int {
 	out := map[int32]int{}
+	level := StandingToLevel(s.Coach.Standing)
 	for _, inv := range s.Coach.Inventory {
 		if inv.Pos < 1 {
 			continue // not equipped
@@ -69,6 +84,9 @@ func (s *Session) equippedCountsPerSet() map[int32]int {
 		tmpl := s.deps.Cards.Get(inv.TemplateID)
 		if tmpl == nil || tmpl.CardSet == 0 {
 			continue
+		}
+		if tmpl.RequiredLevel > level {
+			continue // the coach cannot benefit from it, so it does not count
 		}
 		out[tmpl.CardSet]++
 	}

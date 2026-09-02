@@ -568,7 +568,7 @@ func (f *Fight) castSpellByFighter(caster *FightFighter, spellID int32, target P
 	if tf := f.fighterAtCell(target); tf != nil {
 		targetID, hasTarget = tf.WireID, true
 	}
-	if sp != nil && !caster.CastHistory.canCast(sp.LimitKeyID(), sp.Cooldown,
+	if sp != nil && !caster.CastHistory.canCast(sp.LimitKeyID(), sp.EffectiveCooldown(),
 		sp.CastMaxPerTurn, sp.CastMaxPerTarget, f.tableTurn, targetID, hasTarget) {
 		return false
 	}
@@ -590,7 +590,7 @@ func (f *Fight) castSpellByFighter(caster *FightFighter, spellID int32, target P
 	//    fumble: the AP is spent and the cast counts against the frequency limits).
 	caster.AP -= apCost
 	if sp != nil {
-		caster.CastHistory.storeCast(sp.LimitKeyID(), sp.Cooldown, sp.CastMaxPerTurn,
+		caster.CastHistory.storeCast(sp.LimitKeyID(), sp.EffectiveCooldown(), sp.CastMaxPerTurn,
 			sp.CastMaxPerTarget, f.tableTurn, targetID, hasTarget)
 	}
 	ap, _ := buildRunningEffect(f.nextActionUID(), protocol.RunEffectAPUse, 0,

@@ -79,16 +79,19 @@ func handleFighterSetState(s *Session, f *protocol.C2SFrame) error {
 			"state", fighter.State, "legendary", legendary)
 		return nil
 	}
-	if next == domain.FighterStateGraveyard {
-		n, err := s.countFightersInState(domain.FighterStateGraveyard)
-		if err == nil && n >= domain.GraveyardCapacity {
-			// The client refuses this too ("votre cimetière est complet"); keep the
-			// server in agreement rather than over-filling it.
-			s.log.Debug("graveyard full; state change refused", "coach", s.Coach.Name)
-			return s.pushFighterList()
-		}
+	// SECURITY: every destination has a capacity, and only the graveyard's was
+	// enforced. The client refuses each of these with its own message and blocks
+	// the send (hu_2.java:596-658, nb_0.java:61-88), so any request that reaches
+	// here past a cap is forged.
+	//
+	// The TITULAR cap is the one that mattered: titularRoster feeds evolution and
+	// PvE challenge fights, and its 6-limit came only from a `max` argument passed
+	// by one caller. Nothing stopped the stored line-up itself from growing.
+	if full, err := s.stateIsFull(next); err == nil && full {
+		s.log.Debug("fighter state change refused: destination full",
+			"coach", s.Coach.Name, "to", next)
+		return s.pushFighterList()
 	}
-
 	if err := s.setFighterState(fighter, next); err != nil {
 		return err
 	}
@@ -275,3 +278,33 @@ func (s *Session) consumeCard(templateID int32) bool {
 	}
 	return true
 }
+
+// stateIsFull reports whether a fighter state has reached its capacity.
+//
+// Capacities are the retail client's own (hu_2.java / nb_0.java): 6 titular,
+// 7 bench, 5 graveyard, 6 legendary titular, 9 legendary bench.
+func (s *Session) stateIsFull(state uint8) (bool, error) {
+	var cap int
+	switch state {
+	case domain.FighterStateTitular:
+		cap = maxTeamMembers // 6
+	case domain.FighterStateBench:
+		cap = domain.BenchCapacity // 7
+	case domain.FighterStateGraveyard:
+		cap = domain.GraveyardCapacity // 5
+	case domain.FighterStateLegendary:
+		cap = maxTeamMembers // 6
+	case domain.FighterStateLegBench:
+		cap = legendaryBenchCapacity // 9
+	default:
+		return false, nil // no capacity concept
+	}
+	n, err := s.countFightersInState(state)
+	if err != nil {
+		return false, err
+	}
+	return n >= cap, nil
+}
+
+// legendaryBenchCapacity mirrors hu_2.java:640-643 (`n8 >= 9`).
+const legendaryBenchCapacity = 9

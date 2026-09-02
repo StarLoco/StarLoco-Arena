@@ -248,3 +248,29 @@ func (sp *Spell) IsHeal() bool {
 	}
 	return false
 }
+
+// EffectiveCooldown is the number of turns before this spell may be recast.
+//
+// SECURITY: the client has TWO recast brakes and the server only modelled one.
+// Field 10 (Cooldown, iV()) is the plain cooldown; field 11
+// (CooldownUnlockDelay, et()) arms a deferred per-fighter LOCK that
+// mv_1.java:454-468 refuses to cast through. For a spell where et() > 0 but
+// Cooldown == 0 the lock is the client's ONLY brake, and the server had none.
+//
+// Measured against shipped data rather than assumed: 25 spells carry et() > 0,
+// and exactly two rely on it alone - 408 (breed 12) and 476 (breed 14). 476 has
+// no other limit whatsoever (Cooldown 0, CastMaxPerTurn 0, CastMaxPerTarget 0) at
+// 2 AP and range 1-2, so with 6 AP it was castable three times in a turn where
+// retail allows one.
+//
+// Taking the max is the faithful reading: both mechanisms express "not again for
+// N turns", and where both are set the tighter one already governs on the client.
+func (s *Spell) EffectiveCooldown() uint8 {
+	if s == nil {
+		return 0
+	}
+	if s.CooldownUnlockDelay > s.Cooldown {
+		return s.CooldownUnlockDelay
+	}
+	return s.Cooldown
+}
