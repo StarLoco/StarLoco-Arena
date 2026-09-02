@@ -238,15 +238,35 @@ func handleFighterInventoryUpdate(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 
-	spells := decodeLoadoutSpells(spellsBlob)
+	// Resolve the STORED fighter once, up front. Everything below is validated
+	// against it rather than against anything the request claims: the breed drives
+	// spell legality, and the sphere entitlement drives card legality.
+	//
+	// This lookup used to happen only for the card check, further down. Hoisting it
+	// is what lets the spell filter exist at all - the breed is not in the request,
+	// and taking it from the request would defeat the point.
+	stored, ferr := s.deps.Store.Fighters.Get(uint(fighterID))
+	if ferr != nil || stored == nil || stored.CoachID != s.Coach.ID {
+		// Not this coach's fighter (or gone).
+		//
+		// The ownership half of this is DEFENCE IN DEPTH, not the live guard:
+		// SaveLoadout already scopes its update with
+		// WHERE id = ? AND coach_id = ?, and a mutation removing this line does
+		// not reproduce the IDOR. It is here because the breed we validate spells
+		// against has to come from the STORED fighter - taking it from the request
+		// would let the client pick its own legality rule - and because decoding a
+		// loadout against a fighter we do not own is pointless work.
+		return nil
+	}
+
+	// SECURITY: the client authors this list, and castSpellByFighter gates casting
+	// on it - so without a legality filter a forged 6011 let any fighter cast any
+	// of the 203 spells, persistently. See spell_legality.go.
+	spells := filterLoadoutSpells(s.deps, stored.BreedID, decodeLoadoutSpells(spellsBlob))
 	cards := s.canonicalEquipSlots(decodeLoadoutCards(cardsBlob))
 
 	// An evolution fighter may only wear what its Sphere Board nodes unlocked.
-	// Resolved from the stored fighter, never from the request.
-	if fr, ferr := s.deps.Store.Fighters.Get(uint(fighterID)); ferr == nil && fr != nil &&
-		fr.CoachID == s.Coach.ID {
-		cards = s.entitledEquip(fr, cards)
-	}
+	cards = s.entitledEquip(stored, cards)
 
 	// Recompute budget from the new loadout (breed base + card values).
 	budget := s.computeLoadoutBudget(cards)

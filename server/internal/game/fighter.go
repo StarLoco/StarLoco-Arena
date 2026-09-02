@@ -76,17 +76,17 @@ func (s *Session) buildFighter(coachID uint, fb *FighterBlob) *domain.Fighter {
 		Evolution: fb.Type == fighterBlobTypeEvolution,
 	}
 
-	// Spells: dedup, cap at 6. (Breed-legality check would need spell gamedata;
-	// deferred — we keep client-provided ids but bounded.)
-	seen := make(map[int32]bool)
-	for _, id := range fb.SpellIDs {
-		if seen[id] || len(f.Spells) >= maxFighterSpells {
-			continue
+	// Spells: breed-legal, deduped, capped at 6.
+	//
+	// The breed-legality check used to be deferred here ("would need spell
+	// gamedata"); it is now filterLoadoutSpellIDs, because the deferral was a
+	// security hole rather than a rough edge - see spell_legality.go.
+	for _, id := range filterLoadoutSpellIDs(s.deps, breed, fb.SpellIDs) {
+		if len(f.Spells) >= maxFighterSpells {
+			break
 		}
-		seen[id] = true
 		f.Spells = append(f.Spells, domain.FighterSpell{SpellID: id})
 	}
-
 	// Cards: one per slot, at the position the card's TYPE demands.
 	//
 	// This path used to dedupe on the INCOMING slot and stop there - no cap, and
