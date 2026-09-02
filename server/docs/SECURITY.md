@@ -83,12 +83,88 @@ the original audit is left open.
   is an "is coach N fighting?" oracle. This is retail behaviour and the
   spectator's `deckCoach` is already nil-ed so decks do not leak. Restricting it
   is a product decision, not a defect — raise it if you want fights private.
-- **Fighter budget (M-6).** Computed and stored, never enforced. The retail
-  client only *warns* above 6000 (`hu_2`: `n4 > 6000`) and still submits, so
-  enforcing server-side would diverge from retail. Needs a rules decision.
+- ~~**Fighter budget (M-6).**~~ **CORRECTED AND FIXED.** This entry used to say
+  enforcing the budget "would diverge from retail" because the client only warns.
+  That reasoning was wrong: `zN.java` shows the retail SERVER sent code 46 for
+  exactly this, and the client warning-and-submitting means honest clients were
+  relying on a server check that did not exist. Now enforced in `validateRoster`.
 - **Summons are hand-drivable (L-5).** A player can manually act with their own
   summon during its turn. AP/MP are debited normally, so there is no resource
   gain — it contradicts a comment, not a rule.
+## Client-enforced rules the server must re-check
+
+A distinct bug class, and the most productive one in this project: **the client
+enforces a rule locally, so an honest client never violates it, so nobody notices
+the server has no check.** A modified client simply omits it.
+
+### The correction that unlocked this
+
+These rules look like client-side validation, and the natural conclusion is
+"enforcing them server-side would diverge from retail". **That was wrong, and this
+document previously said so about the team budget.**
+
+`zN.java:214-322` is the client's handler for **opcode 25000, a SERVER→client
+error frame**. It maps numeric codes to exactly these messages — and codes
+34/38/39/40, which this server already sends, sit in the *same switch* as
+45/46/63/69/78. The retail server re-validated all of it. Implementing these
+**restores** retail behaviour.
+
+Worse for the "it would diverge" reading: on two paths the retail client only
+**warns** about the team budget and submits anyway (`hu_2.java:456-459`,
+`:489-492`). Even honest clients were relying on a server check that did not exist.
+
+### How to hunt them
+
+1. Enumerate the client's local refusals:
+   `grep 'aOG().*getString("error\.' *.java` — each is a rule the client applies
+   itself. There are ~45.
+2. For each, read the surrounding method and decide **BLOCKS vs WARNS-AND-SENDS**.
+   That distinction decides whether server enforcement is a restoration or a
+   change, and it is the single most important thing to get right.
+3. Check whether the message also appears in the **25000 switch** (`zN.java`) or
+   has a dedicated refusal frame (e.g. 5113 for exchange). If so, retail enforced
+   it server-side and there is no divergence question at all.
+4. Then check the Go server. Prefer a **choke point** over per-handler checks:
+   `buildFightTeamFor` closes five roster rules at once because every fight path
+   funnels through it.
+
+### Rules now enforced (were not)
+
+| Rule | Client | Retail code | Where enforced now |
+|---|---|---|---|
+| Team budget ≤ 6000 | warns on 2 paths, blocks on others | 46 | `validateRoster` |
+| Max 6 fighters | blocks | 45 | `validateRoster` (was 6013/6021 only) |
+| Max 2 per breed | blocks | 63 | `validateRoster` (was 6013/6021 only) |
+| No duplicate fighter | blocks | 45 | `validateRoster` (was 6021 only) |
+| No dead/graveyard fighter | blocks | — | `validateRoster` |
+| Min evolution budget 5000 | blocks | 78 | `validateRoster` |
+| No roster edits while queued | server rule | 69 | `Session.rosterLocked` |
+| Fighter pool ≤ 100 | blocks | 20 (on 6000) | `handleFighterCreate` |
+| Petrified cannot act | blocks (both validators) | — | `FightFighter.canAct` |
+| Slot ↔ card type | blocks | — | `coachCardFitsSlot` |
+| Unique card not re-acquirable | blocks (shop), warns (mail) | 5113 for trade | shop buy/barter, mail claim |
+| Undestructible not consumable | blocks | — | fusion, demon, barter |
+| Exchange staging ≤ 5 | blocks | — | `Exchange.stageCard` |
+| Summon cap | data token only | — | backstop in `applySummon` |
+
+### Known remaining gaps
+
+- **Codes 62 (`equipmentForbidden`) and 66 (`badCoachCardQuantity`)** appear in the
+  25000 switch, so retail validated two further rules we do not. Their exact
+  conditions were not recovered.
+- **`RequiredLevel` on coach cards** is decoded but never filtered in
+  `equippedCountsPerSet`, so a level-1 coach gets set bonuses from cards it cannot
+  benefit from. The retail client only *warns* on equip and then silently drops
+  the card from its own bonus maths (`sj_1.java:347`), so honest clients are
+  affected too — it is a fidelity gap as much as a security one.
+- **Bench/titular caps** (7 bench, 6 titular, 9 legendary bench) are enforced on
+  resurrection and the graveyard, but not on the plain state toggle.
+- **`CooldownUnlockDelay`** (spell field 11) is decoded and never read. Impact
+  depends on whether any shipped spell has it non-zero while `Cooldown` is zero —
+  that data query was not run.
+- **Target-mask bits 49-62** (states, HP/AP/MP, elemental resist) are
+  unrepresentable server-side, so a mask using them is skipped whole. Only three
+  spells set `EnforceTargetMasks` today and none rely on those bits.
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped
