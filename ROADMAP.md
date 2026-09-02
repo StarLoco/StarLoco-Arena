@@ -1290,6 +1290,21 @@ is a signing certificate or SignPath); no published Docker image.
     not walking onto Killer tiles. Still open: healing/buffing allies, summoning,
     placing traps, cooperative focus-fire, trap-tile and sudden-death awareness,
     diagonal pathfinding, difficulty tiers.
+    **Audit (no defect found).** The AI now has 18 tests covering the failure
+    modes that actually bite: freezing when the only in-range spell is
+    uncastable, friendly-fire splash, self-nuke, walking onto killer or
+    destroyed cells, close combat with leftover AP, and multi-spell turns.
+    `TestAINeverEndsTurnWithUsableAP` adds the general property - after the AI
+    finishes, no spell in its repertoire may still be affordable AND castable -
+    across five cost combinations chosen to leave awkward remainders. It passes,
+    and a one-cast-per-turn mutant fails it, so it is not vacuous.
+
+    What is left here is **strength, not correctness**: AP-efficiency (several
+    cheap casts can out-damage one expensive one), target selection (nearest
+    rather than most-killable), and positioning quality. Each makes the AI
+    HARDER, which is a balance decision rather than a bug fix - so this item
+    stays open deliberately and should not be "finished" without someone
+    choosing how strong the AI ought to be.
 19. [x] **Coach action cards in fight** — **CLOSED: correct and complete as an
     empty deck.** The "no opcode" premise was wrong, and
     the id-namespace half is now FIXED (B-088).** The deck is exposed to the UI as
