@@ -490,3 +490,30 @@ animations) cannot be settled here. Use the server log and the client's own mess
 warnings instead: a frame the client could not route logs
 `[DEFAUT DE CONCEPTION] Message (X) non traite, de type N`, and its ABSENCE is meaningful -
 that is how 4601 was confirmed handled and 6029 confirmed unhandled outside the team panel.
+
+### In-fight frames cannot be validated in this environment
+
+Established by driving a real evolution fight (`/EVOFIGHT`) and injecting 4902:
+
+```
+WARN [DEFAUT DE CONCEPTION] Message (aIZ) non traite, de type 4902
+WARN [DEFAUT DE CONCEPTION] Message (ut)  non traite, de type 8020   <- StartPlacement
+WARN [DEFAUT DE CONCEPTION] Message (aKl) non traite, de type 8018
+WARN [DEFAUT DE CONCEPTION] Message (aAw) non traite, de type 8028
+WARN [DEFAUT DE CONCEPTION] Message (aGP) non traite, de type 8030
+```
+
+8020 StartPlacement demonstrably works in real play, so "unhandled" here is not a verdict on
+the server. The arena map renders (placement cells and all), but no fighter sprites appear -
+`animations.jar` cannot load - and the combat UI layer never attaches, so nothing consumes
+fight frames.
+
+**Consequence:** no in-fight opcode can be live-validated here. Wire correctness still can be
+(a malformed frame fails to DECODE, which logs a different error entirely, and an unknown
+actor id in 4902 produced no NullPointerException - that handler null-checks, unlike 4700's).
+
+**And a correction to the heuristic recorded above.** The ABSENCE of `non traite` is
+meaningful - something consumed the frame. Its PRESENCE is not, on its own: it can equally
+mean the relevant UI is not open, which is exactly the case for every fight frame here and was
+also the case for 6029 outside the team panel. Read it as "no active screen wanted this",
+not as "the server sent something wrong".
