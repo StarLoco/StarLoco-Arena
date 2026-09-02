@@ -355,6 +355,104 @@ func (f *Fight) aiSpellCastableFrom(ff *FightFighter, from Pos, sp *gamedata.Spe
 // Ranking is deliberately simple and deterministic: highest raw damage first,
 // then cheaper, then lowest id. Damage is the spell record's own figure, not a
 // simulation — the AI is meant to be competent, not optimal.
+// chooseAITarget picks WHO to attack, the way a player would: finish something
+// if you can, otherwise press the one closest to dying, otherwise hit whatever is
+// nearest.
+//
+// Deliberately shallow. One pass over the living, visible opponents, and for each
+// the best spell already-castable from where the fighter stands - no lookahead, no
+// movement search, no simulating the enemy's turn. That keeps it O(enemies x
+// spells) on sets that are both tiny, and it is also the depth a human actually
+// plays at: nobody at the keyboard solves the turn optimally, they take the kill
+// in front of them.
+//
+// Invisible enemies are already excluded upstream (nearestOpponent), and nothing
+// here consults enemy traps or any other hidden state - see ai_knowledge.go.
+func (f *Fight) chooseAITarget(ff *FightFighter) *FightFighter {
+	nearest := f.nearestOpponent(ff)
+	if ff == nil || nearest == nil || f.deps == nil || f.deps.Spells == nil {
+		return nearest
+	}
+
+	var (
+		bestKill   *FightFighter // reachable AND finishable this cast
+		bestKillHP int32
+		bestHurt   *FightFighter // reachable, lowest HP
+		bestHurtHP int32
+	)
+	for _, fr := range f.allFighters() {
+		if fr.HP <= 0 || !f.areOpponents(ff, fr) || fr.hasState(stateInvisible) {
+			continue
+		}
+		_, dmg := f.bestSpellAgainst(ff, fr)
+		if dmg <= 0 {
+			continue // cannot actually hit it from here
+		}
+		if dmg >= fr.HP && (bestKill == nil || fr.HP < bestKillHP) {
+			bestKill, bestKillHP = fr, fr.HP
+		}
+		if bestHurt == nil || fr.HP < bestHurtHP {
+			bestHurt, bestHurtHP = fr, fr.HP
+		}
+	}
+	switch {
+	case bestKill != nil:
+		return bestKill
+	case bestHurt != nil:
+		return bestHurt
+	default:
+		// Nothing is castable from here; fall back to nearest so the movement
+		// logic still has something to walk towards.
+		return nearest
+	}
+}
+
+// bestSpellAgainst returns the highest-damage spell `ff` can cast at `target`
+// from where it stands, and that damage. (0, 0) when nothing is castable.
+func (f *Fight) bestSpellAgainst(ff, target *FightFighter) (int32, int32) {
+	if ff == nil || target == nil || f.deps == nil || f.deps.Spells == nil {
+		return 0, 0
+	}
+	var bestID, bestDmg, bestCost int32
+	for _, id := range f.aiRepertoire(ff) {
+		sp := f.deps.Spells.Get(id)
+		if sp == nil || !f.aiSpellCastableFrom(ff, ff.Pos, sp, target) {
+			continue
+		}
+		cost := aiSpellAPCost(sp)
+		dmg := f.aiEstimatedDamage(ff, target, sp)
+		if bestID == 0 || dmg > bestDmg ||
+			(dmg == bestDmg && cost < bestCost) ||
+			(dmg == bestDmg && cost == bestCost && id < bestID) {
+			bestID, bestDmg, bestCost = id, dmg, cost
+		}
+	}
+	return bestID, bestDmg
+}
+
+// aiEstimatedDamage is what the AI expects `sp` to take off `target`, through the
+// SAME elemental damage/resistance maths the real cast uses.
+//
+// Using the resolved figure rather than the spell's printed base is what makes
+// "can I finish this one" mean anything: against different resistances the same
+// spell lands for different amounts, and a player reading the enemy's stats
+// (which the client displays) accounts for that. It also stops the AI throwing a
+// fire spell into fire resistance when a weaker earth one would do more.
+//
+// This is an ESTIMATE: it deliberately ignores crits, shields applied mid-turn
+// and rebound, because a human cannot predict those either.
+func (f *Fight) aiEstimatedDamage(ff, target *FightFighter, sp *gamedata.Spell) int32 {
+	base, _, ok := sp.Damage()
+	if !ok || base <= 0 {
+		return 0
+	}
+	_, actionID, _, hasPrimary := sp.PrimaryDamage()
+	if !hasPrimary {
+		return base
+	}
+	return f.computeElementalDamage(ff, target, base, damageElement(actionID))
+}
+
 func (f *Fight) chooseAISpell(ff *FightFighter, target *FightFighter) int32 {
 	if ff == nil || target == nil || f.deps == nil || f.deps.Spells == nil {
 		return 0
@@ -391,7 +489,7 @@ func (f *Fight) castAISpellRepeatedly(ff *FightFighter) {
 		if ff.HP <= 0 || !f.isCurrentTurn(ff.WireID) || ff.AP <= 0 {
 			return
 		}
-		target := f.nearestOpponent(ff)
+		target := f.chooseAITarget(ff)
 		if target == nil {
 			return
 		}
@@ -553,11 +651,26 @@ func (f *Fight) retreatFromOpponents(ff *FightFighter) {
 // costs 10 HP, which is a cost to weigh rather than a certain death, and refusing
 // to path near it would distort movement far more than the damage is worth.
 func (f *Fight) aiCellIsSuicide(p Pos) bool {
-	sc, _, ok := f.Arena().specialAt(p.X, p.Y)
-	if !ok {
-		return false
+	return f.aiCellIsSuicideFor(nil, p)
+}
+
+// aiCellIsSuicideFor is the knowledge-aware form: `ff` may only take account of
+// hazards it is ALLOWED to see (see ai_knowledge.go). Passing a nil fighter means
+// "map features only", which is what the old signature did.
+//
+// Enemy traps deliberately do not count. An AI that steps around a trap nobody
+// told it about is the most visible way for a bot to look like it is cheating,
+// and it is a one-line mistake to make.
+func (f *Fight) aiCellIsSuicideFor(ff *FightFighter, p Pos) bool {
+	if ff == nil {
+		sc, _, ok := f.Arena().specialAt(p.X, p.Y)
+		if !ok {
+			return false
+		}
+		return specialCellByTemplate[sc.Template] == specialCellKiller
 	}
-	return specialCellByTemplate[sc.Template] == specialCellKiller
+	lethal, _ := f.aiKnownHazardAt(ff, p)
+	return lethal
 }
 
 // orderedReachablePaths returns every reachable-cell path (from reachableCells)

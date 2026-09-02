@@ -1299,6 +1299,24 @@ is a signing certificate or SignPath); no published Docker image.
     across five cost combinations chosen to leave awkward remainders. It passes,
     and a one-cast-per-turn mutant fails it, so it is not vacuous.
 
+    **Fairness is now structural, not remembered.** `ai_knowledge.go` is the one
+    place the AI is allowed to learn anything about the battlefield, and each
+    function states what a human would see. Arena special cells are map features
+    (known); effect areas placed by the fighter's OWN team are known; **enemy
+    traps are not**. A server-side AI is reasoning over the same structs that
+    hold every hidden thing, so omniscience is the DEFAULT and honesty is what
+    needs enforcing - `TestAIDoesNotSeeEnemyTraps` asserts the AI treats an enemy
+    trap as safe, which reads backwards until you remember that a human would
+    walk into it too. A mutation making the AI see every trap is caught.
+
+    **Targeting now plays like a person**: finish something if you can, else press
+    whatever is closest to dying, else hit the nearest. Damage is estimated
+    through the real elemental damage/resistance maths, so "can I finish this
+    one" means something when resistances differ - and the AI stops firing into
+    a resistance when a weaker element would do more. Deliberately shallow: one
+    pass over living visible enemies, no lookahead, no movement search. That is
+    both fast (tiny sets) and the depth a human actually plays at.
+
     What is left here is **strength, not correctness**: AP-efficiency (several
     cheap casts can out-damage one expensive one), target selection (nearest
     rather than most-killable), and positioning quality. Each makes the AI
