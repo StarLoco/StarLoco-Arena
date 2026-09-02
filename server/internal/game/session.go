@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -145,7 +146,7 @@ func (s *Session) serve() {
 			}
 			return
 		}
-		if err := s.router.Dispatch(s, frame); err != nil {
+		if err := s.dispatchSafely(frame); err != nil {
 			s.log.Warn("dispatch error", "opcode", frame.Opcode, "err", err)
 			return
 		}
@@ -262,4 +263,38 @@ func (s *Session) onClose() {
 	if s.Account != nil {
 		_ = s.deps.Store.Accounts.SetConnected(s.Account.ID, false)
 	}
+}
+
+// errPanicInHandler is returned when a handler panicked. It ends the offending
+// session but leaves the server, and everyone else's fights, running.
+var errPanicInHandler = errors.New("handler panicked")
+
+// dispatchSafely runs a handler and converts a panic into an error.
+//
+// SECURITY: this is the blast-radius control for the whole server. Go terminates
+// the entire process on an unrecovered panic in ANY goroutine, so before this
+// existed a single malformed or hostile frame that reached a nil dereference took
+// down every logged-in player and every fight in progress - not just the sender.
+// Two such crashes were reachable from three packets (the matchmaker and
+// challenge ghost-coach bugs; see searcherCoachID and sessionCoachID).
+//
+// Those root causes are fixed, but the class is not: this file cannot know what a
+// future handler will dereference. The stack trace is logged with the opcode so a
+// crash is still loud and diagnosable - the goal is containment, not silence.
+//
+// Note this deliberately does NOT keep the session alive. A handler that panicked
+// left its coach in an unknown state, and continuing to serve it risks acting on
+// corrupt data; the caller drops the connection on any error.
+func (s *Session) dispatchSafely(f *protocol.C2SFrame) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.log.Error("PANIC in handler - session dropped, server survives",
+				"opcode", f.Opcode,
+				"payload_len", len(f.Payload),
+				"panic", r,
+				"stack", string(debug.Stack()))
+			err = errPanicInHandler
+		}
+	}()
+	return s.router.Dispatch(s, f)
 }

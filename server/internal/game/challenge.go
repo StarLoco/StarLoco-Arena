@@ -38,7 +38,11 @@ func NewChallengeManager() *ChallengeManager {
 func (m *ChallengeManager) Create(challenger, target *Session, evolution bool) *challenge {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cid, tid := challenger.Coach.ID, target.Coach.ID
+	cid, cok := sessionCoachID(challenger)
+	tid, tok := sessionCoachID(target)
+	if !cok || !tok {
+		return nil
+	}
 	if m.byCoach[cid] != nil || m.byCoach[tid] != nil {
 		return nil
 	}
@@ -62,7 +66,11 @@ func (m *ChallengeManager) Accept(coachID uint) *challenge {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c := m.byCoach[coachID]
-	if c == nil || c.accepted || c.target.Coach.ID != coachID {
+	if c == nil {
+		return nil
+	}
+	tid, tok := sessionCoachID(c.target)
+	if c.accepted || !tok || tid != coachID {
 		return nil
 	}
 	c.accepted = true
@@ -92,7 +100,7 @@ func (m *ChallengeManager) ConfirmTeam(coachID uint, teamID int16) (*challenge, 
 	if c == nil || !c.accepted {
 		return nil, false
 	}
-	if c.challenger.Coach.ID == coachID {
+	if id, ok := sessionCoachID(c.challenger); ok && id == coachID {
 		c.teamChallenger = teamID
 		c.confChallenger = true
 	} else {
@@ -107,14 +115,35 @@ func (m *ChallengeManager) ConfirmTeam(coachID uint, teamID int16) (*challenge, 
 }
 
 func (m *ChallengeManager) removeLocked(c *challenge) {
-	delete(m.byCoach, c.challenger.Coach.ID)
-	delete(m.byCoach, c.target.Coach.ID)
+	if id, ok := sessionCoachID(c.challenger); ok {
+		delete(m.byCoach, id)
+	}
+	if id, ok := sessionCoachID(c.target); ok {
+		delete(m.byCoach, id)
+	}
 }
 
 // other returns the session on the far side of the challenge from coachID.
 func (c *challenge) other(coachID uint) *Session {
-	if c.challenger.Coach.ID == coachID {
+	if id, ok := sessionCoachID(c.challenger); ok && id == coachID {
 		return c.target
 	}
 	return c.challenger
+}
+
+// sessionCoachID resolves a session's coach id, reporting false when the session
+// or its coach is nil.
+//
+// SECURITY: a challenge outlives the coach it names. 27529 ("destroy coach") nils
+// Session.Coach while the socket stays up, and onClose's challenge cleanup is
+// itself gated on a non-nil coach. Before this, Accept/Decline/Remove
+// dereferenced c.challenger.Coach.ID directly, so an attacker could invite a
+// victim, destroy its own coach, and panic the process from the victim's reply -
+// or from any third party's logout. With no recover() in the accept loop that
+// took down every fight in progress. Regression: TestChallengeSurvivesNilCoach.
+func sessionCoachID(s *Session) (uint, bool) {
+	if s == nil || s.Coach == nil {
+		return 0, false
+	}
+	return s.Coach.ID, true
 }

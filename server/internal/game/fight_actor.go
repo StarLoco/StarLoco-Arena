@@ -1,5 +1,7 @@
 package game
 
+import "runtime/debug"
+
 import "time"
 
 // The fight actor model: each Fight runs a single goroutine that serially
@@ -33,7 +35,7 @@ func (f *Fight) run() {
 	for {
 		select {
 		case ev := <-f.mailbox:
-			ev(f)
+			f.runEvent(ev)
 		case <-f.done:
 			return
 		}
@@ -116,4 +118,29 @@ func (f *Fight) stopGrace() {
 		f.graceTimer.Stop()
 		f.graceTimer = nil
 	}
+}
+
+// runEvent executes one fight event, converting a panic into a logged error.
+//
+// SECURITY: the fight actor runs on its own goroutine, so an unrecovered panic
+// here killed the entire server process - every other fight included - not just
+// this fight. Combat is the most attacker-reachable state machine in the codebase
+// (spell effects, areas, summons, traps, all driven by client-chosen ids), so it
+// is exactly where an unforeseen nil or out-of-range index is most likely.
+//
+// The fight is left running: one bad event must not silently void a match that
+// players may be minutes into. The stack trace is logged so the underlying bug
+// stays diagnosable rather than being papered over.
+func (f *Fight) runEvent(ev func(*Fight)) {
+	defer func() {
+		if r := recover(); r != nil {
+			if f.deps != nil && f.deps.Log != nil {
+				f.deps.Log.Error("PANIC in fight event - fight continues, server survives",
+					"fight_id", f.ID,
+					"panic", r,
+					"stack", string(debug.Stack()))
+			}
+		}
+	}()
+	ev(f)
 }

@@ -105,21 +105,34 @@ func (m *Matchmaker) Search(s *Session, mode, subMode int16, teamIDs []int64) *p
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	myID, ok := searcherCoachID(&searcher{session: s})
+	if !ok {
+		// No coach: nothing to queue. The handler already rejects this, but the
+		// matchmaker must not depend on that (see purgeGhostsLocked).
+		return nil
+	}
 	var strength int32
 	if s.Coach != nil {
 		strength = s.Coach.Strength
 	}
 	sr := &searcher{session: s, mode: mode, subMode: subMode, teamIDs: teamIDs,
 		strength: strength, since: m.clock()}
+
+	m.purgeGhostsLocked()
+
 	for i, other := range m.queue {
-		if other.mode == mode && other.session.Coach.ID != s.Coach.ID && m.withinBand(other, sr) {
+		otherID, ok := searcherCoachID(other)
+		if !ok {
+			continue // purged above; belt and braces
+		}
+		if other.mode == mode && otherID != myID && m.withinBand(other, sr) {
 			// Match! remove the waiting opponent and create a pending match.
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 			pm := &pendingMatch{id: m.nextID, a: other, b: sr}
 			m.nextID++
 			m.pending[pm.id] = pm
-			m.byCoach[other.session.Coach.ID] = pm.id
-			m.byCoach[s.Coach.ID] = pm.id
+			m.byCoach[otherID] = pm.id
+			m.byCoach[myID] = pm.id
 			return pm
 		}
 	}
@@ -134,7 +147,7 @@ func (m *Matchmaker) CancelSearch(coachID uint) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, sr := range m.queue {
-		if sr.session.Coach.ID == coachID {
+		if id, ok := searcherCoachID(sr); ok && id == coachID {
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 			return true
 		}
@@ -159,7 +172,7 @@ func (m *Matchmaker) Accept(coachID uint, accept bool) (*pendingMatch, bool) {
 		m.removeLocked(pm)
 		return pm, false
 	}
-	if pm.a.session.Coach.ID == coachID {
+	if id, ok := searcherCoachID(pm.a); ok && id == coachID {
 		pm.accA = true
 	} else {
 		pm.accB = true
@@ -187,7 +200,7 @@ func (m *Matchmaker) Remove(coachID uint) *pendingMatch {
 	defer m.mu.Unlock()
 	// From queue:
 	for i, sr := range m.queue {
-		if sr.session.Coach.ID == coachID {
+		if id, ok := searcherCoachID(sr); ok && id == coachID {
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 			break
 		}
@@ -214,17 +227,17 @@ func (m *Matchmaker) removeLocked(pm *pendingMatch) {
 		return
 	}
 	delete(m.pending, pm.id)
-	if pm.a != nil {
-		delete(m.byCoach, pm.a.session.Coach.ID)
+	if id, ok := searcherCoachID(pm.a); ok {
+		delete(m.byCoach, id)
 	}
-	if pm.b != nil {
-		delete(m.byCoach, pm.b.session.Coach.ID)
+	if id, ok := searcherCoachID(pm.b); ok {
+		delete(m.byCoach, id)
 	}
 }
 
 // other returns the searcher on the far side of the match from coachID.
 func (pm *pendingMatch) other(coachID uint) *searcher {
-	if pm.a != nil && pm.a.session.Coach.ID == coachID {
+	if id, ok := searcherCoachID(pm.a); ok && id == coachID {
 		return pm.b
 	}
 	return pm.a
@@ -236,4 +249,35 @@ func (m *Matchmaker) clock() time.Time {
 		return time.Now()
 	}
 	return m.now()
+}
+
+// searcherCoachID resolves a queued searcher's coach id, reporting false when the
+// searcher, its session or its coach is nil.
+//
+// SECURITY: the queue can legitimately outlive the coach it refers to. 27529
+// ("destroy coach") sets Session.Coach = nil while the session stays connected,
+// and onClose's matchmaker cleanup is itself gated on a non-nil coach, so a
+// disconnect does not necessarily clear the entry either. Before this helper,
+// Search dereferenced other.session.Coach.ID directly, so one attacker could
+// queue, destroy its coach, and leave a landmine that panicked the next honest
+// searcher. With no recover() in the accept loop that panic ended the whole
+// process. Regression: TestMatchmakerSurvivesGhostSearcher.
+func searcherCoachID(sr *searcher) (uint, bool) {
+	if sr == nil || sr.session == nil || sr.session.Coach == nil {
+		return 0, false
+	}
+	return sr.session.Coach.ID, true
+}
+
+// purgeGhostsLocked drops queue entries whose coach has gone away. Called on the
+// Search path so the queue self-heals rather than accumulating landmines.
+// Caller must hold m.mu.
+func (m *Matchmaker) purgeGhostsLocked() {
+	kept := m.queue[:0]
+	for _, sr := range m.queue {
+		if _, ok := searcherCoachID(sr); ok {
+			kept = append(kept, sr)
+		}
+	}
+	m.queue = kept
 }
