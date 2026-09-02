@@ -11,6 +11,121 @@ decompiled client, no runtime).
 
 ---
 
+### B-160 - SECURITY (second pass): the remaining Medium and Low findings
+
+Closed in one sweep; see `SECURITY.md` for the per-item table. The ones worth
+knowing about:
+
+- **Equipping moved the whole stack.** `Pos` lives on the stack ROW, so equipping
+  one of five copies set `Pos` on all five: they vanished from `pushInventory`
+  (which filters `Pos == 0`), became untradeable, unfusable and unmailable, and
+  counted as ONE for set bonuses. It was also how duplicate `pos = 0` rows
+  accumulated, since `BuyCards` only stacks onto a `pos = 0` row. Equipping now
+  splits one unit off and merges it back on unequip.
+- **`consumeCard` was a lost-update.** No transaction, no guard on the value it
+  read, discarded errors - it returned `true` even when nothing was written. Now
+  a single conditional `UPDATE ... quantity = quantity - 1 WHERE quantity > 0`.
+- **Fusion had no value ceiling.** Both of the client's gates are no-ops for ~900
+  of 907 cards, so two commons became a set's best card at a flat 60%.
+- **A dead fighter kept acting.** 8109/8111/4503 had no `HP > 0` check (8107 and
+  4521 did), and death is only acted on at turn start.
+- **Self-trade locked a coach out of trading**, and the same shape aimed at a
+  stranger locked *them* out.
+- **`Coach.Inventory`/`Wallet` were written from other goroutines** without
+  `Coach.Mu` - an unsynchronised slice-header write, i.e. undefined behaviour
+  rather than a stale read.
+
+**Verified.** unit + e2e, `-race` clean across `internal/game` (91s), `test/e2e`
+(27s) and `internal/store` (58s). Stack split/merge and the name rejections are
+mutation-verified.
+
+**Note.** The overworld displacement cap broke three AoI tests that were using
+4501 as a teleport - exactly the primitive being removed. The helper now walks in
+hops. Worth recording because the first hop size (80 per axis) is 113 cells
+diagonally, over the 100-cell Euclidean cap, so every hop was refused and the AoI
+assertions failed for a reason unrelated to AoI.
+
+---
+
+### B-159 - SECURITY: spell loadouts were client-authored (6011)
+
+**Symptom.** Any fighter could cast any spell in the game, persistently.
+
+**Cause.** `castSpellByFighter` gates casting on `fighterKnowsSpell`, which reads
+the spell list the CLIENT writes through 6011. `decodeLoadoutSpells` accepted up
+to 6 arbitrary ids with no legality check, and `SaveLoadout` validated only WHOSE
+fighter it was, never WHAT spells - so the mitigation combat believes it has was
+anchored on attacker-controlled data. The same handler already validated CARDS
+(`canonicalEquipSlots` + `entitledEquip`); spells were passed straight through,
+and `fighter.go` carried a comment admitting the gap.
+
+**Fix.** `spell_legality.go` filters client-authored lists to the fighter's own
+breed. Measured rather than assumed: of 203 spells, breeds 1..14 own 10-13 each;
+pseudo-breed 0 (44 spells) is monster/summon material - id 428 is range 1-30
+value 250 - and pseudo-breed 99 (14) is boss utility. Legitimate extras are added
+SERVER-side after the filter (sphere unlocks, summons, challenge demons), so
+nothing legitimate reaches a spell list through the client.
+
+**Verified.** unit + e2e. The e2e tests were necessary: mutations bypassing the
+filter at BOTH call sites survived the entire unit suite.
+
+---
+
+### B-158 - SECURITY: no connection limits, timeouts or login throttle
+
+**Symptom.** A few dozen sockets could saturate every core; 10k idle connections
+were free.
+
+**Cause.** The accept loop took every connection unconditionally - no global cap,
+no per-IP cap, no read deadline, nothing to evict a socket that connected and
+never spoke. Each connection costs two goroutines, ~12 KB of buffers and a
+256-slot queue that can hold up to 16 MB. Opcode 1025 runs bcrypt synchronously
+on the session goroutine (~50-100 ms), so unthrottled logins were the cheapest
+full-server DoS, and password guessing had no limit either.
+
+**Fix.** A `limits:` config block (global + per-IP caps, handshake and idle read
+deadlines, per-IP login throttle), all 0-means-default / negative-means-disabled.
+Auto-registration and first-account-becomes-admin became opt-out switches - the
+latter is a race an attacker wins on a fresh public instance, and every GM verb
+is gated on that flag. 1025 also gained an already-authenticated guard: it could
+be replayed forever, leaking a Sessions key and a world-registry entry per
+attempt, and `Registry.byID` is iterated under a global mutex on every movement
+packet.
+
+**Note.** I first phrased the flags positively, so a zero-value `Limits` meant
+"auto-registration OFF" and every e2e login was refused. They are negative flags
+now, and a test pins that the zero value is inert.
+
+---
+
+### B-157 - SECURITY: empty and unusable names accepted for fighters, teams, guilds
+
+**Symptom.** A fighter could be created with an empty name; guild names were
+case-sensitively unique.
+
+**Cause.** `sanitizeFighterName` returned `"Noob"` for empty input, which accepted
+the input and disguised it - and hid that a client was sending something the
+retail client never sends (`acx_2` and the fighter form both refuse locally).
+`GuildRepo.Create` compared names with `Where("name = ?")` while `CoachRepo` used
+`LOWER(name) = LOWER(?)`, so `Elite`/`elite`/`ELITE` were distinct guilds - direct
+impersonation, and the name is broadcast to every online session on creation.
+Guild rank names had no validation at all.
+
+**Fix.** 6001 and 6021 reject; guild names and rank names go through
+`sanitizeDisplayName`; guild uniqueness is case-insensitive.
+
+`validateFighterName` uses a WHITELIST rather than "strip and keep the rest",
+because stripping accepted `<b></b>` as a fighter named `b/b` - harmless, but
+plainly not something a player typed, and it means the set of storable names is
+defined by whatever the stripper misses instead of by a rule someone chose.
+Sanitisation still runs FIRST, so `Ad<U+00AD>min` normalises to `Admin` and is
+judged as `Admin` would be, rather than being stored as a distinct row that
+renders identically.
+
+**Verified.** unit + e2e (opcode 6001 with empty/blank/markup/invisible names
+creates no fighter; a legitimate name still does). Mutation-verified.
+
+---
 ### B-152 - SECURITY: repeatable tournament reward cards (28611)
 
 **Symptom.** A tournament winner could mint its reward card without limit.

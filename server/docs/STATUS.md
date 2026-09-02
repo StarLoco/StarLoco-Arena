@@ -5,13 +5,22 @@ detail; this is state.
 
 **Updated:** 2026-09-02
 
-> **Security:** a full hostile-client audit landed on 2026-09-02. Eight issues
-> are fixed (`BUGS.md` B-145 … B-152, five of them remotely exploitable by any
-> authenticated client, two of them full-server crashes). The findings that are
-> **still open** — including client-authored spell loadouts, no rate limiting or
-> connection cap on the game socket, and auto-registration granting the first
-> account admin — are catalogued with severities in
-> [`SECURITY.md`](./SECURITY.md). Read that before exposing an instance publicly.
+> **Security:** a full hostile-client audit landed on 2026-09-02 and is now
+> **fully remediated** (`BUGS.md` B-145 … B-160). That included two remote
+> full-server crashes reachable in three packets, four unbounded card-minting
+> paths, a team-preset IDOR, client-authored spell loadouts, and the absence of
+> any connection cap, timeout or login throttle on the game socket.
+>
+> [`SECURITY.md`](./SECURITY.md) is the reference: threat model, the structural
+> properties that keep the surface small, the per-item fix table, and the three
+> findings deliberately **not** changed (spectating any fight is retail
+> behaviour, the fighter budget is only warned about by the client, and
+> hand-driving your own summon yields no advantage).
+>
+> **Before exposing an instance publicly**, set `limits.auto_register: false` and
+> `limits.first_account_is_admin: false` in `config.yaml`. Both default to true
+> to preserve local workflows, and the second is a race an attacker wins simply
+> by connecting before you do.
 
 ---
 
