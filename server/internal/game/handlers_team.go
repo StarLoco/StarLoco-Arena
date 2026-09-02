@@ -133,9 +133,24 @@ func handleTeamPresetSave(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 
+	// An empty or unusable preset name is REFUSED rather than silently renamed.
+	//
+	// The refusal is silent (re-push the authoritative list) because the wire has
+	// no status for it: the client checks this LOCALLY - acx_2 shows
+	// error.teamManagement.teamNameEmpty itself when its form fails validation and
+	// never sends - so 6022 only ever carried "name already exists" (25). Sending
+	// 25 here would display "Ce nom d'equipe est deja utilise" for an EMPTY name,
+	// which is a wrong message rather than a missing one. Only a modified client
+	// can reach this at all.
+	presetName, ok := validateTeamName(tp.Name)
+	if !ok {
+		s.log.Warn("rejected team preset name", "coach", s.Coach.ID, "len", len(tp.Name))
+		return s.pushTeamPresetList()
+	}
+
 	team := &domain.Team{
 		CoachID:  s.Coach.ID,
-		Name:     sanitizeFighterName(tp.Name),
+		Name:     presetName,
 		Type:     tp.Type,
 		GameMode: tp.GameMode,
 		App1:     tp.App[0], App2: tp.App[1], App3: tp.App[2], App4: tp.App[3],

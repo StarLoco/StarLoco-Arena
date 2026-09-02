@@ -79,8 +79,12 @@ func (r *GuildRepo) Create(name string, leaderCoachID uint, leaderRankName, defa
 		if n > 0 {
 			return ErrAlreadyInGuild
 		}
+		// SECURITY: case-INSENSITIVE, matching CoachRepo.Create. An exact match
+		// made "Elite", "elite" and "ELITE" four distinct guilds, which is direct
+		// impersonation - and the guild name is broadcast to every online session
+		// on creation. LOWER() rather than COLLATE NOCASE, which is SQLite-only.
 		if err := tx.Model(&domain.Guild{}).
-			Where("name = ?", name).Count(&n).Error; err != nil {
+			Where("LOWER(name) = LOWER(?)", name).Count(&n).Error; err != nil {
 			return err
 		}
 		if n > 0 {

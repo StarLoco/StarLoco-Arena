@@ -68,6 +68,15 @@ func handleFighterCreate(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return s.sendFighterCreateError()
 	}
+	// An empty or unusable fighter name is REFUSED, not silently renamed.
+	// buildFighter used to fall back to "Noob", which accepted the input and
+	// merely disguised it; the retail client refuses its own form with
+	// error.fighterCreation.invalidName, so refusing is also what a legitimate
+	// player already sees.
+	if _, ok := validateFighterName(fb.Name); !ok {
+		s.log.Warn("rejected fighter name", "coach", s.Coach.ID, "len", len(fb.Name))
+		return s.sendFighterCreateError()
+	}
 
 	fighter := s.buildFighter(s.Coach.ID, fb)
 	if err := s.deps.Store.Fighters.Create(fighter); err != nil {

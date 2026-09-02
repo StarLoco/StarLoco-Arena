@@ -105,10 +105,18 @@ func handleGuildCreate(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	name = strings.TrimSpace(name)
-	if len([]rune(name)) < minGuildNameLen {
+	// SECURITY: the only check here used to be a MINIMUM length - no maximum, no
+	// control-character filter, no markup strip - while the name is broadcast to
+	// every online session via buildGuildCreatedFeed, which writes it raw. The
+	// client has a dedicated refusal for this (GuildResultBadName ->
+	// guild.error.invalidName, "Ce nom de clan n'est pas valide ou est deja
+	// utilise"), so a bad name gets the right message with no invented prose.
+	clean, ok := sanitizeDisplayName(name, maxGuildNameLen)
+	if !ok || len([]rune(clean)) < minGuildNameLen {
+		s.log.Warn("rejected guild name", "coach", s.Coach.ID, "len", len(name))
 		return s.sendGuildResult(guildType, protocol.GuildResultBadName)
 	}
+	name = clean
 	g, err := s.deps.Store.Guilds.Create(name, s.Coach.ID, defaultLeaderRankName, defaultMemberRankName)
 	switch {
 	case errors.Is(err, store.ErrGuildNameTaken):

@@ -211,7 +211,16 @@ func handleGuildRankAdd(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	if err := s.deps.Store.Guilds.AddRank(guildID, rights, name); err != nil {
+	// SECURITY: rank names had NO validation on either path - no trim, no
+	// bounds, no content filter - and are pushed to every guild member in
+	// buildGuildRecord. Anyone can found a guild and be its leader, so the
+	// leader-rights gate is effectively self-service.
+	rankName, ok := sanitizeDisplayName(name, maxGuildRankNameLen)
+	if !ok {
+		s.log.Warn("rejected guild rank name", "guild", guildID, "len", len(name))
+		return nil
+	}
+	if err := s.deps.Store.Guilds.AddRank(guildID, rights, rankName); err != nil {
 		if errors.Is(err, store.ErrGuildRankLimit) {
 			return nil // the client shows its own "10 ranks max" message
 		}
@@ -248,7 +257,12 @@ func handleGuildRankModify(s *Session, f *protocol.C2SFrame) error {
 	if err != nil {
 		return err
 	}
-	if err := s.deps.Store.Guilds.UpdateRank(guildID, int16(level), rights, name); err != nil {
+	rankName, ok := sanitizeDisplayName(name, maxGuildRankNameLen)
+	if !ok {
+		s.log.Warn("rejected guild rank name", "guild", guildID, "len", len(name))
+		return nil
+	}
+	if err := s.deps.Store.Guilds.UpdateRank(guildID, int16(level), rights, rankName); err != nil {
 		return err
 	}
 	return s.deps.refreshGuild(guildID)

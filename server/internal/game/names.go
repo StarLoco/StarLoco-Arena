@@ -190,3 +190,65 @@ func validateCoachName(name string) (string, bool) {
 	}
 	return name, true
 }
+
+// maxFighterNameRunes / minFighterNameRunes bound a fighter's display name. The
+// client refuses its own creation form with error.fighterCreation.invalidName
+// ("Nom de combattant invalide"), so rejecting is the retail-consistent answer.
+const (
+	minFighterNameRunes = 2
+	maxFighterNameRunes = 16
+)
+
+// displayNameRE is the whitelist for player-authored display names: Unicode
+// letters and digits, hyphen, apostrophe, and single internal spaces, starting
+// and ending alphanumeric.
+//
+// A WHITELIST rather than "strip the bad characters and keep what is left",
+// because stripping produces surprises: "<b></b>" survived as the fighter name
+// "b/b" - harmless, since no markup delimiter remains, but obviously not
+// something a player typed, and it means the set of storable names is defined by
+// what the stripper happens to miss rather than by a rule anyone chose.
+var displayNameRE = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}'-]*( [\p{L}\p{N}'-]+)*$`)
+
+// validateFighterName reports whether a client-supplied fighter name is usable,
+// returning the normalised form.
+//
+// SECURITY / CORRECTNESS: this replaces a silent fallback to "Noob". Falling back
+// meant an EMPTY name was accepted - it just became someone else's problem later,
+// and it hid the fact that a hostile client was sending something the real client
+// never would. An empty or unusable name is refused outright, exactly as the
+// client refuses it locally (error.fighterCreation.invalidName).
+//
+// Sanitisation still runs FIRST, so an impersonation attempt normalises before it
+// is judged: "Ad\u00admin" becomes "Admin" and is then accepted or rejected as
+// "Admin" would be, rather than being stored as a distinct row that renders
+// identically.
+func validateFighterName(name string) (string, bool) {
+	clean, ok := sanitizeDisplayName(name, maxFighterNameLen)
+	if !ok {
+		return "", false
+	}
+	if n := utf8.RuneCountInString(clean); n < minFighterNameRunes || n > maxFighterNameRunes {
+		return "", false
+	}
+	if !displayNameRE.MatchString(clean) {
+		return "", false
+	}
+	if !strings.ContainsFunc(clean, unicode.IsLetter) {
+		return "", false
+	}
+	return clean, true
+}
+
+// validateTeamName is validateFighterName's sibling for team presets, which are
+// also player-authored and rendered the same way. Teams may be a little longer.
+func validateTeamName(name string) (string, bool) {
+	clean, ok := sanitizeDisplayName(name, maxTeamNameLen)
+	if !ok {
+		return "", false
+	}
+	if !displayNameRE.MatchString(clean) {
+		return "", false
+	}
+	return clean, true
+}
