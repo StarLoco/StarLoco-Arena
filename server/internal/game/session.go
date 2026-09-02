@@ -190,9 +190,28 @@ func (s *Session) onClose() {
 
 	// If a newer login already replaced this session (kick/reconnect), do NOT
 	// tear down the shared account/coach state -- the new session owns it now.
+	//
+	// SECURITY: this early return used to skip EVERYTHING below, which leaked the
+	// coach into every subsystem on every duplicate login. handleAuthentication
+	// calls Sessions.Swap BEFORE old.kick(), so Remove always returns false here -
+	// this path is deterministic, not a race. The leaks that mattered:
+	//
+	//   - Matchmaker: the queue kept a searcher holding a DEAD socket. Real
+	//     players were paired with ghosts, sendMatchFound went nowhere, and the
+	//     fight started blind. Repeatable at will, so the queue could be
+	//     saturated with unreachable opponents.
+	//   - Challenges / exchanges / 2v2: the counterparty was left waiting on
+	//     someone who was gone, and an exchange kept the OTHER player marked busy
+	//     so they could not trade with anyone else.
+	//
+	// releaseSubsystems is therefore run for replaced sessions too. What stays
+	// skipped is deliberate: the world entry (the new session took it over), the
+	// coach save (the new session owns the struct) and the fight teardown (the
+	// new session should be able to reconnect into it).
 	if s.Account != nil {
 		if !s.deps.Sessions.Remove(s.Account.ID, s) {
 			s.log.Info("stale session closed (replaced by newer login)")
+			s.releaseSubsystems()
 			return
 		}
 	}
@@ -206,46 +225,17 @@ func (s *Session) onClose() {
 		if f := s.deps.Fights.ByCoach(s.Coach.ID); f != nil {
 			s.deps.coachLeftFight(f, s.Coach.ID)
 		}
-		// A spectator dropping out just detaches from the fight it was watching.
-		if f := s.spectating; f != nil {
-			s.spectating = nil
-			sess := s
-			f.Post(func(f *Fight) { f.removeSpectator(sess) })
-		}
-		// Remove from matchmaking (queue or pending); notify a matched opponent.
-		if pm := s.deps.Matchmaker.Remove(s.Coach.ID); pm != nil {
-			if other := pm.other(s.Coach.ID); other != nil {
-				_ = sendMatchCancelled(other.session)
-			}
-		}
-		// Cancel any pending direct challenge; tell the other coach it fell through.
-		if c := s.deps.Challenges.Remove(s.Coach.ID); c != nil {
-			if other := c.other(s.Coach.ID); other != nil {
-				if frame, err := buildChallengeCancelled(c.id); err == nil {
-					_ = other.Send(frame)
-				}
-			}
-		}
-		// Cancel any in-progress exchange, notifying the other party (5111 with
-		// the cancel reason).
-		if ex := s.deps.Exchanges.Get(s.Coach.ID); ex != nil {
-			other := ex.Other(s.Coach.ID)
-			if s.deps.Exchanges.Remove(ex) && other != nil {
-				if end, err := buildExchangeEnd(ex.ID, protocol.ExchangeEndCancel); err == nil {
-					_ = other.Send(end)
-				}
-			}
-		}
-		// Break any 2v2 pairing and TELL the partner. Every other pairing in this
-		// teardown already notifies its counterparty; this one did not, so a
-		// partner who dropped during team formation left the other player sitting
-		// in the fighter picker waiting for someone who was gone.
-		s.deps.releaseTeamUpAndNotify(s.Coach.ID)
+		// Matchmaking, challenges, exchanges, 2v2 and spectating all release
+		// through the SAME helper the replaced-session path uses, so the two
+		// cannot drift apart again.
+		s.releaseSubsystems()
 
 		// Despawn the leaver from coaches that currently see it (AoI known set),
 		// then remove it from the registry.
 		viewers := s.deps.World.LeaveAoI(s.Coach.ID)
-		s.deps.World.Remove(s.Coach.ID)
+		// Only if the entry is still OURS: a newer login may already have taken
+		// it over, and removing it then would make the live player vanish.
+		s.deps.World.RemoveIfSession(s.Coach.ID, s)
 		// Persist the coach's final position/stats so they survive reconnect.
 		// Coach.Mu (taken inside Save) serializes this with any concurrent
 		// fight-actor stat save.
@@ -297,4 +287,68 @@ func (s *Session) dispatchSafely(f *protocol.C2SFrame) (err error) {
 		}
 	}()
 	return s.router.Dispatch(s, f)
+}
+
+// releaseSubsystems drops this session from every matchmaking/social structure
+// that holds a pointer to it, notifying counterparties. Safe to call twice.
+//
+// It exists because the same release has to happen on TWO paths that used to
+// share no code: a normal disconnect, and a session displaced by a newer login.
+// Only the first ran it, so every duplicate login leaked a ghost.
+//
+// It deliberately does NOT touch the world registry, the coach row or any fight:
+// on the replaced-session path those belong to the new session.
+func (s *Session) releaseSubsystems() {
+	if s.deps == nil {
+		return
+	}
+	if s.Coach == nil {
+		// SECURITY: 27529 (destroy coach) nils Coach while the socket stays up,
+		// so a coachless session can still hold queue and challenge entries. The
+		// managers now purge nil-coach entries themselves (searcherCoachID,
+		// sessionCoachID), which is what stops those from being crashes; there is
+		// simply no id left here to release by.
+		return
+	}
+	coachID := s.Coach.ID
+
+	// Spectating: detach from whatever fight was being watched.
+	if f := s.spectating; f != nil {
+		s.spectating = nil
+		sess := s
+		f.Post(func(f *Fight) { f.removeSpectator(sess) })
+	}
+	// Matchmaking (queue or pending); tell a matched opponent it fell through.
+	if s.deps.Matchmaker != nil {
+		if pm := s.deps.Matchmaker.Remove(coachID); pm != nil {
+			if other := pm.other(coachID); other != nil {
+				_ = sendMatchCancelled(other.session)
+			}
+		}
+	}
+	// Pending direct challenge.
+	if s.deps.Challenges != nil {
+		if c := s.deps.Challenges.Remove(coachID); c != nil {
+			if other := c.other(coachID); other != nil {
+				if frame, err := buildChallengeCancelled(c.id); err == nil {
+					_ = other.Send(frame)
+				}
+			}
+		}
+	}
+	// In-progress exchange: without this the OTHER party stays marked busy and
+	// cannot trade with anyone until they reconnect.
+	if s.deps.Exchanges != nil {
+		if ex := s.deps.Exchanges.Get(coachID); ex != nil {
+			other := ex.Other(coachID)
+			if s.deps.Exchanges.Remove(ex) && other != nil {
+				if end, err := buildExchangeEnd(ex.ID, protocol.ExchangeEndCancel); err == nil {
+					_ = other.Send(end)
+				}
+			}
+		}
+	}
+	// 2v2 pairing, notifying the partner. (A method on *Deps, so no nil check -
+	// the guards above are for the manager FIELDS, which tests may leave unset.)
+	s.deps.releaseTeamUpAndNotify(coachID)
 }

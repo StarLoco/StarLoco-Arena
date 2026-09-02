@@ -80,6 +80,55 @@ func (r *Registry) Remove(id uint) {
 	r.mu.Unlock()
 }
 
+// TakeOver points an existing registry entry at a new session, preserving the
+// AoI known-set so neighbours are not re-spawned. Reports whether an entry
+// existed to take over.
+//
+// SECURITY: this fixes the second half of the duplicate-login problem. Add
+// refuses a coach that is already present, and the replaced session's cleanup
+// used to return early without ever calling Remove - so on a second login the NEW
+// session lost the race permanently. It received the full login sequence but was
+// invisible: no AoI, and every world-scoped delivery (SessionsNear, ViewersOf,
+// GetByName, whispers, guild pushes) went to the DEAD socket. The account
+// appeared online to everyone and could not be reached, which self-healed only
+// when the new session also disconnected.
+//
+// Taking the entry over is the right resolution rather than remove-then-add: it
+// keeps the coach's position and known-set, so no one sees a spurious despawn or
+// respawn of a player who never left.
+func (r *Registry) TakeOver(o *Online) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev, exists := r.byID[o.Coach.ID]
+	if !exists {
+		return false
+	}
+	if o.known == nil {
+		o.known = prev.known
+	}
+	if o.known == nil {
+		o.known = make(map[uint]bool)
+	}
+	r.byID[o.Coach.ID] = o
+	return true
+}
+
+// RemoveIfSession deregisters a coach only if its entry still belongs to sess.
+//
+// SECURITY: a session being replaced by a newer login must not tear down the
+// registry entry the NEW session now owns. Plain Remove is racy for that case -
+// whichever of "old session closes" and "new session enters the world" runs
+// second wins, and if the old one does, the live player vanishes from the world.
+func (r *Registry) RemoveIfSession(id uint, sess *Session) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if o, ok := r.byID[id]; ok && o.Session == sess {
+		delete(r.byID, id)
+		return true
+	}
+	return false
+}
+
 // Get returns the online coach by id, or nil.
 func (r *Registry) Get(id uint) *Online {
 	r.mu.RLock()

@@ -330,8 +330,16 @@ func (s *Session) completeLogin(coach *domain.Coach) error {
 func (s *Session) enterWorld(coach *domain.Coach) error {
 	online := &Online{Coach: coach, Session: s}
 	if !s.deps.World.Add(online) {
-		s.log.Warn("coach already online", "coach_id", coach.ID)
-		return nil
+		// Already present: this is the same coach logging in again, and the
+		// previous session's socket is dead or about to be. Take the entry over
+		// instead of refusing, otherwise THIS session is invisible for its whole
+		// life while every world-scoped delivery goes to the old socket.
+		if s.deps.World.TakeOver(online) {
+			s.log.Info("world entry taken over by newer session", "coach_id", coach.ID)
+		} else {
+			s.log.Warn("coach already online and take-over failed", "coach_id", coach.ID)
+			return nil
+		}
 	}
 
 	// AoI seed: spawn in-range coaches to the joiner, and the joiner to them,

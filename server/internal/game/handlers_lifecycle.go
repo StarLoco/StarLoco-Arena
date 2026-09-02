@@ -102,6 +102,20 @@ func handleDestroyCoach(s *Session, _ *protocol.C2SFrame) error {
 		return nil
 	}
 
+	// SECURITY: release every subsystem BEFORE nilling s.Coach.
+	//
+	// This handler used to clean only the world registry, then set s.Coach = nil.
+	// Everything else - matchmaker queue, pending match, challenge, exchange, 2v2
+	// pairing - kept holding this session, and because onClose gates its own
+	// cleanup on `s.Coach != nil`, disconnecting afterwards released none of it
+	// either. The queue entry in particular became a landmine that panicked the
+	// next player to search (the managers now tolerate nil coaches, but leaving
+	// the entries behind would still pair honest players with a destroyed coach).
+	//
+	// Order matters: releaseSubsystems reads s.Coach, so it cannot run after the
+	// nil assignment below.
+	s.releaseSubsystems()
+
 	// Despawn from everyone who currently sees the coach, then drop it from the
 	// world registry so no broadcast targets a dead actor.
 	viewers := s.deps.World.LeaveAoI(coach.ID)
