@@ -11,11 +11,36 @@ import (
 // TeamRepo persists a coach's team presets.
 type TeamRepo struct{ db *gorm.DB }
 
-// Upsert saves (creates or updates) a team preset with its member list, scoped
-// to the owning coach, in one transaction.
+// Upsert saves (creates or updates) a team preset with its member list in one
+// transaction, scoped to the owning coach.
+//
+// SECURITY: the "scoped to the owning coach" in the old doc comment was a claim,
+// not a fact - the code had no coach_id predicate anywhere, and t.ID comes
+// straight off the wire in 6021. gorm.Save with a non-zero primary key issues
+// UPDATE teams SET * WHERE id = ?, which rewrote coach_id, name, game_mode and
+// the appearance bytes of ANY team id the client named, after first deleting that
+// team's members. Team ids are small sequential integers, so enumerating other
+// players' presets was trivial: an attacker could wipe a victim's roster and
+// reassign the preset to itself, which also reset ally_coach_id and destroyed
+// their 2v2 pairing. TeamRepo.Delete already did this correctly
+// (WHERE id = ? AND coach_id = ?); Upsert simply did not.
+//
+// An update now requires the row to already belong to t.CoachID.
 func (r *TeamRepo) Upsert(t *domain.Team) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if t.ID != 0 {
+			var owned int64
+			if err := tx.Model(&domain.Team{}).
+				Where("id = ? AND coach_id = ?", t.ID, t.CoachID).
+				Count(&owned).Error; err != nil {
+				return err
+			}
+			if owned == 0 {
+				// Either the id does not exist or it belongs to someone else.
+				// Both are refusals, and deliberately indistinguishable so the
+				// caller cannot use this to enumerate other coaches' team ids.
+				return ErrNotFound
+			}
 			// Replace members: delete existing then re-insert.
 			if err := tx.Where("team_id = ?", t.ID).
 				Delete(&domain.TeamFighter{}).Error; err != nil {

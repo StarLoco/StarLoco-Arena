@@ -1,10 +1,12 @@
 package game
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/StarLoco/arena-2.70/internal/domain"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
+	"github.com/StarLoco/arena-2.70/internal/store"
 )
 
 func registerTeamHandlers(r *Router, d *Deps) {
@@ -92,8 +94,16 @@ func handleFighterAssignTeam(s *Session, f *protocol.C2SFrame) error {
 // canPlaceFighter reports whether fighter may be added to team t under the client's
 // team-building rules: no duplicate, at most 6 fighters, and at most 2 of the same
 // breed. roster is the coach's fighters (for breed lookup of existing members).
+// maxTeamMembers and maxSameBreedPerTeam are the retail client's roster rules.
+// They were previously inline literals reachable from only one of the two paths
+// that build a roster; named here so both use the same numbers.
+const (
+	maxTeamMembers      = 6
+	maxSameBreedPerTeam = 2
+)
+
 func canPlaceFighter(t *domain.Team, fighter *domain.Fighter, roster []domain.Fighter) bool {
-	if len(t.Members) >= 6 {
+	if len(t.Members) >= maxTeamMembers {
 		return false
 	}
 	breedByID := make(map[uint]uint8, len(roster))
@@ -109,7 +119,7 @@ func canPlaceFighter(t *domain.Team, fighter *domain.Fighter, roster []domain.Fi
 			sameBreed++
 		}
 	}
-	return sameBreed < 2
+	return sameBreed < maxSameBreedPerTeam
 }
 
 // handleTeamPresetSave (6021 C2S: [sw_1 blob][u8 pad]) persists a team preset
@@ -133,13 +143,21 @@ func handleTeamPresetSave(s *Session, f *protocol.C2SFrame) error {
 	if tp.TeamID > 0 {
 		team.ID = uint(tp.TeamID)
 	}
-	// Only include fighters the coach actually owns (IDOR guard).
-	owned := s.ownedFighterSet()
-	for _, fid := range tp.FighterIDs {
-		if owned[uint(fid)] {
-			team.Members = append(team.Members, domain.TeamFighter{FighterID: uint(fid)})
-		}
-	}
+	// Only include fighters the coach actually owns (IDOR guard), and enforce the
+	// SAME roster rules the drag-and-drop path enforces.
+	//
+	// SECURITY: ownership was checked here but nothing else was. 6021 accepted a
+	// u8 fighter count, so a hostile client could send the same owned fighter id
+	// 255 times and field 255 copies of one fighter against an opponent's 6. Two
+	// further consequences made it worse than an unfair roster: WireID is derived
+	// as base + fighterID*16 + side*8 + i, so past i=16 the ids collide with
+	// another fighter's WireID space and corrupt targeting/HP/turn order, and
+	// placement does cells[i%len(cells)], stacking dozens of fighters on one cell.
+	//
+	// canPlaceFighter (6 members, no duplicate fighter, max 2 per breed) existed
+	// and was only ever reached from 6013. The rules are the client's; this path
+	// simply never applied them.
+	team.Members = s.presetMembers(tp.FighterIDs)
 	// Retail refuses a duplicate preset name: the client carries a dedicated
 	// status (25) and the string "error.teamManagement.teamNameExist" for it.
 	// Without this the save silently succeeded and left the coach with two
@@ -150,6 +168,22 @@ func handleTeamPresetSave(s *Session, f *protocol.C2SFrame) error {
 		return s.sendTeamPresetSaveError(teamSaveNameExists)
 	}
 	if err := s.deps.Store.Teams.Upsert(team); err != nil {
+		// A team id that is not this coach's (the 6021 IDOR) is a refusal, not a
+		// protocol fault: drop the write and re-push the authoritative list so the
+		// client's view is corrected. Returning the error here would disconnect,
+		// which is the wrong answer for the benign race where a preset was deleted
+		// in another session between load and save.
+		//
+		// There is no S2C status for this. The retail client validates rosters
+		// locally (hu_2 shows error.teamManagement.fightersCountExploded itself and
+		// never sends), so no "invalid preset" code was ever needed on the wire -
+		// the same reason chat flood has no S2C frame. Inventing one would mean
+		// authoring player-facing prose the client cannot render.
+		if errors.Is(err, store.ErrNotFound) {
+			s.log.Warn("team preset save refused: not this coach's team",
+				"coach", s.Coach.ID, "team", team.ID)
+			return s.pushTeamPresetList()
+		}
 		return err
 	}
 	s.log.Info("team preset saved", "name", team.Name, "members", len(team.Members))
@@ -295,4 +329,47 @@ func (s *Session) sendTeamPresetSaveError(status uint8) error {
 		return err
 	}
 	return s.Send(frame)
+}
+
+// presetMembers turns a client-supplied fighter-id list into a legal roster:
+// owned only, de-duplicated, capped at maxTeamMembers, and at most
+// maxSameBreedPerTeam of any one breed. Order is preserved so the player's
+// intended slot order survives.
+//
+// This mirrors canPlaceFighter, which guards the drag-and-drop path (6013). The
+// rules are the retail client's own; see handleTeamPresetSave for why applying
+// them here matters.
+func (s *Session) presetMembers(fighterIDs []int64) []domain.TeamFighter {
+	owned := s.ownedFighterSet()
+
+	// Breed lookup for the per-breed cap.
+	breedByID := map[uint]uint8{}
+	if roster, err := s.deps.Store.Fighters.ListByCoach(s.Coach.ID); err == nil {
+		for i := range roster {
+			breedByID[roster[i].ID] = roster[i].BreedID
+		}
+	}
+
+	members := make([]domain.TeamFighter, 0, maxTeamMembers)
+	seen := map[uint]bool{}
+	perBreed := map[uint8]int{}
+	for _, fid := range fighterIDs {
+		id := uint(fid)
+		switch {
+		case !owned[id]:
+			continue // not this coach's fighter
+		case seen[id]:
+			continue // the duplication vector
+		case len(members) >= maxTeamMembers:
+			continue // roster full
+		}
+		breed := breedByID[id]
+		if perBreed[breed] >= maxSameBreedPerTeam {
+			continue
+		}
+		seen[id] = true
+		perBreed[breed]++
+		members = append(members, domain.TeamFighter{FighterID: id})
+	}
+	return members
 }
