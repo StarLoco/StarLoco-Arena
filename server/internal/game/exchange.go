@@ -131,11 +131,25 @@ func (ex *Exchange) setAccepted() {
 // stageCard adds/updates a card on a side's table and resets BOTH ready flags
 // (any content change un-readies both, matching the client — prevents
 // "ready then sneak a card in").
-func (ex *Exchange) stageCard(side int, c StagedCard) {
+// maxStagedPerSide mirrors the client's own cap (CG.java:225-228:
+// `this.Of[n2].keySet().size() < 5`). Staging is broadcast to the OTHER player,
+// whose 5-slot trade UI was never built for more, so an unbounded stage is a
+// griefing / trade-scam surface against them rather than an economy break.
+const maxStagedPerSide = 5
+
+// stageCard adds a card to this side's offer. Returns false when the side is
+// already full.
+func (ex *Exchange) stageCard(side int, c StagedCard) bool {
 	ex.mu.Lock()
+	defer ex.mu.Unlock()
+	// Re-staging a template already on the table is an update, not a new slot.
+	if _, present := ex.staged[side][c.TemplateID]; !present &&
+		len(ex.staged[side]) >= maxStagedPerSide {
+		return false
+	}
 	ex.staged[side][c.TemplateID] = c
 	ex.ready = [2]bool{false, false}
-	ex.mu.Unlock()
+	return true
 }
 
 // unstageCard removes a card from a side's table and resets both ready flags.

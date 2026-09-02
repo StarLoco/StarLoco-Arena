@@ -3,6 +3,7 @@ package game
 import (
 	"errors"
 	"github.com/StarLoco/arena-2.70/internal/domain"
+	"github.com/StarLoco/arena-2.70/internal/gamedata"
 	"github.com/StarLoco/arena-2.70/internal/protocol"
 	"gorm.io/gorm"
 )
@@ -170,6 +171,24 @@ func (s *Session) applyEquipment(coach *domain.Coach, slots [14]int32) {
 			if templateID == 0 {
 				continue
 			}
+			// SECURITY: the card's TYPE decides its slot (aMK.java:6-36). Without
+			// this any owned template could occupy any of the 14 slots, so fourteen
+			// cards of one set unlocked every set threshold at once - and those
+			// thresholds drive resurrection chance, XP, morale, fatigue, reputation
+			// and wound/death chance.
+			// A template gamedata does not know is ALLOWED through: we cannot judge
+			// a type we never decoded, and it is harmless because the thing this
+			// rule protects - equippedCountsPerSet - skips unknown templates too
+			// (they have no CardSet), so an unknown card can never drive a set
+			// threshold. It still has to be owned. This also keeps the rule inert
+			// on a data-less build rather than making every equip fail.
+			if tmpl := s.cardTemplate(templateID); tmpl != nil &&
+				!coachCardFitsSlot(tmpl.Type, int16(slotIdx)) {
+				s.log.Info("equip refused: card type cannot occupy that slot",
+					"coach", coach.ID, "card", templateID,
+					"type", tmpl.Type, "slot", slotIdx)
+				continue
+			}
 			pos := int16(slotIdx + 1)
 			if err := equipOneUnit(tx, coach.ID, templateID, pos, inv); err != nil {
 				return err
@@ -242,4 +261,13 @@ func sortInt32(a []int32) {
 			a[j-1], a[j] = a[j], a[j-1]
 		}
 	}
+}
+
+// cardTemplate is a nil-safe lookup: Deps.Cards is nil on a data-less build (and
+// in tests), and dereferencing it here dropped the session with a panic.
+func (s *Session) cardTemplate(templateID int32) *gamedata.CoachCard {
+	if s.deps == nil || s.deps.Cards == nil {
+		return nil
+	}
+	return s.deps.Cards.Get(templateID)
 }

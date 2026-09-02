@@ -205,7 +205,14 @@ func (s *Session) exchangeMoveCard(f *protocol.C2SFrame, add bool) error {
 	if useQty > card.Quantity {
 		useQty = card.Quantity
 	}
-	ex.stageCard(side, StagedCard{CardID: card.ID, TemplateID: card.TemplateID, Quantity: useQty})
+	// SECURITY: refuse silently past the cap. Each stage broadcasts a 5110 to the
+	// OTHER player, whose 5-slot trade table was never built for more, so an
+	// unbounded offer is a griefing surface aimed at them.
+	if !ex.stageCard(side, StagedCard{CardID: card.ID, TemplateID: card.TemplateID, Quantity: useQty}) {
+		s.log.Info("stage refused: exchange table full",
+			"coach", s.Coach.ID, "cap", maxStagedPerSide)
+		return nil
+	}
 
 	frame, err := buildExchangeCardMove(protocol.OpExchangeCardAdded,
 		ex.ID, uint8(side), card.TemplateID, useQty)

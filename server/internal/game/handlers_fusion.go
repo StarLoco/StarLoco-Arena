@@ -125,6 +125,17 @@ func handleFusionRequest(s *Session, f *protocol.C2SFrame) error {
 	// mechanic: fusion may transform what you own, not multiply its worth. The
 	// allowance keeps ordinary fusion useful - the point of the feature is to trade
 	// several cards for one better one - while removing the unbounded jump.
+	// SECURITY: an "undestructible" card may not be fused away. The client blocks
+	// the gesture (add.java:22-24) and 65 shipped cards carry the flag; consuming
+	// one is irreversible player-data loss.
+	for _, id := range inputs {
+		if !s.deps.cardIsTradable(id) {
+			s.log.Warn("fusion refused: input card is bound or undestructible",
+				"coach", s.Coach.ID, "card", id)
+			return s.sendFusionResult(fusionResultOK, 0, target, 0)
+		}
+	}
+
 	if inVal, outVal := s.cardsValue(inputs), int64(tc.Value); outVal > inVal*fusionValueAllowance {
 		s.log.Info("fusion refused: target worth more than the inputs",
 			"coach", s.Coach.ID, "target", target, "target_value", outVal,

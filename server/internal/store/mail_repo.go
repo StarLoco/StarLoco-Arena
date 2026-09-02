@@ -130,6 +130,14 @@ func (r *MailRepo) MarkRead(coachID, mailID uint) error {
 // TakeAttachments hands every card attached to a mail to its RECEIVER: the cards
 // are granted to the coach's inventory and detached from the mail, atomically.
 // Returns the template ids actually collected (empty if there were none).
+// isUnique reports whether a template may exist only once per coach. Injected by
+// the game layer so the store does not need the gamedata tables; nil means "no
+// uniqueness data", in which case the rule is skipped.
+var isUnique func(templateID int32) bool
+
+// SetUniqueCardPredicate wires the uniqueness rule into the mail store.
+func SetUniqueCardPredicate(fn func(templateID int32) bool) { isUnique = fn }
+
 func (r *MailRepo) TakeAttachments(coachID, mailID uint) ([]int32, error) {
 	var collected []int32
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -149,6 +157,18 @@ func (r *MailRepo) TakeAttachments(coachID, mailID uint) ([]int32, error) {
 				First(&existing).Error
 			switch {
 			case err == nil:
+				// SECURITY: a unique card may not stack past 1. The retail client
+				// only WARNS here (ay.java:213-218 shows
+				// error.mail.uniqueCoachCardAlreadyThere and sends 15006 anyway),
+				// and its own message - "you can't receive ALL the kards from this
+				// email" - says the server was expected to grant a subset. Without
+				// this, mailing a unique card from a second account and claiming it
+				// while already holding one pushes quantity past 1 on a template the
+				// game guarantees is singular; the retail client then refuses to
+				// render the extra copy, desyncing the inventory permanently.
+				if isUnique != nil && isUnique(c.TemplateID) {
+					continue // leave it in the mail rather than duplicating it
+				}
 				if err := tx.Model(&domain.CoachCard{}).Where("id = ?", existing.ID).
 					Update("quantity", gorm.Expr("quantity + 1")).Error; err != nil {
 					return err

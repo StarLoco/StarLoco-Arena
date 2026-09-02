@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"github.com/StarLoco/arena-2.70/internal/store"
 	"net"
 	"sync"
 )
@@ -22,6 +23,9 @@ type Server struct {
 func NewServer(addr string, deps *Deps) *Server {
 	router := NewRouter(deps.Log)
 	deps.initArenas() // build the arena registry from the loaded fight maps
+	// The mail store enforces the unique-card rule but has no gamedata tables of
+	// its own, so the predicate is injected here.
+	store.SetUniqueCardPredicate(func(templateID int32) bool { return deps.cardIsUnique(templateID) })
 	RegisterAll(router, deps)
 	return &Server{addr: addr, router: router, deps: deps,
 		active: make(map[*Session]struct{}), guard: newConnGuard(deps.Limits)}

@@ -98,6 +98,18 @@ func handleDemonAffiliate(s *Session, f *protocol.C2SFrame) error {
 	// a quantity is that many removals - and a partial basket is still counted
 	// for what was genuinely given rather than rolled back, because the cards are
 	// already gone from the client's own view by the time it sends this.
+	// SECURITY: an "undestructible" card may not be given away. The client blocks
+	// the gesture (arb_0.java:31-32); 65 shipped cards carry the flag, and this
+	// path additionally converts the destroyed card's Value into clan-island
+	// reputation, so it is destruction WITH a reward attached.
+	for _, o := range offers {
+		if !s.deps.cardIsTradable(o.card) {
+			s.log.Warn("demon offer refused: card is bound or undestructible",
+				"coach", s.Coach.ID, "card", o.card)
+			return s.sendDemonAffiliateResult(demonAffiliateFailed)
+		}
+	}
+
 	var points int64
 	for _, o := range offers {
 		for n := int16(0); n < o.qty; n++ {

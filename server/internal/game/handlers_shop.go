@@ -105,6 +105,25 @@ func handleShopBarter(s *Session, f *protocol.C2SFrame) error {
 	if len(inputs) == 0 || givenValue < int64(wanted.Value) {
 		return s.sendShopResult(shopResultInsufficient)
 	}
+	// SECURITY: same unique rule as handleShopBuy - the client gates this exact
+	// opcode (ku_2.java:98-100 guards 5400) and barter is the cheaper vector,
+	// since any inputs whose summed value covers the target will do.
+	if s.deps.cardIsUnique(wantedIDs[0]) && s.coachOwnsCard(wantedIDs[0]) {
+		s.log.Warn("barter refused: unique card already owned",
+			"coach", s.Coach.ID, "card", wantedIDs[0])
+		return s.sendShopResult(shopResultError)
+	}
+	// SECURITY: an "undestructible" card may not be consumed. 65 shipped cards
+	// carry the flag and the client blocks every destructive gesture on them
+	// (ku_2.java:45 barter, arb_0.java:31 demon, add.java:24 fusion). Losing one
+	// is irreversible player-data loss.
+	for _, id := range inputs {
+		if !s.deps.cardIsTradable(id) {
+			s.log.Warn("barter refused: input card is bound or undestructible",
+				"coach", s.Coach.ID, "card", id)
+			return s.sendShopResult(shopResultError)
+		}
+	}
 
 	err = s.deps.Store.Coaches.ConsumeAndGrant(s.Coach.ID, inputs, wantedIDs[0])
 	if errors.Is(err, store.ErrCardNotOwned) {
@@ -307,6 +326,18 @@ func handleShopBuy(s *Session, f *protocol.C2SFrame) error {
 		//
 		// Anything genuinely meant to be free must be granted by a reward path,
 		// not by the shop.
+		// SECURITY: a unique card cannot be acquired twice. The client blocks this
+		// before it will even build the packet (ku_2.java:98-100), so any request
+		// that reaches here is forged. Beyond the economy, the retail client
+		// REFUSES to accept a second copy in the 5200 push (ky_2 returns 2), so
+		// granting one desyncs the player's inventory view from the database
+		// permanently. Unique cards also carry high Value, which feeds clan-island
+		// reputation and the fusion value ceiling.
+		if s.deps.cardIsUnique(cardID) && s.coachOwnsCard(cardID) {
+			s.log.Warn("purchase refused: unique card already owned",
+				"coach", s.Coach.ID, "card", cardID)
+			return s.sendShopResult(shopResultError)
+		}
 		if !cardIsPurchasable(card) {
 			s.log.Warn("rejected purchase of an unpriced card",
 				"coach", s.Coach.ID, "card", cardID, "shop", shopID)
