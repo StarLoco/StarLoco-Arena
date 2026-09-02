@@ -104,6 +104,40 @@ func handleAuthentication(s *Session, f *protocol.C2SFrame) error {
 	}
 	s.log.Info("auth attempt", "login", auth.Login)
 
+	// SECURITY: throttle before touching bcrypt.
+	//
+	// Both branches below cost a bcrypt hash - CreateAccount generates one,
+	// VerifyPassword compares one - at ~50-100 ms each, synchronously on this
+	// goroutine. Unthrottled, a few dozen sockets spamming 1025 saturated every
+	// core, which was the cheapest full-server DoS left. It also means password
+	// guessing had no limit at all.
+	//
+	// The client's own AuthInvalidLogin is used for the refusal: it is the exact
+	// case the client already renders, and it does not tell an attacker whether
+	// the login exists.
+	if !s.allowLoginAttempt() {
+		s.log.Warn("login rate limit hit", "ip", s.remoteIP, "login", auth.Login)
+		result, _ := handshake.EncodeAuthResult(protocol.AuthInvalidLogin)
+		_ = s.Send(result)
+		return nil
+	}
+
+	// SECURITY: one authentication per socket.
+	//
+	// This had no already-authenticated guard, so a single socket could loop 1025
+	// forever. Each pass added a Sessions registry key WITHOUT removing the
+	// previous one (onClose removes only the last account), and overwrote s.Coach
+	// without removing the previous coach from the world registry - so both
+	// registries leaked an entry per attempt, permanently. Registry.byID is
+	// iterated under a global mutex on every movement packet, so poisoning it also
+	// slowed every player down.
+	if s.Account != nil {
+		s.log.Warn("repeat authentication refused", "account", s.Account.ID)
+		result, _ := handshake.EncodeAuthResult(protocol.AuthInvalidLogin)
+		_ = s.Send(result)
+		return nil
+	}
+
 	acc, err := s.deps.Store.Accounts.FindByName(auth.Login)
 	if errors.Is(err, store.ErrNotFound) {
 		// Auto-register on first login (dev convenience). The very first
@@ -116,11 +150,27 @@ func handleAuthentication(s *Session, f *protocol.C2SFrame) error {
 		// made is_admin meaningless as a privilege check — which was harmless
 		// while it only gated chat commands, but the web portal now hangs
 		// account deletion and impersonation off the same flag.
+		// SECURITY: auto-registration is now opt-out. On the GAME socket it lets
+		// anyone mint unlimited accounts, each costing a bcrypt hash and a row,
+		// and it is not covered by web.registration_enabled. It defaults ON to
+		// preserve local workflows; a public instance should turn it off and use
+		// the portal or cmd/seedaccount.
+		if s.guard != nil && !s.guard.limits.AutoRegisterAllowed() {
+			s.log.Warn("auto-registration disabled; refusing unknown login", "login", auth.Login)
+			result, _ := handshake.EncodeAuthResult(protocol.AuthInvalidLogin)
+			_ = s.Send(result)
+			return nil
+		}
+		// SECURITY: "first account becomes admin" is a race an attacker can win on
+		// a fresh public instance - whoever connects first is administrator, and
+		// handlers_gm.go gates every GM verb on exactly that flag. Also opt-out.
 		first := false
-		if n, cErr := s.deps.Store.Accounts.Count(); cErr != nil {
-			s.log.Error("account count failed", "err", cErr)
-		} else {
-			first = n == 0
+		if s.guard == nil || s.guard.limits.FirstAccountAdminAllowed() {
+			if n, cErr := s.deps.Store.Accounts.Count(); cErr != nil {
+				s.log.Error("account count failed", "err", cErr)
+			} else {
+				first = n == 0
+			}
 		}
 		acc, err = s.deps.Store.Accounts.CreateAccount(auth.Login, auth.Password, first)
 		if err != nil {

@@ -56,6 +56,7 @@ type Config struct {
 	// live packet injection (see internal/game/debug.go). Leave empty in prod.
 	DebugAddr string `yaml:"debug_addr"`
 
+	Limits      LimitsConfig      `yaml:"limits"`
 	Web         WebConfig         `yaml:"web"`
 	UpdateCheck UpdateCheckConfig `yaml:"update_check"`
 	DB          DBConfig          `yaml:"db"`
@@ -463,4 +464,83 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config: web.addr is required when web.enabled is true")
 	}
 	return nil
+}
+
+// LimitsConfig bounds what a single client - or a single machine - can cost the
+// server. Every field is 0-means-default, per the same convention as RulesConfig.
+//
+// SECURITY: none of this existed. The accept loop took every connection
+// unconditionally, with no per-IP cap, no read deadline and nothing to evict a
+// socket that connects and never speaks; and opcode 1025 runs bcrypt
+// synchronously on the session goroutine, so a few dozen connections spamming
+// logins saturated every core. That was the cheapest full-server denial of
+// service left after the crash fixes.
+type LimitsConfig struct {
+	// MaxConnections caps concurrent game sockets server-wide. Default 2000.
+	// Set to -1 to disable (not advised on a public instance).
+	MaxConnections int `yaml:"max_connections"`
+	// MaxConnectionsPerIP caps concurrent sockets from one address. Default 8 -
+	// generous enough for a household or a shared NAT, tight enough that one
+	// machine cannot exhaust the global cap alone. -1 disables.
+	MaxConnectionsPerIP int `yaml:"max_connections_per_ip"`
+	// HandshakeTimeoutSeconds is how long a socket may stay connected without
+	// authenticating. Default 30. This is what evicts a connect-and-say-nothing
+	// flood. -1 disables.
+	HandshakeTimeoutSeconds int `yaml:"handshake_timeout_seconds"`
+	// IdleTimeoutSeconds drops a session that sends nothing at all for this long.
+	// The retail client pings well inside any sane value. Default 300.
+	// -1 disables.
+	IdleTimeoutSeconds int `yaml:"idle_timeout_seconds"`
+	// LoginAttemptsPerMinute throttles opcode 1025 per IP, because each attempt
+	// costs a bcrypt hash. Default 10. -1 disables.
+	LoginAttemptsPerMinute int `yaml:"login_attempts_per_minute"`
+	// AutoRegister creates an account for any unknown login presented on the GAME
+	// socket. Convenient for development and a liability in production: it lets
+	// anyone mint unlimited accounts, each costing a bcrypt hash.
+	//
+	// Defaults to TRUE only to preserve existing local workflows; an operator
+	// running publicly should set it false and use the web portal, whose own
+	// registration is separately gated by web.registration_enabled.
+	AutoRegister *bool `yaml:"auto_register"`
+	// FirstAccountIsAdmin grants admin to the first account created on an empty
+	// database. Convenient locally, a race an attacker can win on a fresh public
+	// instance - whoever connects first becomes administrator. Defaults to true
+	// for the same reason as AutoRegister; use cmd/seedaccount and set this false
+	// for anything exposed.
+	FirstAccountIsAdmin *bool `yaml:"first_account_is_admin"`
+}
+
+// Limit accessors: 0 means "use the default", negative means "disabled".
+func (l LimitsConfig) maxConnections() int         { return limitOr(l.MaxConnections, 2000) }
+func (l LimitsConfig) maxConnectionsPerIP() int    { return limitOr(l.MaxConnectionsPerIP, 8) }
+func (l LimitsConfig) handshakeTimeout() int       { return limitOr(l.HandshakeTimeoutSeconds, 30) }
+func (l LimitsConfig) idleTimeout() int            { return limitOr(l.IdleTimeoutSeconds, 300) }
+func (l LimitsConfig) loginAttemptsPerMinute() int { return limitOr(l.LoginAttemptsPerMinute, 10) }
+
+// MaxConnections etc. are the exported forms the game package consumes.
+func (l LimitsConfig) MaxConns() int           { return l.maxConnections() }
+func (l LimitsConfig) MaxConnsPerIP() int      { return l.maxConnectionsPerIP() }
+func (l LimitsConfig) HandshakeTimeout() int   { return l.handshakeTimeout() }
+func (l LimitsConfig) IdleTimeout() int        { return l.idleTimeout() }
+func (l LimitsConfig) LoginRatePerMinute() int { return l.loginAttemptsPerMinute() }
+
+// AutoRegisterEnabled reports whether unknown logins may create an account.
+func (l LimitsConfig) AutoRegisterEnabled() bool {
+	return l.AutoRegister == nil || *l.AutoRegister
+}
+
+// FirstAccountAdmin reports whether the first account on an empty database gets
+// admin rights.
+func (l LimitsConfig) FirstAccountAdmin() bool {
+	return l.FirstAccountIsAdmin == nil || *l.FirstAccountIsAdmin
+}
+
+func limitOr(v, def int) int {
+	if v == 0 {
+		return def
+	}
+	if v < 0 {
+		return 0 // disabled
+	}
+	return v
 }

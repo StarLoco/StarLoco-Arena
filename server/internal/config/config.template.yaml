@@ -291,3 +291,50 @@ rules:
   # Cap on the friend list and the ignore list. The client carries the refusal
   # message but no limit of its own, so this is enforced server-side.
   max_social_list_entries: 100
+
+# ---------------------------------------------------------------------------
+# limits: what one client, or one machine, can cost the server.
+#
+# These exist because none of it was bounded: the accept loop took every
+# connection unconditionally, nothing evicted a socket that connected and never
+# spoke, and login (which costs a bcrypt hash on the session goroutine) had no
+# throttle at all. A few dozen sockets spamming logins could saturate every core.
+#
+# Convention for every numeric field below: omit or 0 = use the default shown,
+# a negative value = disable that limit entirely.
+# ---------------------------------------------------------------------------
+limits:
+  # Concurrent game sockets server-wide.
+  max_connections: 2000
+
+  # Concurrent sockets from a single address. Generous enough for a household or
+  # a shared NAT, tight enough that one machine cannot exhaust the global cap.
+  max_connections_per_ip: 8
+
+  # How long a socket may stay connected WITHOUT authenticating. This is what
+  # evicts a connect-and-say-nothing flood.
+  handshake_timeout_seconds: 30
+
+  # Drop a session that sends nothing at all for this long. The retail client
+  # pings well inside this, so it only ever catches dead sockets.
+  idle_timeout_seconds: 300
+
+  # Authentication attempts per minute, per address. Each attempt costs a bcrypt
+  # hash, so this bounds both CPU exhaustion and password guessing. Raise it if
+  # many legitimate players share one NAT.
+  login_attempts_per_minute: 10
+
+  # Create an account for any unknown login presented on the GAME socket.
+  #
+  # Convenient for development, a liability in production: it lets anyone mint
+  # unlimited accounts, each costing a bcrypt hash and a database row, and it is
+  # NOT covered by web.registration_enabled. Set false on a public instance and
+  # register players through the portal or cmd/seedaccount.
+  auto_register: true
+
+  # Grant admin to the first account created on an empty database.
+  #
+  # Convenient locally; on a fresh public instance it is a race an attacker can
+  # win simply by connecting before you do, and every GM command is gated on that
+  # one flag. Set false and seed your admin with cmd/seedaccount.
+  first_account_is_admin: true

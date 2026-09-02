@@ -11,7 +11,10 @@ import (
 type Deps struct {
 	// Rules are the server-invented numbers (XP, standing, social caps). Zero
 	// value means "use DefaultRules" - see rules.go.
-	Rules    Rules
+	Rules Rules
+	// Limits bounds connections and login attempts. Zero value = no limits, so
+	// tests and existing embedders are unaffected until they opt in.
+	Limits   Limits
 	Store    *store.Store
 	World    *Registry
 	Cards    *gamedata.Cards    // nil if data files absent

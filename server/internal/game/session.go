@@ -22,6 +22,11 @@ type Session struct {
 	router *Router
 	deps   *Deps
 
+	// guard/remoteIP support the connection + login-rate limits. guard is nil in
+	// tests that build a Session directly, so every use must nil-check.
+	guard    *connGuard
+	remoteIP string
+
 	out       chan []byte   // async write queue (bounded; decouples broadcasters from slow clients)
 	quit      chan struct{} // closed when the session is shutting down
 	closeOnce sync.Once
@@ -137,6 +142,17 @@ func (s *Session) serve() {
 	go s.writeLoop()
 
 	for {
+		// SECURITY: bound how long a socket may sit silent.
+		//
+		// Before authentication the window is short (handshake timeout) - that is
+		// what evicts a connect-and-say-nothing flood, which was previously free
+		// and unbounded. After authentication it is generous, because a player can
+		// legitimately idle in the world; the retail client pings well inside it.
+		//
+		// The deadline is set on the CONN, not the bufio.Reader, so it applies to
+		// the actual socket read that the reader performs when its buffer drains.
+		s.applyReadDeadline()
+
 		frame, err := protocol.ReadC2S(s.r)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -351,4 +367,32 @@ func (s *Session) releaseSubsystems() {
 	// 2v2 pairing, notifying the partner. (A method on *Deps, so no nil check -
 	// the guards above are for the manager FIELDS, which tests may leave unset.)
 	s.deps.releaseTeamUpAndNotify(coachID)
+}
+
+// applyReadDeadline sets the socket read deadline appropriate to this session's
+// stage: a short handshake window while unauthenticated, a long idle window once
+// logged in. A zero limit disables the deadline entirely.
+func (s *Session) applyReadDeadline() {
+	if s.guard == nil {
+		return
+	}
+	d := s.guard.limits.IdleTimeout
+	if s.Account == nil {
+		d = s.guard.limits.HandshakeTimeout
+	}
+	if d <= 0 {
+		_ = s.conn.SetReadDeadline(time.Time{})
+		return
+	}
+	_ = s.conn.SetReadDeadline(time.Now().Add(d))
+}
+
+// allowLoginAttempt reports whether this session may attempt an authentication
+// right now. Each attempt costs a bcrypt hash on this goroutine, so an
+// unthrottled 1025 was a CPU-exhaustion primitive against the whole server.
+func (s *Session) allowLoginAttempt() bool {
+	if s.guard == nil {
+		return true
+	}
+	return s.guard.allowLogin(s.remoteIP)
 }

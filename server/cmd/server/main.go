@@ -444,6 +444,7 @@ func buildDeps(cfg config.Config, st *store.Store, log *slog.Logger) (*game.Deps
 		Store:          st,
 		World:          game.NewRegistry(cfg.World.AoIRadius),
 		Rules:          rulesFromConfig(cfg),
+		Limits:         limitsFromConfig(cfg),
 		Cards:          cards,
 		Exchanges:      game.NewExchangeManager(),
 		Spells:         spells,
@@ -543,4 +544,20 @@ func rulesFromConfig(cfg config.Config) game.Rules {
 		r.MaxSocialListEntries = cfg.Rules.MaxSocialListEntries
 	}
 	return r
+}
+
+// limitsFromConfig turns the operator's limits block into the game package's
+// Limits. Every knob is 0-means-default / negative-means-disabled, resolved by
+// the config accessors so the policy lives in one place.
+func limitsFromConfig(cfg config.Config) game.Limits {
+	l := cfg.Limits
+	return game.Limits{
+		MaxConns:                 l.MaxConns(),
+		MaxConnsPerIP:            l.MaxConnsPerIP(),
+		HandshakeTimeout:         time.Duration(l.HandshakeTimeout()) * time.Second,
+		IdleTimeout:              time.Duration(l.IdleTimeout()) * time.Second,
+		LoginRatePerMin:          l.LoginRatePerMinute(),
+		DisableAutoRegister:      !l.AutoRegisterEnabled(),
+		DisableFirstAccountAdmin: !l.FirstAccountAdmin(),
+	}
 }

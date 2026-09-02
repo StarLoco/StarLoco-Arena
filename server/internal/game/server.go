@@ -12,6 +12,8 @@ type Server struct {
 	router *Router
 	deps   *Deps
 
+	guard *connGuard
+
 	mu     sync.Mutex
 	active map[*Session]struct{} // live sessions, for shutdown cleanup
 }
@@ -21,7 +23,8 @@ func NewServer(addr string, deps *Deps) *Server {
 	router := NewRouter(deps.Log)
 	deps.initArenas() // build the arena registry from the loaded fight maps
 	RegisterAll(router, deps)
-	return &Server{addr: addr, router: router, deps: deps, active: make(map[*Session]struct{})}
+	return &Server{addr: addr, router: router, deps: deps,
+		active: make(map[*Session]struct{}), guard: newConnGuard(deps.Limits)}
 }
 
 func (s *Server) track(sess *Session)   { s.mu.Lock(); s.active[sess] = struct{}{}; s.mu.Unlock() }
@@ -85,10 +88,24 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		if tcp, ok := conn.(*net.TCPConn); ok {
 			_ = tcp.SetNoDelay(true)
 		}
+		// SECURITY: refuse before allocating anything. A connection that gets past
+		// here costs two goroutines, ~12 KB of buffers and a 256-slot outbound
+		// queue, so the cheapest place to say no is immediately.
+		ip := hostOf(conn.RemoteAddr())
+		if ok, reason := s.guard.acquire(ip); !ok {
+			s.deps.Log.Warn("connection refused", "ip", ip, "reason", reason)
+			_ = conn.Close()
+			continue
+		}
 		sess := newSession(conn, s.router, s.deps)
+		sess.guard = s.guard
+		sess.remoteIP = ip
 		s.track(sess)
 		go func() {
-			defer s.untrack(sess)
+			defer func() {
+				s.untrack(sess)
+				s.guard.release(ip)
+			}()
 			sess.serve()
 		}()
 	}
