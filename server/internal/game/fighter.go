@@ -1,8 +1,6 @@
 package game
 
 import (
-	"strings"
-
 	"github.com/StarLoco/arena-2.70/internal/domain"
 )
 
@@ -39,15 +37,14 @@ func validBreed(id uint8) bool { return id >= minBreedID && id <= maxBreedID }
 
 // sanitizeFighterName trims + caps the name, falling back to "Noob" (the
 // client's own fallback) if empty.
+// SECURITY: this used to be TrimSpace + a BYTE-boundary cut at 16, which split
+// multi-byte runes and persisted invalid UTF-8, and it stripped no markup - so a
+// fighter name reached other clients with '<' and '>' intact (the renderer parses
+// markup unescaped, see B-104). sanitizeDisplayName does both correctly. The
+// "Noob" fallback is the client's own, and is kept because the client auto-names
+// fighters: rejecting here would break a legitimate flow rather than an attack.
 func sanitizeFighterName(name string) string {
-	name = strings.TrimSpace(name)
-	if len(name) > maxFighterNameLen {
-		name = name[:maxFighterNameLen]
-	}
-	if name == "" {
-		return "Noob"
-	}
-	return name
+	return sanitizeNameWithFallback(name, maxFighterNameLen, "Noob")
 }
 
 // buildFighter validates a decoded blob into a persistable Fighter owned by

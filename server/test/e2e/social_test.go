@@ -12,15 +12,15 @@ import (
 func TestWhisperDelivered(t *testing.T) {
 	t.Parallel()
 	addr := testServer(t)
-	a, _ := dialLogin(t, addr, "whisper_a", "Wa")
+	a, _ := dialLogin(t, addr, "whisper_a", "Waa")
 	reachWorld(t, a)
-	b, _ := dialLogin(t, addr, "whisper_b", "Wb")
+	b, _ := dialLogin(t, addr, "whisper_b", "Wbb")
 	reachWorld(t, b)
 	a.DrainReceived(150 * time.Millisecond)
 	b.DrainReceived(150 * time.Millisecond)
 
 	// A whispers B: [u8 targetLen][target][u8 msgLen][message].
-	p := testclient.NewW().Str8("Wb").Str8("hi there").Bytes()
+	p := testclient.NewW().Str8("Wbb").Str8("hi there").Bytes()
 	_ = a.Send(4, testclient.OpUserPrivateContent, p)
 
 	f, _, err := b.WaitFor(testclient.OpPrivateContent, testclient.DefaultTimeout)
@@ -30,7 +30,7 @@ func TestWhisperDelivered(t *testing.T) {
 	// Payload: [u8 nameLen][sender][i64 id][u16 msgLen][message].
 	r := testclient.NewR(f.Payload)
 	sender := r.Str8()
-	if sender != "Wa" {
+	if sender != "Waa" {
 		t.Errorf("whisper sender = %q, want Wa", sender)
 	}
 
@@ -48,7 +48,7 @@ func TestWhisperDelivered(t *testing.T) {
 func TestWhisperUserNotFound(t *testing.T) {
 	t.Parallel()
 	addr := testServer(t)
-	a, _ := dialLogin(t, addr, "whisper_c", "Wc")
+	a, _ := dialLogin(t, addr, "whisper_c", "Wcc")
 	reachWorld(t, a)
 	a.DrainReceived(150 * time.Millisecond)
 
@@ -65,15 +65,15 @@ func TestWhisperUserNotFound(t *testing.T) {
 func TestFriendAddRemove(t *testing.T) {
 	t.Parallel()
 	st, addr := testServerWithStore(t)
-	a, aID := dialLogin(t, addr, "friend_a", "Fa")
+	a, aID := dialLogin(t, addr, "friend_a", "Faa")
 	reachWorld(t, a)
 	// The target must exist as a coach; create it via a second login.
-	b, bID := dialLogin(t, addr, "friend_b", "Fb")
+	b, bID := dialLogin(t, addr, "friend_b", "Fbb")
 	reachWorld(t, b)
 	a.DrainReceived(150 * time.Millisecond)
 
 	// A adds B by name: [u8 nameLen][name].
-	_ = a.Send(4, testclient.OpAddFriend, testclient.NewW().Str8("Fb").Bytes())
+	_ = a.Send(4, testclient.OpAddFriend, testclient.NewW().Str8("Fbb").Bytes())
 	if _, _, err := a.WaitFor(testclient.OpFriendAdded, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("no FriendAdded ack: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestFriendAddRemove(t *testing.T) {
 	}
 
 	// Remove and verify the edge is gone.
-	_ = a.Send(4, testclient.OpRemoveFriend, testclient.NewW().Str8("Fb").Bytes())
+	_ = a.Send(4, testclient.OpRemoveFriend, testclient.NewW().Str8("Fbb").Bytes())
 	if _, _, err := a.WaitFor(testclient.OpFriendRemoved, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("no FriendRemoved ack: %v", err)
 	}
@@ -111,22 +111,22 @@ func TestFriendAddRemove(t *testing.T) {
 func TestIgnoreAddRemove(t *testing.T) {
 	t.Parallel()
 	st, addr := testServerWithStore(t)
-	a, aID := dialLogin(t, addr, "ignore_a", "Ia")
+	a, aID := dialLogin(t, addr, "ignore_a", "Iaa")
 	reachWorld(t, a)
 	// Target must exist as a coach.
-	b, bID := dialLogin(t, addr, "ignore_b", "Ib")
+	b, bID := dialLogin(t, addr, "ignore_b", "Ibb")
 	reachWorld(t, b)
 	a.DrainReceived(150 * time.Millisecond)
 
 	// A ignores B by name: [u8 nameLen][name].
-	_ = a.Send(4, testclient.OpAddIgnore, testclient.NewW().Str8("Ib").Bytes())
+	_ = a.Send(4, testclient.OpAddIgnore, testclient.NewW().Str8("Ibb").Bytes())
 	ack, _, err := a.WaitFor(testclient.OpIgnoreAdded, testclient.DefaultTimeout)
 	if err != nil {
 		t.Fatalf("no IgnoreAdded ack: %v", err)
 	}
 	// Ack layout (client ft_0): [u8 nameLen][name][u8 s2Len][s2]. No id.
 	r := testclient.NewR(ack.Payload)
-	if name := r.Str8(); name != "Ib" {
+	if name := r.Str8(); name != "Ibb" {
 		t.Errorf("IgnoreAdded name = %q, want Ib", name)
 	}
 	_ = bID // id is not carried by IgnoreAdded (verified vs client ft_0)
@@ -147,7 +147,7 @@ func TestIgnoreAddRemove(t *testing.T) {
 	}
 
 	// Remove and verify the edge is gone.
-	_ = a.Send(4, testclient.OpRemoveIgnore, testclient.NewW().Str8("Ib").Bytes())
+	_ = a.Send(4, testclient.OpRemoveIgnore, testclient.NewW().Str8("Ibb").Bytes())
 	if _, _, err := a.WaitFor(testclient.OpIgnoreRemoved, testclient.DefaultTimeout); err != nil {
 		t.Fatalf("no IgnoreRemoved ack: %v", err)
 	}

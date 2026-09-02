@@ -35,7 +35,7 @@ func buildFighterBlob(name string, breed uint8, spellIDs ...int32) []byte {
 func TestFighterCreateAndList(t *testing.T) {
 	t.Parallel()
 	st, addr := testServerWithStore(t)
-	a, aID := dialLogin(t, addr, "roster_a", "Ra")
+	a, aID := dialLogin(t, addr, "roster_a", "Ras")
 	reachWorld(t, a)
 	a.DrainReceived(150 * time.Millisecond)
 
@@ -158,7 +158,7 @@ func TestTeamPresetListRequestPushesRoster(t *testing.T) {
 func TestTeamPresetSaveDelete(t *testing.T) {
 	t.Parallel()
 	st, addr := testServerWithStore(t)
-	a, aID := dialLogin(t, addr, "team_a", "Ta")
+	a, aID := dialLogin(t, addr, "team_a", "Tas")
 	reachWorld(t, a)
 	a.DrainReceived(150 * time.Millisecond)
 

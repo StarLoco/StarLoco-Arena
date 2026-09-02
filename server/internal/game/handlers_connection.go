@@ -182,13 +182,50 @@ func handleCoachCreation(s *Session, f *protocol.C2SFrame) error {
 	}
 	s.log.Info("coach creation", "name", req.Name)
 
-	coach, err := s.deps.Store.Coaches.Create(s.Account.ID, req.Name, req.HairColor, req.SkinColor, req.Sex)
+	// SECURITY: validate server-side. The retail client checks this in
+	// aBC.validateCoachCreationForm, but a modified client simply does not, and
+	// the store applied only TrimSpace - so an empty, markup-bearing or
+	// invisible-character name was accepted. The client's own error string for
+	// this case, error.coachCreation.invalidName, reads "Nom de coach invalide ou
+	// deja utilise", so code 11 correctly covers an invalid name as well as a
+	// taken one; no invented server prose is needed.
+	name, ok := validateCoachName(req.Name)
+	if !ok {
+		s.log.Warn("rejected coach name", "account", s.Account.ID, "len", len(req.Name))
+		res, _ := handshake.EncodeCoachCreationResult(coachNameTaken)
+		return s.Send(res)
+	}
+
+	// SECURITY: one coach per account. handleCoachCreation checked only that the
+	// account was authenticated, so a hostile client could replay 2049 forever -
+	// each call created another coach row, re-pointed the account at it, and ran
+	// completeLogin, which grants starter cards + wallet to each fresh coach.
+	// Unbounded storage growth and bulk name-squatting from a single account.
+	// NOTE: check s.Coach FIRST. CoachRepo.Create writes accounts.coach_id in the
+	// database but does not update the in-memory Account, so testing only
+	// s.Account.CoachID silently never fires - the replay guard looked correct and
+	// did nothing until an end-to-end test caught it.
+	if s.Coach != nil || (s.Account.CoachID != nil && *s.Account.CoachID != 0) {
+		s.log.Warn("coach creation refused: account already has a coach",
+			"account", s.Account.ID)
+		res, _ := handshake.EncodeCoachCreationResult(coachNameTaken)
+		return s.Send(res)
+	}
+
+	coach, err := s.deps.Store.Coaches.Create(s.Account.ID, name, req.HairColor, req.SkinColor, req.Sex)
 	if errors.Is(err, store.ErrNameTaken) {
 		res, _ := handshake.EncodeCoachCreationResult(coachNameTaken)
 		return s.Send(res)
 	}
 	if err != nil {
 		return err
+	}
+
+	// Keep the in-memory Account in step with the row CoachRepo.Create just
+	// updated, so the replay guard above sees it even if s.Coach were reset.
+	if s.Account != nil {
+		id := coach.ID
+		s.Account.CoachID = &id
 	}
 
 	res, err := handshake.EncodeCoachCreationResult(protocol.AuthOK)

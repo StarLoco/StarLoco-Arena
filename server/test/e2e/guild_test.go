@@ -172,7 +172,7 @@ func TestGuildCreateRejectsAShortName(t *testing.T) {
 func TestGuildNameCannotBeTakenTwice(t *testing.T) {
 	t.Parallel()
 	_, addr := testServerWithStore(t)
-	a, _ := dialLogin(t, addr, "guild_x", "Un")
+	a, _ := dialLogin(t, addr, "guild_x", "Uno")
 	reachWorld(t, a)
 	b, _ := dialLogin(t, addr, "guild_y", "Deux")
 	reachWorld(t, b)

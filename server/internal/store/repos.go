@@ -17,6 +17,9 @@ var ErrNotFound = errors.New("store: not found")
 // ErrNameTaken is returned when creating a coach with a duplicate name.
 var ErrNameTaken = errors.New("store: name already taken")
 
+// ErrInvalidName is returned when a coach name is empty or otherwise unusable.
+var ErrInvalidName = errors.New("store: invalid name")
+
 // ---------------------------------------------------------------------------
 // Accounts
 // ---------------------------------------------------------------------------
@@ -158,6 +161,15 @@ func (r *CoachRepo) GetByName(name string) (*domain.Coach, error) {
 // Create makes a coach and links it to the account in one transaction.
 func (r *CoachRepo) Create(accountID uint, name string, hair, skin, sex uint8) (*domain.Coach, error) {
 	name = strings.TrimSpace(name)
+	// SECURITY (defence in depth): the game handler validates the name against
+	// the client's own rule before calling this, but a blank name must never be
+	// storable regardless of caller. An empty coach name was previously accepted
+	// here - NOT NULL is satisfied by "" and the uniqueness count is 0 - and
+	// sendGuildMembers already had to skip blank names downstream, which is the
+	// symptom of exactly that leaking through.
+	if name == "" {
+		return nil, ErrInvalidName
+	}
 	coach := &domain.Coach{Name: name, Hair: hair, Skin: skin, Sex: sex, PosX: 1, PosY: 1}
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		// Uniqueness (case-insensitive) check. LOWER() rather than
