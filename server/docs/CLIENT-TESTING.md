@@ -517,3 +517,20 @@ meaningful - something consumed the frame. Its PRESENCE is not, on its own: it c
 mean the relevant UI is not open, which is exactly the case for every fight frame here and was
 also the case for 6029 outside the team panel. Read it as "no active screen wanted this",
 not as "the server sent something wrong".
+
+### Targeting ONE client: `?coach=<id>`
+
+`/c2s` and `/s2c` accept an optional `coach=<id>`. Without it they hit every connected client,
+which cannot express anything involving two players - "A invites B" is not a frame both of them
+send. With it:
+
+```
+curl "http://127.0.0.1:5599/c2s?opcode=6024&hex=<...>&arch=2&coach=1"   # as Chrono
+curl "http://127.0.0.1:5599/c2s?opcode=6026&hex=<...>&arch=2&coach=2"   # as ExBot
+```
+
+That is what made the 2v2 disconnect test (B-132) possible without driving the invite UI.
+
+Spawn the second client with the java PID directly (`Win32_Process Create` on java.exe, not on
+a `cmd.exe` wrapper) - then `taskkill /PID <pid> /F` severs the socket, which is what the
+disconnect path needs to see.

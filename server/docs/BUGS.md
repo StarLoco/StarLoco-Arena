@@ -501,7 +501,18 @@ Extracted as a method rather than written inline, because `onClose` cannot be dr
 unit test - it dereferences `s.Account`, which a synthetic session does not have. Testing
 the helper directly also keeps the teardown readable.
 
-**Live-client refinement (validated by injecting 6029).** The retail client decodes 6029 into
+**Fully validated with TWO real clients.** Chrono invited ExBot, ExBot accepted, then ExBot's
+client was killed. The server logged `2v2 partner gone leaver=2 notified=1` and Chrono's client
+displayed a modal reading *"Anderung abgebrochen: euer Mitspieler hat sich soeben ausgeloggt!"*
+- `error.teamManagement.coachDisconnected`, translated, with an OK button. End to end, exactly
+the scenario this fix exists for.
+
+That also resolved the caveat below rather than contradicting it. Forming a duo OPENS the 2v2
+team panel automatically, so the frame IS active precisely when a partner can drop - which is
+why the earlier injection (no duo, panel closed) went unconsumed while the real sequence works.
+The bound claim was correct and the bound turns out never to bite in practice.
+
+**Earlier refinement (validated by injecting 6029).** The retail client decodes 6029 into
 `OJ` but only CONSUMES it while the team-management frame is active. Injected while the
 player was standing in the overworld, the client logged:
 

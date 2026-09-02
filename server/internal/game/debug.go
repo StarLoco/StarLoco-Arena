@@ -19,7 +19,8 @@ import (
 //
 //	/s2c?opcode=8000&hex=00ab..   frame [u16 len][u16 opcode][payload] -> every live client
 //	/raw?hex=..                   send the given bytes as a finished frame, verbatim
-//	/c2s?opcode=26330&hex=..&arch=2   run through the real router as if the client sent it
+//	/c2s?opcode=26330&hex=..&arch=2[&coach=2]  run through the real router as if
+//	                                           that client sent it (coach= targets one)
 //	/fight                        snapshot of active fights (phase, turn, fighters, states)
 //	/script?cmds=goto 177;cast..  run a fight scenario on the actor (see debug_script.go)
 //	/sessions                     list the connected coaches
@@ -44,7 +45,16 @@ func (s *Server) StartDebugInject(addr string) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		n := s.deps.Sessions.Each(func(sess *Session) { _ = sess.Send(frame) })
+		// ?coach=<id> targets one client; without it, every connected client.
+		wantCoach, _ := strconv.Atoi(r.URL.Query().Get("coach"))
+		n := 0
+		s.deps.Sessions.Each(func(sess *Session) {
+			if wantCoach != 0 && (sess.Coach == nil || int(sess.Coach.ID) != wantCoach) {
+				return
+			}
+			n++
+			_ = sess.Send(frame)
+		})
 		fmt.Fprintf(w, "s2c opcode=%d payload=%dB frame=%dB clients=%d\n", op, len(payload), len(frame), n)
 	})
 
@@ -54,7 +64,16 @@ func (s *Server) StartDebugInject(addr string) {
 			http.Error(w, "bad hex: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		n := s.deps.Sessions.Each(func(sess *Session) { _ = sess.Send(frame) })
+		// ?coach=<id> targets one client; without it, every connected client.
+		wantCoach, _ := strconv.Atoi(r.URL.Query().Get("coach"))
+		n := 0
+		s.deps.Sessions.Each(func(sess *Session) {
+			if wantCoach != 0 && (sess.Coach == nil || int(sess.Coach.ID) != wantCoach) {
+				return
+			}
+			n++
+			_ = sess.Send(frame)
+		})
 		fmt.Fprintf(w, "raw frame=%dB clients=%d\n", len(frame), n)
 	})
 
@@ -66,7 +85,16 @@ func (s *Server) StartDebugInject(addr string) {
 		}
 		arch, _ := strconv.Atoi(r.URL.Query().Get("arch"))
 		frame := &protocol.C2SFrame{Arch: byte(arch), Opcode: uint16(op), Payload: payload}
-		n := s.deps.Sessions.Each(func(sess *Session) {
+		// Optional ?coach=<id> targets ONE session. Without it this dispatches to
+		// every connected client, which is useless for anything involving two
+		// players: "A invites B" cannot be expressed by a frame both of them send.
+		wantCoach, _ := strconv.Atoi(r.URL.Query().Get("coach"))
+		n := 0
+		s.deps.Sessions.Each(func(sess *Session) {
+			if wantCoach != 0 && (sess.Coach == nil || int(sess.Coach.ID) != wantCoach) {
+				return
+			}
+			n++
 			if derr := s.router.Dispatch(sess, frame); derr != nil {
 				fmt.Fprintf(w, "dispatch error: %v\n", derr)
 			}

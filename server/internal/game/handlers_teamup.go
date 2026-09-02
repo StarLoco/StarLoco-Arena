@@ -545,7 +545,16 @@ func (d *Deps) releaseTeamUpAndNotify(coachID uint) {
 	d.TeamUps.release(coachID)
 	other := d.sessionForCoach(partner)
 	if other == nil {
-		return // nobody left to tell; the pairing is broken either way
+		// Nobody left to tell; the pairing is broken either way. Logged because
+		// "no partner online" and "never ran" are indistinguishable otherwise, and
+		// that ambiguity cost a live debugging session.
+		if d.Log != nil {
+			d.Log.Debug("2v2 partner gone, nobody to notify", "leaver", coachID, "partner", partner)
+		}
+		return
+	}
+	if d.Log != nil {
+		d.Log.Info("2v2 partner gone", "leaver", coachID, "notified", partner)
 	}
 	frame, err := protocol.EncodeS2C(protocol.OpTeamUpCoachGone,
 		protocol.NewWriter().U8(0).Bytes())
