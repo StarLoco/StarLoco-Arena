@@ -225,6 +225,23 @@ func handleTournamentSearchRequest(s *Session, f *protocol.C2SFrame) error {
 			"coach", s.Coach.Name, "tournament", tid)
 		return s.sendTournamentSearchError(searchErrCannotStart, 0)
 	}
+	// SECURITY: and only inside the scheduled search window.
+	//
+	// Only registration was checked, so ReadyUp could be called at ANY time -
+	// including long after the window closed and while the opponent was offline.
+	// The attacker then triggers settlement itself with 28601, and
+	// SettleClosedPeriod awards the fixture by forfeit to whichever side is
+	// "ready and present". Cascading to the root also pays the prize card. The
+	// prize is single-claim guarded, so the damage is bracket takeover rather than
+	// card duplication - but the bracket IS the tournament.
+	//
+	// A tournament with no schedule (zero SearchPeriodEnd) is UNSCHEDULED, not
+	// permanently closed, so it is deliberately left alone.
+	if !s.tournamentSearchOpen(tid) {
+		s.log.Info("tournament search refused: outside the search window",
+			"coach", s.Coach.Name, "tournament", tid)
+		return s.sendTournamentSearchError(searchErrCannotStart, 0)
+	}
 
 	// Accept first: 28612 is what opens the client's waiting dialog. Without it
 	// the team panel has already closed itself and the player is left with no
@@ -457,4 +474,23 @@ func (d *Deps) viewerDemon(coachID uint) int16 {
 		return 0
 	}
 	return g.DemonID
+}
+
+// tournamentSearchOpen reports whether a tournament's opponent-search window is
+// currently open. An unscheduled tournament (zero SearchPeriodEnd) is treated as
+// open: it has no window to be outside of.
+func (s *Session) tournamentSearchOpen(tid int64) bool {
+	if s.deps.Store == nil || s.deps.Store.Tournaments == nil {
+		return true
+	}
+	t, err := s.deps.Store.Tournaments.GetByWireID(tid)
+	if err != nil || t == nil {
+		return true // unknown here; IsRegistered above is the real entrant gate
+	}
+	end := t.SearchPeriodEnd()
+	if end.IsZero() {
+		return true // unscheduled
+	}
+	now := time.Now()
+	return !now.Before(t.SearchPeriodStart) && !now.After(end)
 }

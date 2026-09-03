@@ -10,6 +10,7 @@ package game
 // the rolls were not run; they are.
 
 import (
+	"github.com/StarLoco/arena-2.70/internal/domain"
 	"math/rand"
 	"time"
 )
@@ -214,6 +215,29 @@ func (d *Deps) runPostFightMeta(f *Fight, winnerTeam uint8) (
 				//    wound taken this fight is not immediately aged.
 				expireConditions(fr)
 
+				// SECURITY: re-read the ACCUMULATING fields before banking.
+				//
+				// fr is the fighter SNAPSHOT taken when the fight was built, and
+				// SaveProgress writes absolute values - so anything that changed the
+				// stored row while the fight ran was silently reverted at fight end.
+				// That was the free talent tree: BuySphere debits XP in the database,
+				// the fight ended, and the pre-purchase XP was written back while the
+				// fighter_spheres rows (a different table) survived. Mid-fight
+				// consumable use was reverted the same way.
+				//
+				// XP and TotalXP are the only fields bank() ACCUMULATES onto, so they
+				// are the only ones a concurrent writer and this write-back can both
+				// own. Everything else bank touches (morale, tiredness, last-fight,
+				// state) is derived from the fight itself and should overwrite.
+				//
+				// The roster lock on 23009/5201 is the primary control; this is the
+				// root-cause backstop, so a future handler that mutates a fighter
+				// without a lock cannot resurrect the exploit. A read-then-write
+				// window remains in theory - it is bounded by the locks above, and
+				// closing it properly needs SQL deltas whose clamp is dialect-specific
+				// (MIN vs LEAST), which is not worth the portability risk here.
+				d.refreshAccumulatingFields(fr)
+
 				rep.bank(fr, now)
 				if d.Store != nil {
 					_ = d.Store.Fighters.SaveProgress(fr)
@@ -348,4 +372,26 @@ func ownFighters(t *FightTeam, mem *FightMember) []*FightFighter {
 		}
 	}
 	return out
+}
+
+// refreshAccumulatingFields re-reads the fighter fields that postFightReport.bank
+// ACCUMULATES onto, so a change made while the fight ran is not clobbered.
+//
+// SECURITY: see the call site in runPostFightMeta. fr is the snapshot taken when
+// the fight was built and SaveProgress writes absolute values, so without this a
+// mid-fight XP spend was silently refunded at fight end - the root cause of the
+// free-talent-tree exploit.
+//
+// XP and TotalXP only: everything else bank touches (morale, tiredness,
+// last-fight, state) is derived from the fight itself and SHOULD overwrite
+// whatever is stored.
+func (d *Deps) refreshAccumulatingFields(fr *domain.Fighter) {
+	if d.Store == nil || d.Store.Fighters == nil || fr == nil {
+		return
+	}
+	fresh, err := d.Store.Fighters.Get(fr.ID)
+	if err != nil || fresh == nil {
+		return
+	}
+	fr.XP, fr.TotalXP = fresh.XP, fresh.TotalXP
 }

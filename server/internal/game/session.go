@@ -26,6 +26,9 @@ type Session struct {
 	// tests that build a Session directly, so every use must nil-check.
 	guard    *connGuard
 	remoteIP string
+	// opcodes throttles the handful of opcodes that are expensive to serve or
+	// push something at another player. See opcode_gate.go.
+	opcodes *opcodeGate
 
 	out       chan []byte   // async write queue (bounded; decouples broadcasters from slow clients)
 	quit      chan struct{} // closed when the session is shutting down
@@ -76,13 +79,14 @@ func (s *Session) kick() {
 
 func newSession(conn net.Conn, router *Router, deps *Deps) *Session {
 	return &Session{
-		conn:   conn,
-		r:      bufio.NewReader(conn),
-		log:    deps.Log.With("remote", conn.RemoteAddr().String()),
-		router: router,
-		deps:   deps,
-		out:    make(chan []byte, writeQueueSize),
-		quit:   make(chan struct{}),
+		conn:    conn,
+		r:       bufio.NewReader(conn),
+		log:     deps.Log.With("remote", conn.RemoteAddr().String()),
+		router:  router,
+		deps:    deps,
+		out:     make(chan []byte, writeQueueSize),
+		opcodes: newOpcodeGate(),
+		quit:    make(chan struct{}),
 	}
 }
 
@@ -292,6 +296,15 @@ var errPanicInHandler = errors.New("handler panicked")
 // left its coach in an unknown state, and continuing to serve it risks acting on
 // corrupt data; the caller drops the connection on any error.
 func (s *Session) dispatchSafely(f *protocol.C2SFrame) (err error) {
+	// SECURITY: per-opcode budget, applied before the handler runs so an
+	// over-budget packet costs nothing but the parse. Dropping silently is
+	// deliberate: these opcodes have no "you are going too fast" reply, the
+	// retail client never reaches the budget, and answering would itself be a
+	// broadcast the attacker controls.
+	if s.opcodes != nil && !s.opcodes.allow(f.Opcode) {
+		s.log.Debug("opcode throttled", "opcode", f.Opcode, "coach", coachID(s))
+		return nil
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			s.log.Error("PANIC in handler - session dropped, server survives",

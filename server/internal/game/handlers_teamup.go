@@ -501,6 +501,25 @@ func (d *Deps) joinDuoPartner(team *FightTeam, ownerID uint, cells []Pos) bool {
 	if ps == nil || ps.Coach == nil {
 		return false
 	}
+	// SECURITY: never drag a partner who is already busy.
+	//
+	// partnerOf falls back to the PERSISTED 2v2 preset, so a duo formed once (or
+	// restored across a restart) let the owner pull the partner into a fight at
+	// will by pressing "Tester". Worse, FightManager.Create overwrites
+	// byCoach[partner] unconditionally - so if the partner was already fighting,
+	// their inputs started routing to the new fight and they received a
+	// CREATE_FIGHT on top of a live one. Repeatable = denial of play against one
+	// named player.
+	//
+	// The 23103 path was deliberately gated for exactly this ("queueing on the
+	// first press would drag the ally into a fight it never agreed to start");
+	// 26330 did what that comment forbids.
+	if d.Fights != nil && d.Fights.ByCoach(partnerID) != nil {
+		return false
+	}
+	if d.Matchmaker != nil && d.Matchmaker.IsBusyMatchmaking(partnerID) {
+		return false
+	}
 	free := len(cells) - len(team.Fighters)
 	if free <= 0 {
 		return false
