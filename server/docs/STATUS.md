@@ -5,7 +5,7 @@ detail; this is state.
 
 **Updated:** 2026-09-02
 
-> **Security:** a full hostile-client audit landed on 2026-09-02 and is now
+> **Security:** a full hostile-client audit plus a client-enforced-rule sweep and
 > **fully remediated** (`BUGS.md` B-145 … B-160). That included two remote
 > full-server crashes reachable in three packets, four unbounded card-minting
 > paths, a team-preset IDOR, client-authored spell loadouts, and the absence of

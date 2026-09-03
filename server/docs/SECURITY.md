@@ -201,6 +201,48 @@ server does not implement at all; with no ruleset, nothing is forbidden.
   unrepresentable, so a mask using them is skipped whole. Only three spells set
   `EnforceTargetMasks` today and none rely on those bits; the real-data canary test
   is the mitigation.
+## Final sweep: progression, tournaments, guilds, debug endpoint
+
+A last pass over the subsystems the earlier rounds had not focused on. Nine
+findings, all fixed.
+
+| Severity | Issue | Fix |
+|---|---|---|
+| **High** | **Free talent tree.** `BuySphere` debits XP in the DB, but the fight holds a fighter *snapshot* and `bank()` writes it back at fight end — refunding every node bought mid-fight while the `fighter_spheres` rows survived | `23009` roster-locked |
+| **High** | **Tournament fixture shared one wire preset between both coaches.** The sender named its own preset id, got six fighters, and handed the opponent one — then advanced the bracket and took the prize | each coach resolves its own roster; `titularRoster` fallback |
+| **High** | **Debug endpoint bound anywhere.** Unauthenticated, and it can dispatch any opcode as any logged-in player | config `validate()` refuses a non-loopback `debug_addr` |
+| Medium | Coach equipment swappable mid-fight while post-fight set bonuses are read at fight **end** — a way to dodge permanent death in evolution | `5201` roster-locked |
+| Medium | `517` leaked every guild's roster (names, rank, **rights**, online status) for any coach id | scoped to the caller's own guild, as `519` already was |
+| Medium | `505` with `memberId = 0` forged a departure feed and cost 2+ DB queries per member per packet, unbounded | id 0 refused |
+| Medium | `6001` bypassed the Sphere-Board entitlement that `6011` enforces | `entitledEquip` in `buildFighter` |
+| Low | Guild rank rights are a raw wire bitmask; a leader could mint a low rank carrying `GuildRightLeader` | masked at the repo |
+| Low | `handleDestroyCoach` left an in-progress fight holding a deleted coach | released in that handler |
+
+### Verified clean in the same sweep
+
+Guild rank/rights escalation (every mutating handler re-derives the guild from the
+session and orders by level *and* right), sphere prerequisites and atomic cost,
+tournament registration and bracket writes (no opcode can report a result), the
+entire ladder and post-fight path (no client input reaches XP, morale, fatigue,
+wounds or rating), evolution state machine and resurrection, **every GM verb**
+(single `IsAdmin` gate, and no verb takes a target from the wire), and the web
+portal's authz/CSRF/impersonation boundary.
+
+### Two design mistakes caught while fixing
+
+**Double release.** I first put the destroyed-coach fight teardown in
+`releaseSubsystems`, which `onClose` also calls immediately after doing it
+itself — and which would additionally have torn down the fight a *replaced*
+session's newer login is entitled to reconnect into. Three callers, three
+different intentions; it belongs in `handleDestroyCoach` alone.
+
+**A test that could not fail.** The sphere-lock test asserted "XP unchanged" —
+but a sphere buy fails for many reasons (node not on the board, unreachable,
+unaffordable), so it passed whether or not the lock existed. It now asserts the
+**refusal frame** (code 69), which only appears when the lock fires. This is the
+same lesson as testing the door instead of the lock, in a new disguise: *assert
+the thing that is only true when your fix runs.*
+
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped
@@ -219,6 +261,11 @@ unverified:
    never reached.
 4. **Cover both directions.** Guarding `c.challenger` and not `c.target` left the
    identical crash reachable from the other side; either party can send 27529.
+
+5. **Assert what is only true when your fix runs.** "Nothing changed" is a weak
+   assertion when the operation has many other failure modes — the sphere-lock
+   test passed with the lock removed, because the purchase failed anyway. Assert
+   the refusal frame, the specific error code, the exact count.
 
 When a guard is genuinely defence-in-depth and no single mutation can break it,
 **say so in the comment** rather than implying it is load-bearing —
