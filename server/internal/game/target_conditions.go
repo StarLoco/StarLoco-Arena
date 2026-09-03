@@ -64,8 +64,81 @@ const (
 	// rejecting a spell they cannot judge; see spellTargetMaskAllows.
 	evaluableTargetBits = condIsCaster | condIsAlly | condIsEnemy | condIsHuman |
 		condIsSummoned | condIsEffectArea | condIsAllyNotSelf | condIsNotCaster |
-		condBreedIsZero | condBreedIsNotZero | breedIsMask | breedIsNotMask | 1
+		condBreedIsZero | condBreedIsNotZero | breedIsMask | breedIsNotMask | 1 |
+		stateTargetBits
 )
+
+// The client's SECOND target evaluator, aLc.a(target, caster) at aLc.java:89-131.
+// Every one of these bits REJECTS the target when it holds, and all but the first
+// are read off the TARGET.
+//
+// SECURITY: the whole bank used to be unrepresentable, so spellTargetMaskAllows
+// hit its escape hatch and skipped the entire mask - a spell whose mask used any
+// of these was cast with no target validation at all. That is fine while no
+// shipped spell relies on them and dangerous the moment one does, which is
+// exactly the kind of data-drift this project has been bitten by before.
+//
+// The eight bits below are decidable from state this server already models (the
+// state mapping is the one in states.go, whose comments name the very same client
+// enum members: dev/dew/dex/deA/deB). Bit 55 (deC) and bits 58-61 (elemental
+// resistance below -60) are still not decidable here, so they remain outside
+// evaluableTargetBits and still trip the escape hatch - but now they are the ONLY
+// things that do.
+const (
+	condTargetIntransposable int64 = 1 << 49 // deB, on target OR caster
+	condTargetStabilized     int64 = 1 << 50 // dev
+	condTargetAnchored       int64 = 1 << 51 // deA - cannot be carried
+	condTargetAtFullHP       int64 = 1 << 52 // HP >= MaxHP
+	condTargetNoAP           int64 = 1 << 53 // AP == 0 (or AP-loss resist >= 100)
+	condTargetNoMP           int64 = 1 << 54 // MP == 0 (or MP-loss resist >= 100)
+	condTargetRooted         int64 = 1 << 56 // dex
+	condTargetPetrified      int64 = 1 << 57 // dew
+
+	stateTargetBits = condTargetIntransposable | condTargetStabilized |
+		condTargetAnchored | condTargetAtFullHP | condTargetNoAP |
+		condTargetNoMP | condTargetRooted | condTargetPetrified
+)
+
+// stateConditionRejects reports whether any modelled state bit in cond rules the
+// target out. Mirrors aLc.java:89-131, where each matching bit returns dMP
+// ("not a legal target").
+func stateConditionRejects(caster, target *FightFighter, cond int64) bool {
+	if target == nil {
+		return false
+	}
+	// Bit 49 is the only one that also inspects the CASTER (aLc.java:91).
+	if cond&condTargetIntransposable != 0 &&
+		(target.hasState(stateIntransposable) ||
+			(caster != nil && caster.hasState(stateIntransposable))) {
+		return true
+	}
+	if cond&condTargetStabilized != 0 && target.hasState(stateStabilized) {
+		return true
+	}
+	if cond&condTargetAnchored != 0 && target.hasState(stateAnchored) {
+		return true
+	}
+	if cond&condTargetAtFullHP != 0 && target.HP >= target.MaxHP {
+		return true
+	}
+	// The client also rejects when AP/MP-loss RESISTANCE is >= 100. That stat is
+	// not modelled here, so only the "already at zero" half is checked - strictly
+	// more permissive, which is the safe direction: the server can fail to reject,
+	// never wrongly reject a legitimate cast.
+	if cond&condTargetNoAP != 0 && target.AP == 0 {
+		return true
+	}
+	if cond&condTargetNoMP != 0 && target.MP == 0 {
+		return true
+	}
+	if cond&condTargetRooted != 0 && target.hasState(stateRooted) {
+		return true
+	}
+	if cond&condTargetPetrified != 0 && target.hasState(statePetrified) {
+		return true
+	}
+	return false
+}
 
 // effectTargetAllowed reports whether `target` satisfies any of the effect's
 // target conditions cast by `caster`. Empty conditions = permissive (always).
@@ -86,6 +159,12 @@ func effectTargetAllowed(caster, target *FightFighter, targets []int64) bool {
 // everyone. (CONDITION_IN_AOE / bit 1 is a no-op here — every candidate the area
 // resolver produced is already in the area.)
 func targetConditionPasses(caster, target *FightFighter, cond int64) bool {
+	// The state bank (aLc's second evaluator) is a REJECT list, evaluated before
+	// the role/breed bits: any bit that holds disqualifies the target outright.
+	if stateConditionRejects(caster, target, cond) {
+		return false
+	}
+
 	isSelf := target == caster
 	sameTeam := caster != nil && target != nil && caster.TeamID == target.TeamID
 

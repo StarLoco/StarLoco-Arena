@@ -41,7 +41,11 @@ func (f *Fight) applyThrow(caster *FightFighter, ef gamedata.Effect, cell Pos) {
 		return
 	}
 	carried := caster.CarriedFighter
-	if !f.Arena().walkable(cell.X, cell.Y) || f.cellHeldByOther(cell, carried) {
+	// cellDestroyed as well as walkable: sudden death REMOVES cells, and the
+	// client has no concept of that at all, so this is the server's rule alone.
+	// applyTeleport already checked both; throw and summon did not.
+	if !f.Arena().walkable(cell.X, cell.Y) || f.cellDestroyed(cell.X, cell.Y) ||
+		f.cellHeldByOther(cell, carried) {
 		return
 	}
 	from := carried.Pos

@@ -46,7 +46,8 @@ func (f *Fight) applySummon(caster *FightFighter, ef gamedata.Effect, target Pos
 	}
 	// The creature spawns on the targeted cell; it must be a real, free arena cell
 	// (the client's summon also needs an empty floor cell).
-	if !f.Arena().walkable(target.X, target.Y) || f.cellOccupied(target) {
+	if !f.Arena().walkable(target.X, target.Y) || f.cellDestroyed(target.X, target.Y) ||
+		f.cellOccupied(target) {
 		return
 	}
 	// SECURITY (defence in depth): the summon cap is otherwise purely DATA-driven -

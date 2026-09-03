@@ -84,6 +84,30 @@ func run(configPath, dataOverride string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// SECURITY: combat validation is data-driven, so a server with no spell data
+	// silently loses ALL of it.
+	//
+	// Every targeting rule in castSpellByFighter lives inside `if sp != nil`:
+	// range, line of sight, free-cell, only-line, target masks, cast criteria and
+	// cooldowns. spellLegalForBreed also fails OPEN without data, by design, so a
+	// data-less server additionally accepts any spell on any fighter. The result
+	// is a fight with ownership, turn order and "is alive" as its only rules -
+	// which is fine for a unit test and catastrophic for a public instance.
+	//
+	// data-dist ships in git and is auto-discovered, so this should never fire in
+	// practice; it exists because "never fires in practice" is exactly the
+	// assumption that stops being true quietly.
+	if spellsLen(deps.Spells) == 0 {
+		log.Error("SECURITY: no spell data loaded - combat runs with NO range, " +
+			"line-of-sight, target-mask, criteria or cooldown validation, and any " +
+			"fighter may cast any spell. Do not expose this instance.")
+		fmt.Println()
+		fmt.Println("  !! No spell data was found. Combat validation is DISABLED.")
+		fmt.Println("     Point data_dir at a copy of the client data, or restore")
+		fmt.Println("     server/data-dist/, before letting anyone connect.")
+		fmt.Println()
+	}
+
 	srv := game.NewServer(cfg.Addr, deps)
 
 	// Bind both ports BEFORE announcing anything, so a port clash is reported

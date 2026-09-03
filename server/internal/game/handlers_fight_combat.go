@@ -697,6 +697,12 @@ func handleCloseCombat(s *Session, frame *protocol.C2SFrame) error {
 // (closeCombatDamages, or closeCombatCritDamages on a crit) through the elemental
 // formula. Must run on the fight actor.
 func (f *Fight) closeCombat(ff *FightFighter, target Pos) {
+	// Cell validity as well as adjacency and AP. The client checks this
+	// (mv_1.java:433-435) and the server did not - it was saved only by requiring
+	// a living enemy on the cell, which is an accident rather than a rule.
+	if !f.Arena().walkable(target.X, target.Y) || f.cellDestroyed(target.X, target.Y) {
+		return
+	}
 	if ff.effectiveAP() < closeCombatAP || posManhattan(ff.Pos, target) != 1 {
 		return // not enough AP, or the target is not orthogonally adjacent
 	}
