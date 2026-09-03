@@ -243,6 +243,65 @@ unaffordable), so it passed whether or not the lock existed. It now asserts the
 same lesson as testing the door instead of the lock, in a new disguise: *assert
 the thing that is only true when your fix runs.*
 
+## Remaining open items
+
+Everything from the audits and sweeps is fixed. What follows is the honest
+residue — small, known, and deliberately left.
+
+### Accepted by the operator
+
+`limits.auto_register` and `limits.first_account_is_admin` both default to
+**true**. This was reviewed and accepted: it preserves local workflows, and the
+template documents why you would turn them off. On a public instance the second
+is a race an attacker wins by connecting first.
+
+### Deliberately not implemented
+
+- **Spectating any live fight.** Retail behaviour; the spectator's `deckCoach` is
+  nil-ed so decks do not leak. Restricting it is a product decision.
+- **Fighter budget as a hard cap outside fight entry.** The client only *warns*
+  when a team exceeds 6000 and submits anyway; the cap is enforced where it
+  matters (fight creation, code 46).
+- **Code 66 `badCoachCardQuantity`.** The one code absent from `je_2`, so
+  server-only logic with no client counterpart, and its only plausible trigger
+  (opcode 17010) is not implemented here. No reachable path to guard.
+- **`MaxActive`** (spell field 8). A canary test proves it is redundant against
+  shipped data and says when to revisit; a second, subtly different gate would
+  risk rejecting casts the client believes are legal.
+- **Target-mask bits 55 and 58-61** (deC, elemental resist < -60). Not decidable
+  from modelled state. Only three spells set `EnforceTargetMasks` and none use
+  these; a real-data canary guards the assumption.
+- **Hand-driving your own summon.** Contradicts a comment, not a rule; AP/MP are
+  debited normally, so there is no gain.
+
+### Small, known, unfixed
+
+- **A guild leader can leave its own guild**, orphaning it: no succession, no
+  last-leader check, and the name stays reserved. Self-inflicted but
+  unrecoverable, and usable as a name-squatting primitive.
+- **No guild size cap**, and `refreshGuild` rebuilds the member list once per
+  online member — O(N²) fan-out per rank edit.
+- **`28649` does not check registration**, so any entrant list is readable.
+  Names are already public via the ladder.
+- **`int32` currency has no overflow guard.** ~43M wins to reach; every sink is
+  bounded.
+
+### Known test gap
+
+`refreshAccumulatingFields`' **call site** is not mutation-covered: removing the
+single line from `runPostFightMeta` still passes, because reaching it needs a
+full fight-end that is not currently drivable in a unit test. The helper's logic
+is verified; the wiring is not.
+
+### Environment limit, not a code gap
+
+**In-fight frames cannot be live-validated on the development machine.**
+Animations fail to load (`AnimCommunes.anm`), so no sprites render and the combat
+UI never attaches — 8020/8018/8028/8030 and 4902 report unhandled even though
+they work in real play. Every combat fix here is unit- and e2e-verified but has
+never been seen in a real client. Closing that needs a machine where the client's
+assets load.
+
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped
