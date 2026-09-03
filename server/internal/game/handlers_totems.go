@@ -293,11 +293,32 @@ func (d *Deps) startTournamentMatch(tid int64, a, b *Session, preset uint16) err
 	_ = b.Send(frame)
 
 	arena := pickArena()
-	teamA, err := d.buildFightTeamFor(a, 0, arena.startCells(0), d.resolveTeamRoster(a.Coach.ID, uint(preset)))
+	// SECURITY: each coach fields ITS OWN roster.
+	//
+	// The `preset` off the wire used to be applied to BOTH sides. resolveTeamRoster
+	// is IDOR-guarded and returns nil for a preset the coach does not own, and a
+	// nil roster falls back to a SINGLE fighter - so whoever sent 28611 named one
+	// of its own preset ids, got its full six, and handed the opponent a
+	// one-fighter team. The winner then advances the bracket and collects the
+	// prize card, and it moves the ranked ladder too.
+	//
+	// Every other path already resolves per-coach (handlers_challenge.go uses each
+	// side's confirmed preset; the queues carry each searcher's own teamIDs); the
+	// tournament path was the only one sharing one wire value. Falling back to the
+	// titular line-up rather than fighters[0] also fixes the fidelity half: the
+	// honest client sends pseudo-presets 99/9999, so every fixture was silently
+	// one-fighter-versus-one-fighter.
+	rosterA := d.resolveTeamRoster(a.Coach.ID, uint(preset))
+	if len(rosterA) == 0 {
+		rosterA = d.titularRoster(a.Coach.ID, len(arena.startCells(0)))
+	}
+	rosterB := d.titularRoster(b.Coach.ID, len(arena.startCells(1)))
+
+	teamA, err := d.buildFightTeamFor(a, 0, arena.startCells(0), rosterA)
 	if err != nil {
 		return err
 	}
-	teamB, err := d.buildFightTeamFor(b, 1, arena.startCells(1), d.resolveTeamRoster(b.Coach.ID, uint(preset)))
+	teamB, err := d.buildFightTeamFor(b, 1, arena.startCells(1), rosterB)
 	if err != nil {
 		return err
 	}

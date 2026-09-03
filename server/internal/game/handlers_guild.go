@@ -275,16 +275,21 @@ func handleGuildGet(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil || s.deps.Store == nil || s.deps.Store.Guilds == nil {
 		return nil
 	}
+	// SECURITY: answer for the SENDER's own guild whatever coach id it named.
+	//
+	// 519 was hardened for exactly this and 517 was not, so it reached the same
+	// builder with an arbitrary id. Iterating small sequential coach ids harvested,
+	// for every guild on the server, the full member list with each member's rank,
+	// RIGHTS bitmask and live online/offline status - the data 519 refuses to give
+	// out, plus a presence oracle that bypasses the friend-list model.
+	//
+	// The payload's coach id is read so the frame is consumed correctly, then
+	// discarded.
 	r := protocol.NewReader(f.Payload)
-	playerID, err := r.I64()
-	if err != nil {
+	if _, err := r.I64(); err != nil {
 		return err
 	}
-	coachID := uint(playerID)
-	if coachID == 0 {
-		coachID = s.Coach.ID
-	}
-	m, err := s.deps.Store.Guilds.MembershipOf(coachID)
+	m, err := s.deps.Store.Guilds.MembershipOf(s.Coach.ID)
 	if err != nil || m == nil {
 		return nil // no guild: the client keeps showing "no clan"
 	}

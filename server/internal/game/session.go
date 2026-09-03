@@ -328,6 +328,16 @@ func (s *Session) releaseSubsystems() {
 	}
 	coachID := s.Coach.ID
 
+	// NOTE: the in-progress FIGHT is deliberately not released here.
+	//
+	// The three callers want different things. A normal disconnect starts a
+	// reconnect grace period (onClose does that itself, just above its call to
+	// this helper). A session replaced by a newer login must keep its fight intact
+	// so the new session can reconnect into it. Only handleDestroyCoach wants the
+	// fight torn down, and it does that itself - putting it here instead would
+	// double-release on disconnect and would void a fight the reconnecting player
+	// is still entitled to.
+	//
 	// Spectating: detach from whatever fight was being watched.
 	if f := s.spectating; f != nil {
 		s.spectating = nil

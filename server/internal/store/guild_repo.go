@@ -205,6 +205,23 @@ func (r *GuildRepo) SetMemberRank(guildID, coachID uint, level int16) error {
 
 // AddRank appends a rank. The client caps a guild at GuildMaxRanks and refuses
 // to render more, so the cap is enforced here rather than trusting it.
+// sanitizeRankRights keeps the leader bit on rank 1 and strips it from every
+// other rank.
+//
+// SECURITY: rights arrive as a raw wire bitmask. UpdateRank only ever ADDED the
+// leader bit to rank 1 and never removed it elsewhere, and AddRank stored the
+// mask verbatim - so a leader could mint a low rank carrying GuildRightLeader.
+// guildRightAllows treats that bit as "everything", handleGuildSetRank orders
+// only by LEVEL and never by rights, and anyone can found a guild - so an officer
+// with only the promote right could raise a member into a leader-rights rank, and
+// that member could then destroy the guild.
+func sanitizeRankRights(level int16, rights int32) int32 {
+	if level == GuildRankLeader {
+		return rights | GuildRightLeader
+	}
+	return rights &^ GuildRightLeader
+}
+
 func (r *GuildRepo) AddRank(guildID uint, rights int32, name string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var existing []domain.GuildRank
@@ -229,7 +246,8 @@ func (r *GuildRepo) AddRank(guildID uint, rights int32, name string) error {
 			return ErrGuildRankLimit
 		}
 		return tx.Create(&domain.GuildRank{
-			GuildID: guildID, Level: level, Rights: rights, Name: name,
+			GuildID: guildID, Level: level,
+			Rights: sanitizeRankRights(level, rights), Name: name,
 		}).Error
 	})
 }
@@ -238,9 +256,7 @@ func (r *GuildRepo) AddRank(guildID uint, rights int32, name string) error {
 // leader bit whatever is asked: a guild whose rank 1 lost it would have no one
 // able to manage it and no way back.
 func (r *GuildRepo) UpdateRank(guildID uint, level int16, rights int32, name string) error {
-	if level == GuildRankLeader {
-		rights |= GuildRightLeader
-	}
+	rights = sanitizeRankRights(level, rights)
 	return r.db.Model(&domain.GuildRank{}).
 		Where("guild_id = ? AND level = ?", guildID, level).
 		Updates(map[string]any{"rights": rights, "name": name}).Error

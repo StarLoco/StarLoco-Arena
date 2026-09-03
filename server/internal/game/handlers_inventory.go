@@ -114,6 +114,17 @@ func handleEquipmentRequest(s *Session, f *protocol.C2SFrame) error {
 	if s.Coach == nil {
 		return nil
 	}
+	// SECURITY: no equipment changes while queued or in a fight.
+	//
+	// runPostFightMeta reads the LIVE inventory at fight END (sessionSetBonus /
+	// opposingSetBonus), so a coach could fight in whatever gear it liked and then
+	// equip a wound-cancel / death-reduction / XP% set in the last seconds and have
+	// it apply to the outcome. In evolution mode that is a way to dodge permanent
+	// death, and opposingSetBonus lets the same trick push maluses onto the
+	// opponent at settlement time.
+	if s.rosterLocked() {
+		return s.refuseRosterEdit("coach equipment")
+	}
 	r := protocol.NewReader(f.Payload)
 	var slots [14]int32
 	for i := range slots {

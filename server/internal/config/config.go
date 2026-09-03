@@ -9,6 +9,7 @@ package config
 import (
 	_ "embed"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -462,6 +463,45 @@ func (c *Config) validate() error {
 	}
 	if c.Web.Enabled && c.Web.Addr == "" {
 		return fmt.Errorf("config: web.addr is required when web.enabled is true")
+	}
+	if err := validateDebugAddr(c.DebugAddr); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateDebugAddr refuses a debug endpoint that is not bound to loopback.
+//
+// SECURITY: the endpoint's own doc comment said it "must only ever bind to
+// loopback" and nothing enforced it, while ARENA_DEBUG_ADDR makes binding
+// 0.0.0.0:5599 the natural Docker mistake. It is unauthenticated and it can
+// dispatch ANY opcode as ANY logged-in player (/c2s?coach=N), push arbitrary
+// frames to every client, drive fight scenarios and enumerate sessions - i.e.
+// full server and player takeover for anyone who can reach the port.
+//
+// A comment is not a control. This makes the rule refuse to start.
+func validateDebugAddr(addr string) error {
+	if addr == "" {
+		return nil // disabled, which is the default and the right production value
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("config: debug_addr %q is not host:port: %w", addr, err)
+	}
+	switch host {
+	case "localhost":
+		return nil
+	case "":
+		// ":5599" binds every interface.
+		return fmt.Errorf("config: debug_addr %q binds all interfaces; the packet-"+
+			"inject endpoint is unauthenticated and can act as any player. Use "+
+			"127.0.0.1:PORT, or leave debug_addr empty", addr)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("config: debug_addr %q is not a loopback address; the "+
+			"packet-inject endpoint is unauthenticated and can act as any player. "+
+			"Use 127.0.0.1:PORT, or leave debug_addr empty", addr)
 	}
 	return nil
 }

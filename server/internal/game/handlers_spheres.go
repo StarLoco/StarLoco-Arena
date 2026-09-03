@@ -30,6 +30,25 @@ func registerSphereHandlers(r *Router, d *Deps) {
 //
 // cardTemplateId is the card offered to open a Barrier node and is 0 otherwise.
 func handleSphereBuy(s *Session, f *protocol.C2SFrame) error {
+	if s.Coach == nil {
+		return nil
+	}
+	// SECURITY: no sphere purchases while queued or in a fight.
+	//
+	// This was the FREE TALENT TREE. BuySphere debits XP atomically in the
+	// database, but the running fight holds a fighter SNAPSHOT taken at
+	// fight-build time, and postFightReport.bank writes that stale row back
+	// wholesale at fight end - so every node bought during the fight had its cost
+	// refunded while the fighter_spheres rows (a different table, never touched by
+	// SaveProgress) survived. Queue a ranked or evolution fight, buy nodes while
+	// it runs, repeat: entire boards for nothing.
+	//
+	// Locking the purchase is the narrow fix. The write-back staleness is real but
+	// wider - it also silently reverts mid-fight consumable use - and is recorded
+	// separately rather than papered over here.
+	if s.rosterLocked() {
+		return s.refuseRosterEdit("sphere buy")
+	}
 	r := protocol.NewReader(f.Payload)
 	fighterID, err := r.I64()
 	if err != nil {

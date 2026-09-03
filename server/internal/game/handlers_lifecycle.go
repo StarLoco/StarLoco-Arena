@@ -138,6 +138,17 @@ func handleDestroyCoach(s *Session, _ *protocol.C2SFrame) error {
 	// nil assignment below.
 	s.releaseSubsystems()
 
+	// A destroyed coach must not leave a Fight holding a *domain.Coach whose rows
+	// are about to be deleted: the fight would keep running SaveProgress /
+	// SaveConditions on deleted fighters and Coaches.Save on a deleted coach.
+	// Unlike a disconnect there is nothing to reconnect to, so the fight is
+	// released rather than given a grace period.
+	if s.deps.Fights != nil {
+		if f := s.deps.Fights.ByCoach(coach.ID); f != nil {
+			s.deps.coachLeftFight(f, coach.ID)
+		}
+	}
+
 	// Despawn from everyone who currently sees the coach, then drop it from the
 	// world registry so no broadcast targets a dead actor.
 	viewers := s.deps.World.LeaveAoI(coach.ID)

@@ -105,7 +105,12 @@ func (s *Session) buildFighter(coachID uint, fb *FighterBlob) *domain.Fighter {
 		slotUsed[c.Slot] = true
 		incoming = append(incoming, domain.FighterObject{TemplateID: c.ID, Slot: c.Slot})
 	}
-	f.Objects = s.canonicalEquipSlots(incoming)
+	// SECURITY: an EVOLUTION fighter may only wear what its Sphere Board unlocked.
+	// The 6011 loadout path applied entitledEquip and this one did not, so a
+	// freshly created evolution fighter (et_2 type byte 2) could be handed any
+	// equipment templates for free - a brand-new fighter has zero bought nodes, so
+	// the client can never offer these and 6011 would strip them all.
+	f.Objects = s.entitledEquip(f, s.canonicalEquipSlots(incoming))
 
 	f.Budget = s.computeFighterBudget(f)
 	return f

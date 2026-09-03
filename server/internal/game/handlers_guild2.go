@@ -61,7 +61,15 @@ func handleGuildLeave(s *Session, f *protocol.C2SFrame) error {
 		return err
 	}
 	target := uint(memberID)
-	self := target == s.Coach.ID || target == 0
+	// SECURITY: id 0 is not "self". Treating it as self meant RemoveMember deleted
+	// nothing (so the request could be repeated without limit) while still fanning
+	// out a forged "X was thrown out" feed with an empty name plus a 556 for player
+	// 0 to every online clan member - at 2+ DB queries per member per packet, which
+	// with SQLite's single connection serialises the whole persistence layer.
+	if target == 0 {
+		return nil
+	}
+	self := target == s.Coach.ID
 
 	if !self {
 		// Kicking needs the right AND a strictly lower-ranked victim: without
