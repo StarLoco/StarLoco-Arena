@@ -59,6 +59,24 @@ jobs:
           fi
           rm go.mod.bak go.sum.bak
 
+      # Dependency and toolchain CVEs are the one security class that decays on
+      # its own: the code does not change, the advisory database does. Two real
+      # findings were only noticed because someone happened to run this by hand
+      # (pgx v5.6.0, and seven reachable stdlib issues on Go 1.26.4), so it is a
+      # gate now rather than a habit.
+      #
+      # Linux only - it is a property of go.mod and the toolchain, identical on
+      # both runners, so running it twice buys nothing.
+      - name: Vulnerability scan
+        if: runner.os == 'Linux'
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          # Fails the build when a vulnerability is REACHABLE from this code.
+          # Advisories in modules we merely require, but never call, do not fail:
+          # that is govulncheck's own default and it is the right line - a gate
+          # that cries wolf gets disabled.
+          govulncheck ./...
+
       # cmd/studio is a Wails desktop app: it needs CGO plus GTK/WebKit headers
       # that are not on a stock Linux runner, and it is not part of a release.
       # Windows is the platform it is developed on, so it is fully covered

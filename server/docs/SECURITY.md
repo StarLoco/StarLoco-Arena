@@ -286,12 +286,21 @@ is a race an attacker wins by connecting first.
 - **`int32` currency has no overflow guard.** ~43M wins to reach; every sink is
   bounded.
 
-### Known test gap
+### ~~Known test gap~~ — CLOSED, and the claim was wrong
 
-`refreshAccumulatingFields`' **call site** is not mutation-covered: removing the
-single line from `runPostFightMeta` still passes, because reaching it needs a
-full fight-end that is not currently drivable in a unit test. The helper's logic
-is verified; the wiring is not.
+This entry said `refreshAccumulatingFields`' call site could not be
+mutation-covered "because reaching it needs a full fight-end that is not
+currently drivable in a unit test".
+
+**That was simply untrue.** `evoDeathHarness` + `buildEvoFight` already drive
+`runPostFightMeta` — the very same path — and had done since before this work.
+`TestPostFightMetaReReadsXPFromTheDatabase` now spends XP in the database
+*after* the fight snapshot is taken and asserts the spend survives; removing
+either the call site or the helper's body fails it.
+
+Worth keeping as a note rather than deleting: "not testable" was an assumption I
+made without looking for the fixture, and it was the difference between a
+verified guard and a documented gap.
 
 ### Environment limit, not a code gap
 
@@ -362,7 +371,13 @@ and the Go toolchain 1.26.4 → **1.26.6** (seven reachable stdlib issues, inclu
 `crypto/tls` and `net/http`, which matter for the web portal). CI takes its
 version from `server/go.mod`, so the toolchain bump propagates automatically.
 
-Run it periodically:
+**CI runs it on every push and pull request** (`.github/workflows/ci.yml`, Linux
+job), so this no longer depends on anyone remembering. The build fails when a
+vulnerability is REACHABLE from this code; advisories in modules we require but
+never call do not fail it, which is govulncheck's own default and the right line —
+a gate that cries wolf gets disabled.
+
+Locally:
 
 ```powershell
 go install golang.org/x/vuln/cmd/govulncheck@latest
