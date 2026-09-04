@@ -144,6 +144,15 @@ web:
   # over encrypted connections only. Switching it on for a plain http:// server
   # makes logging in impossible - the browser will quietly refuse to send the
   # cookie back - so it stays off by default.
+  # Mark session cookies "Secure" so browsers never send them over plain HTTP,
+  # and emit Strict-Transport-Security.
+  #
+  # Leave false when the portal is served over http:// - a Secure cookie is not
+  # sent to localhost at all, so signing in would silently fail. Set it TRUE the
+  # moment you put the portal behind HTTPS: without it a single plain-HTTP request
+  # leaks the session cookie, and it is the one setting whose wrong value is
+  # invisible until someone exploits it. The server warns at startup if the portal
+  # is enabled and this is false.
   # secure_cookies: false
 
   # Reverse-proxy support. When the website sits behind nginx/Caddy/Cloudflare,

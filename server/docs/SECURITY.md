@@ -405,6 +405,36 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 govulncheck ./...
 ```
 
+## The web portal
+
+A separate attack surface with its own bug classes, audited on its own terms.
+
+### Verified sound
+
+| Class | Finding |
+|---|---|
+| **XSS** | CSP is `default-src 'none'` with **no script source at all** — the portal ships no JavaScript, so a stored-XSS bug (a coach name, a guild name, a bug report) could not execute. The only `template.HTML` uses are two static Cloudflare email-obfuscation comments. |
+| **Clickjacking** | `frame-ancestors 'none'`. |
+| **CSRF** | Every state-changing POST goes through same-origin + an HMAC token bound to the **real** account id. |
+| **Session** | HMAC-SHA256 cookie, constant-time compare, TTL, `HttpOnly`, `SameSite=Lax`. The account row is re-read from the database on every request — the cookie is never a cache. |
+| **Authorization** | `/admin/*` gates on the **real** account, so impersonation grants a view and never a privilege. Password change and account deletion are refused while impersonating. |
+| **User enumeration** | One error message for "no such account" and "wrong password". |
+| **Brute force** | Login limited to 20 per 15 min per IP; registration 10/hour; bug reports 20/hour. |
+| **Open redirect** | `next` must start with `/` and not `//` — absolute and protocol-relative URLs rejected. |
+| **X-Forwarded-For spoofing** | Only believed behind configured `trusted_proxies`, taking the right-most untrusted hop, and **stopping on a malformed hop** rather than trusting further left. |
+| **SQL injection** | No string-built SQL anywhere; the single `Exec` is a hardcoded SQLite pragma. |
+| **File upload** | Bug-report screenshots: per-IP limit, `MaxBytesReader`, server-generated random name, `filepath.Base` guard on read-back. |
+| **Account deletion** | Requires the current password *and* typing the account name, and is refused while the account is connected in-game. |
+
+### Fixed here
+
+- **HSTS was missing.** Now sent, but **only when `secure_cookies` is true** — over plain HTTP it is at best ignored and at worst locks a developer out of their own `http://localhost` portal for a year. It follows the existing "this deployment is HTTPS" switch rather than adding a second flag an operator could set inconsistently. No `preload`: that is a months-long commitment to opt into deliberately.
+- **`secure_cookies` defaults to false and its wrong value is invisible.** False is correct over plain HTTP (a `Secure` cookie is not sent to localhost at all, so signing in would silently fail), and wrong the moment the portal is behind HTTPS — a single plain-HTTP request then leaks the session cookie. The server now **warns at startup** when the portal is enabled with it false, and the template says plainly when to flip it.
+
+### On account lockout — the same answer as the game server
+
+Not implemented, deliberately, and for the same reason: disabling an account after N failed passwords hands anyone who knows a name a way to lock its owner out at will. Per-IP throttling bounds guessing without giving anyone that lever, and the login form does not reveal which names exist, so an attacker cannot even confirm a target.
+
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped

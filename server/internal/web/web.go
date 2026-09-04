@@ -280,7 +280,7 @@ func (s *Server) Handler() http.Handler {
 	// a language before any route is matched, so every page keeps one handler
 	// and one registration while still having a distinct URL per language for
 	// crawlers to index.
-	return securityHeaders(s.localeRoutes(mux))
+	return securityHeadersHSTS(s.localeRoutes(mux), s.cfg.SecureCookies)
 }
 
 // serverName is the branding shown in the header and the page titles.
@@ -382,6 +382,18 @@ func redirect(w http.ResponseWriter, r *http.Request, to string) {
 // policy can forbid scripts outright. That is a real mitigation rather than a
 // formality: it means a stored-XSS bug in, say, a coach name could not execute.
 func securityHeaders(next http.Handler) http.Handler {
+	return securityHeadersHSTS(next, false)
+}
+
+// securityHeadersHSTS is securityHeaders plus Strict-Transport-Security when the
+// operator has declared the portal is served over HTTPS.
+//
+// HSTS is gated on secure_cookies rather than emitted unconditionally because
+// sending it over plain HTTP is at best ignored and at worst locks a local
+// developer out of their own http://localhost portal for a year. secure_cookies
+// is the existing "this deployment is HTTPS" switch, so one flag governs both
+// rather than adding a second one an operator can set inconsistently.
+func securityHeadersHSTS(next http.Handler, https bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
@@ -389,6 +401,12 @@ func securityHeaders(next http.Handler) http.Handler {
 				"font-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
+		if https {
+			// One year, subdomains included. No preload directive: preloading is a
+			// commitment the operator must opt into deliberately, since removal
+			// takes months.
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

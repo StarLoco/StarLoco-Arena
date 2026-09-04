@@ -108,6 +108,18 @@ func run(configPath, dataOverride string) error {
 		fmt.Println()
 	}
 
+	// SECURITY: a portal served over HTTPS with secure_cookies=false hands the
+	// session cookie to any plain-HTTP request the browser is tricked into making.
+	// The default is false because a Secure cookie is simply not sent over
+	// http://localhost, which would break local development - so the correct
+	// value differs by deployment and only the operator knows which they are.
+	// Saying so once at startup is the cheapest way to stop that being silent.
+	if cfg.Web.Enabled && !cfg.Web.SecureCookies {
+		log.Warn("web portal is enabled with secure_cookies=false - correct for " +
+			"plain HTTP, but if you serve the portal over HTTPS set " +
+			"web.secure_cookies: true so session cookies are never sent in clear")
+	}
+
 	srv := game.NewServer(cfg.Addr, deps)
 
 	// Bind both ports BEFORE announcing anything, so a port clash is reported
