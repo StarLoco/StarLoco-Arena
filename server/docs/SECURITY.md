@@ -302,6 +302,73 @@ they work in real play. Every combat fix here is unit- and e2e-verified but has
 never been seen in a real client. Closing that needs a machine where the client's
 assets load.
 
+## What this work does NOT protect against
+
+Every audit above assumed a **hostile client**: someone who controls their own
+game client and sends whatever they like. That is the realistic attacker for a
+game server, and it is now covered thoroughly.
+
+It is **not** the same as a network-position attacker, and one gap is worth
+stating plainly rather than leaving implied by the word "MITM".
+
+### The game protocol is plaintext, including the password
+
+There is no TLS on the game listener (`internal/game/server.go` accepts a raw
+`net.Conn`), and opcode 1025 carries credentials in the clear:
+
+```
+Payload: [u8 loginLen][login][u8 passLen][password]
+```
+
+So anyone with a network position between player and server — shared Wi-Fi, a
+hostile ISP, a compromised router — can **read every password** and modify traffic
+in flight. Passwords are bcrypt-hashed *at rest* (`repos.go`), which protects a
+stolen database and does nothing for a sniffed wire.
+
+**This cannot be fixed server-side alone.** The 2.70 client is fixed, it speaks
+plaintext, and the wire protocol is sacred here — adding TLS would make the retail
+client unable to connect, which is the one thing this project may not do.
+
+What an operator can actually do:
+
+- Terminate somewhere the client already reaches: a VPN, a WireGuard tunnel, or
+  `stunnel` in front of the port, for players willing to configure it.
+- **Assume game passwords are compromised.** Never reuse them, and keep the web
+  portal (which *is* HTTPS-capable) on a separate credential where it matters.
+- Treat the game socket as a hostile network at all times — which is what the rest
+  of this document is about.
+
+Recorded because "we secured it against MITM" would be false, and the distinction
+between *hostile client* (covered) and *hostile network* (not, and not fixable
+without breaking the client) is the kind of thing that gets lost.
+
+### Also out of scope, deliberately
+
+- **No account lockout.** Login is rate-limited per IP; a distributed attacker
+  with many addresses is not stopped. Lockout invites denial-of-service against a
+  known account name, so the throttle is the deliberate trade.
+- **No intrusion detection or alerting.** Refusals are logged (`Warn`/`Error`) but
+  nothing aggregates or alerts on them.
+- **Backups, key rotation and host hardening** are the operator's, not the
+  server's.
+
+## Dependency and toolchain vulnerabilities
+
+`govulncheck ./...` reports **0**, and it is worth keeping that way — this is the
+one class that decays on its own without anyone touching the code.
+
+Two real findings were fixed here: `github.com/jackc/pgx/v5` v5.6.0 → **v5.9.2**,
+and the Go toolchain 1.26.4 → **1.26.6** (seven reachable stdlib issues, including
+`crypto/tls` and `net/http`, which matter for the web portal). CI takes its
+version from `server/go.mod`, so the toolchain bump propagates automatically.
+
+Run it periodically:
+
+```powershell
+go install golang.org/x/vuln/cmd/govulncheck@latest
+govulncheck ./...
+```
+
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped
