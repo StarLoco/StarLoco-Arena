@@ -65,7 +65,27 @@ YAML config (`configs/config.*.yaml`). Env vars override the file.
 | `ARENA_WEB_PUBLIC_HOST` | hostname shown to players as the game address |
 | `ARENA_WEB_CLIENT_DOWNLOAD_URL` | link to the game client shown on the portal (blank by default, and blank hides it — see `DISCLAIMER.md` before setting it) |
 | `ARENA_WEB_CONTACT_EMAIL` | address published on `/legal` and `/privacy` for takedown and GDPR requests — **set this on a public server** |
-| `ARENA_WEB_SERVER_NAME` | site branding (defaults to "Arena Reborn") |
+| `ARENA_WEB_HOSTING_PROVIDER` | your host's legal entity + address, required in the legal notice |
+| `ARENA_WEB_SERVER_NAME` | site branding (defaults to the neutral "Arena Server") |
+| `ARENA_WEB_BRAND_DIR` | folder of logo/favicon/artwork overriding the built-in assets |
+
+### Branding
+
+The portal ships **white-label**: no logo, no favicon, no game artwork, and the
+server name rendered as text. That is deliberate — the published project must
+not carry any one operator's identity, nor artwork it has no rights to.
+
+Point `brand_dir` at a folder and any file in it replaces the built-in asset of
+the same name (`logo.png`, `favicon.ico`, `arena-bg.jpg`, `fighter-1.webp`,
+even `app.css`). Contents are hashed into the asset version, so a replaced logo
+busts browser caches by itself. Mount it read-only:
+
+```yaml
+volumes:
+  - ./branding:/app/branding:ro
+environment:
+  ARENA_WEB_BRAND_DIR: "/app/branding"
+```
 | `ARENA_UPDATE_CHECK_ENABLED` | startup "newer release available" notice |
 | `ARENA_DB_DRIVER` | sqlite / postgres / mysql |
 | `ARENA_DB_DSN` | connection string / file path |

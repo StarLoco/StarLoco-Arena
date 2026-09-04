@@ -98,6 +98,26 @@ web:
   # reachable. Empty renders an explanatory line instead of a broken link.
   # contact_email: "you@example.com"
 
+  # A folder holding your own branding, which replaces the built-in assets
+  # without rebuilding the binary or forking the project.
+  #
+  # What ships here is deliberately WHITE-LABEL: no logo, no favicon, no game
+  # artwork, and the server name renders as plain text. That keeps the public
+  # project free of any one operator's identity (and of artwork nobody here
+  # owns). Your deployment supplies its own.
+  #
+  # Any file you drop in shadows the built-in one of the same name:
+  #   logo.png            header and footer wordmark
+  #   logo-large.png      large mark on the landing page (+ logo-large-2x.png)
+  #   favicon.ico         browser tab icon (+ favicon-32.png, favicon-192.png)
+  #   apple-touch-icon.png
+  #   arena-bg.jpg/.webp  landing-page backdrop (+ -sm and -xl variants)
+  #   fighter-1.webp      decorative figures (+ -2x, and fighter-2*)
+  #   app.css             the whole stylesheet, if you want to restyle
+  #
+  # Relative paths resolve against the working directory, like the database.
+  # brand_dir: "branding"
+
   # The company hosting this server, shown in the legal notice.
   #
   # SET THIS IF YOUR SERVER IS PUBLIC, and give the legal entity plus its

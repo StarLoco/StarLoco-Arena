@@ -1,5 +1,5 @@
 {
-  "meta.description": "Arena Reborn - un serveur privé gratuit pour DofusArena 2.70, le jeu de PvP tactique de l'univers Dofus. Crée un compte et joue.",
+  "meta.description": "Un serveur communautaire gratuit pour DofusArena 2.70, le jeu de PvP tactique de l'univers Dofus. Crée un compte et joue.",
   "lang.label": "Langue",
 
   "nav.home": "Accueil",
@@ -29,6 +29,8 @@
   "index.online.some": "joueur(s) en ligne",
   "index.online.none": "Serveur en ligne",
   "index.eyebrow": "Le retour de",
+  "index.hero.title": "Dofus",
+  "index.hero.accent": "Arena",
   "index.lede": "Le légendaire jeu de PvP tactique de l'univers Dofus, ressuscité et maintenu en vie. Construis ton équipe, apprends le terrain, et gagne uniquement au talent — rien à farmer, rien à grinder.",
   "index.cta.account": "Mon compte",
   "index.cta.create": "Crée ton compte",

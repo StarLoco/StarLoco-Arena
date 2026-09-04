@@ -25,14 +25,12 @@
       </div>
 
       <div class="eyebrow reveal reveal-1">{{t "index.eyebrow"}}</div>
-      {{/* The logo art lives in the column on the right, so here the heading is
-           real text: it is the h1 a crawler reads, and on a phone it is what
-           shows above the fold. */}}
-      {{/* The game's name, not the server's: the logo beside it already says
-           Arena Reborn, and the brand is still carried by <title> and the meta
-           description. Not translated — it is a proper noun. */}}
+      {{/* The heading is real text rather than part of the logo art: it is the
+           h1 a crawler reads, and on a phone it is what shows above the fold.
+           It comes from the locale files so an operator can change what the
+           site calls itself without editing a template. */}}
       <h1 class="hero-title reveal reveal-1">
-        Dofus <span class="hero-accent">Arena</span>
+        {{t "index.hero.title"}} <span class="hero-accent">{{t "index.hero.accent"}}</span>
       </h1>
       <p class="lede reveal reveal-2">
         {{t "index.lede"}}
@@ -68,6 +66,7 @@
     {{/* srcset so a high-DPI screen gets the 920px art and everyone else keeps
          the 560px one: this is the largest thing above the fold, so it should
          be sharp without making every visitor pay for it. */}}
+    {{if .Brand.HeroLogo}}
     <div class="hero-art reveal reveal-2" aria-hidden="true">
       <img class="hero-logo" src="/static/logo-large.png?v={{.AssetVersion}}"
            srcset="/static/logo-large.png?v={{.AssetVersion}} 560w,
@@ -75,6 +74,7 @@
            sizes="(max-width: 900px) 78vw, 460px"
            alt="" width="560" height="388" fetchpriority="high" decoding="async">
     </div>
+    {{end}}
   </div>
 </section>
 
@@ -151,6 +151,7 @@
       <div class="cta-aura" aria-hidden="true"></div>
       <div class="blob blob-accent" style="width:360px;height:360px;left:50%;margin-left:-180px;top:-200px" aria-hidden="true"></div>
 
+      {{if .Brand.Fighters}}
       <img class="cta-fighter cta-fighter-l"
            src="/static/fighter-1.webp?v={{.AssetVersion}}"
            srcset="/static/fighter-1.webp?v={{.AssetVersion}} 423w,
@@ -163,6 +164,7 @@
                    /static/fighter-2-2x.webp?v={{.AssetVersion}} 748w"
            sizes="270px" width="374" height="520"
            alt="" aria-hidden="true" loading="lazy" decoding="async">
+      {{end}}
 
       <div class="cta-content">
         <div class="eyebrow eyebrow-center">{{t "index.get.eyebrow"}}</div>

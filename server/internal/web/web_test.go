@@ -256,9 +256,11 @@ func TestServerNameBrandsThePage(t *testing.T) {
 
 func TestStaticAssetsAreServed(t *testing.T) {
 	s, _ := newTestServer(t, nil)
+	// Only the identity-free assets are embedded. The logo, the favicons and
+	// the game artwork are operator-supplied through web.brand_dir, so a
+	// default build serves none of them - see TestUnbrandedByDefault.
 	for _, tc := range []struct{ path, contains string }{
 		{"/static/app.css", "--accent"},
-		{"/static/favicon.svg", "<svg"},
 	} {
 		rec := get(t, s, tc.path)
 		if rec.Code != http.StatusOK {

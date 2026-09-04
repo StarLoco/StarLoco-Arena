@@ -6,13 +6,16 @@
 <title>{{if .Title}}{{.Title}} — {{end}}{{.ServerName}}</title>
 <meta name="description" content="{{t "meta.description"}}">
 <meta name="color-scheme" content="dark">
-  {{/* No SVG entry any more: browsers PREFER image/svg+xml when it is offered,
-       so leaving one listed would keep the old placeholder mark winning over
-       these. */}}
+  {{/* Favicons come from web.brand_dir. Emitted only when the operator
+       actually supplied them: pointing at files that are not there would make
+       every page load fetch a 404. No SVG entry - browsers PREFER
+       image/svg+xml when offered, which would let one win over all of these. */}}
+  {{if .Brand.Favicon}}
   <link rel="icon" href="/favicon.ico?v={{.AssetVersion}}" sizes="any">
   <link rel="icon" href="/static/favicon-32.png?v={{.AssetVersion}}" type="image/png" sizes="32x32">
   <link rel="icon" href="/static/favicon-192.png?v={{.AssetVersion}}" type="image/png" sizes="192x192">
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{.AssetVersion}}">
+  {{end}}
+  {{if .Brand.AppleIcon}}<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{.AssetVersion}}">{{end}}
 
 <link rel="stylesheet" href="/static/app.css?v={{.AssetVersion}}">
 
@@ -44,9 +47,16 @@
 
 <header class="site-header">
   <div class="container header-inner">
+    {{/* The wordmark is an operator-supplied image. Without one the server's
+         name stands in as text, so an unbranded deployment still reads as a
+         site rather than as a broken image. */}}
     <a class="brand" href="{{path "/"}}">
-      <img class="brand-logo" src="/static/logo.png?v={{.AssetVersion}}"
-           alt="{{.ServerName}}" width="280" height="194">
+      {{if .Brand.Logo}}
+        <img class="brand-logo" src="/static/logo.png?v={{.AssetVersion}}"
+             alt="{{.ServerName}}" width="280" height="194">
+      {{else}}
+        <span class="brand-wordmark">{{.ServerName}}</span>
+      {{end}}
     </a>
     <nav class="nav">
       <a class="navlink {{if eq .NavKey "home"}}is-current{{end}}" href="{{path "/"}}">{{t "nav.home"}}</a>
@@ -85,8 +95,12 @@
     <div class="footer-grid">
       <div>
         <a class="brand" href="{{path "/"}}">
-          <img class="brand-logo brand-logo-sm" src="/static/logo.png?v={{.AssetVersion}}"
-               alt="{{.ServerName}}" width="280" height="194">
+          {{if .Brand.Logo}}
+            <img class="brand-logo brand-logo-sm" src="/static/logo.png?v={{.AssetVersion}}"
+                 alt="{{.ServerName}}" width="280" height="194">
+          {{else}}
+            <span class="brand-wordmark brand-wordmark-sm">{{.ServerName}}</span>
+          {{end}}
         </a>
         <p class="mt-2 small mb-0">{{t "footer.tagline"}}</p>
         {{/* /discord is deliberately not language-prefixed (see

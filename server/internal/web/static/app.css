@@ -883,6 +883,19 @@ td strong, th strong { color: var(--text-primary); }
 }
 .brand-logo-sm { height: 44px; }
 
+/* Text stand-in for the wordmark when no logo.png is supplied through
+   web.brand_dir. The published project ships unbranded, so this is what a
+   fresh deployment shows until an operator drops their own mark in. */
+.brand-wordmark {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.brand-wordmark-sm { font-size: 1.25rem; }
+
 .hero-title { margin-bottom: 1rem; }
 .hero-logo {
   display: block;

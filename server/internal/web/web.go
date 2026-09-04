@@ -79,6 +79,12 @@ type Server struct {
 	tmpl  map[string]*templateSet
 	cat   catalog
 
+	// brand and assetVersion describe the operator's own branding, read once
+	// from web.brand_dir at startup. assetVersion folds those files into the
+	// cache-busting hash so a replaced logo actually reaches browsers.
+	brand        brandAssets
+	assetVersion string
+
 	// limiter caps account creation, loginLimiter caps sign-in attempts. They
 	// are separate because the right allowance differs by an order of
 	// magnitude: creating ten accounts an hour from one address is already
@@ -137,6 +143,15 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 			"proxies", cfg.TrustedProxies)
 	}
 
+	brand := scanBrand(cfg.BrandDir)
+	if cfg.BrandDir != "" {
+		log.Info("web: serving operator branding", "dir", cfg.BrandDir,
+			"logo", brand.Logo, "favicon", brand.Favicon)
+	} else {
+		log.Info("web: no web.brand_dir configured - the portal will render " +
+			"unbranded (server name as text, no logo or favicon)")
+	}
+
 	return &Server{
 		store:          st,
 		cfg:            cfg,
@@ -147,6 +162,8 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 		codec:          codec,
 		tmpl:           tmpl,
 		cat:            cat,
+		brand:          brand,
+		assetVersion:   brandAssetVersion(cfg.BrandDir),
 		// A generous allowance for a household or guild sharing one address,
 		// but low enough that the form cannot be used to hammer the database.
 		limiter: newLimiter(10, time.Hour),
@@ -170,13 +187,15 @@ func New(st *store.Store, cfg config.WebConfig, gameAddr string, live Live, log 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Embedded assets: stylesheet, fonts, favicon.
-	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(staticFileServer())))
+	// Static assets: the operator's brand_dir where it supplies a file, the
+	// embedded stylesheet and fonts otherwise.
+	static := staticFileServer(s.cfg.BrandDir)
+	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(static)))
 	// Served directly rather than redirected. Browsers request this path
 	// implicitly and cache a 301 here very aggressively, so the old permanent
 	// redirect to favicon.svg outlived the file it pointed at.
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.StripPrefix("/", cacheStatic(staticFileServer())).ServeHTTP(w, r)
+		http.StripPrefix("/", cacheStatic(static)).ServeHTTP(w, r)
 	})
 
 	// Public.
@@ -266,16 +285,18 @@ func (s *Server) Handler() http.Handler {
 
 // serverName is the branding shown in the header and the page titles.
 //
-// The fallback is "Arena Reborn", not "DofusArena". DofusArena is Ankama's
-// trademark: describing what the server runs is referential use and is fine,
-// but taking the mark as the site's OWN name is the thing that turns a
-// preservation project into a source-of-confusion problem. An operator can set
-// web.server_name to whatever they like; what they get for free is neutral.
+// The fallback is a generic placeholder on purpose, and is neither "DofusArena"
+// nor any existing server's name. DofusArena is Ankama's trademark - describing
+// what the server runs is referential use and is fine, but taking the mark as
+// the site's own identity invites a confusion claim. And defaulting to some
+// other operator's brand would make every fork impersonate them.
+//
+// Set web.server_name. What ships is deliberately anonymous.
 func (s *Server) serverName() string {
 	if n := strings.TrimSpace(s.cfg.ServerName); n != "" {
 		return n
 	}
-	return "Arena Reborn"
+	return "Arena Server"
 }
 
 func (s *Server) playersOnline() int {

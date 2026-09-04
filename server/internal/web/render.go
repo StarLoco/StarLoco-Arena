@@ -9,6 +9,10 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,8 +23,52 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
-//go:embed static/app.css static/favicon.svg static/favicon.ico static/favicon-32.png static/favicon-192.png static/favicon-512.png static/apple-touch-icon.png static/logo.png static/logo-large.png static/logo-large-2x.png static/arena-bg.jpg static/arena-bg-sm.jpg static/arena-bg.webp static/arena-bg-sm.webp static/arena-bg-xl.jpg static/arena-bg-xl.webp static/fighter-1.webp static/fighter-1-2x.webp static/fighter-2.webp static/fighter-2-2x.webp static/fighter-3.webp static/fighter-3-2x.webp static/fonts/*.woff2
+// Only the assets that carry no identity: the stylesheet and two OFL-licensed
+// webfonts. Everything that says WHO runs the site - logo, favicons - and
+// everything derived from the game's own artwork - the arena backdrop, the
+// fighter illustrations - is deliberately NOT here.
+//
+// That is what makes the published project white-label. A fork carries no
+// operator's brand and no publisher's artwork; a deployment supplies both
+// through web.brand_dir, and the templates degrade to plain text when it is
+// absent rather than rendering broken images.
+//
+//go:embed static/app.css static/fonts/*.woff2
 var staticFS embed.FS
+
+// brandableAssets are the files an operator supplies through web.brand_dir.
+// Listed explicitly so the portal can tell whether each exists and render
+// accordingly - a missing logo becomes the server's name in text, missing
+// favicons emit no <link> at all.
+var brandableAssets = []string{
+	"logo.png", "logo-large.png", "logo-large-2x.png",
+	"favicon.ico", "favicon-32.png", "favicon-192.png", "apple-touch-icon.png",
+	"fighter-1.webp", "fighter-1-2x.webp", "fighter-2.webp", "fighter-2-2x.webp",
+	"arena-bg.jpg", "arena-bg.webp", "arena-bg-sm.jpg", "arena-bg-sm.webp",
+	"arena-bg-xl.jpg", "arena-bg-xl.webp",
+}
+
+// brandAssets records which optional assets a deployment actually provides.
+// Computed once at startup: brand_dir is operator configuration, not something
+// that changes under a running server.
+type brandAssets struct {
+	Logo      bool // header + footer wordmark
+	HeroLogo  bool // the large mark on the landing page
+	Fighters  bool // decorative figures on the call-to-action band
+	Favicon   bool
+	AppleIcon bool
+}
+
+func scanBrand(dir string) brandAssets {
+	have := brandedFiles(dir)
+	return brandAssets{
+		Logo:      have["logo.png"],
+		HeroLogo:  have["logo-large.png"],
+		Fighters:  have["fighter-1.webp"] && have["fighter-2.webp"],
+		Favicon:   have["favicon.ico"],
+		AppleIcon: have["apple-touch-icon.png"],
+	}
+}
 
 // templateFuncs are the helpers available inside every template. They are
 // presentation-only on purpose: anything that decides something belongs in a
@@ -260,6 +308,58 @@ func parseTemplates(funcs template.FuncMap) (*templateSet, error) {
 	return set, nil
 }
 
+// ---------------------------------------------------------------------------
+// Branding overrides
+// ---------------------------------------------------------------------------
+
+// brandFS serves an operator's own assets in preference to the embedded ones.
+//
+// The published project is white-label: it carries no logo, no favicon and no
+// game artwork, because those are the operator's identity (and, for the arena
+// art, somebody else's copyright). A deployment points web.brand_dir at a
+// folder and any file in it shadows the embedded copy of the same name —
+// logo.png, favicon.ico, arena-bg.jpg, even app.css.
+//
+// Missing directory, missing file and traversal attempts all fall through to
+// the embedded asset, so a misconfigured brand_dir degrades to the plain
+// unbranded site rather than to a broken one.
+type brandFS struct {
+	dir      string // operator overrides, "" when unconfigured
+	embedded http.FileSystem
+}
+
+func (b brandFS) Open(name string) (http.File, error) {
+	if b.dir != "" {
+		clean := path.Clean("/" + name) // strips .. before it can escape
+		if f, err := os.Open(filepath.Join(b.dir, filepath.FromSlash(clean))); err == nil {
+			if st, err := f.Stat(); err == nil && !st.IsDir() {
+				return f, nil
+			}
+			_ = f.Close()
+		}
+	}
+	return b.embedded.Open(name)
+}
+
+// brandedFiles lists the override files present, used both to hash them into
+// the asset version and to decide whether a logo exists at all.
+func brandedFiles(dir string) map[string]bool {
+	out := make(map[string]bool)
+	if dir == "" {
+		return out
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			out[e.Name()] = true
+		}
+	}
+	return out
+}
+
 // assetVersion is a short content hash of every embedded static file, used to
 // fingerprint the stylesheet's URL.
 //
@@ -295,15 +395,41 @@ func computeAssetVersion() string {
 	return hex.EncodeToString(sum.Sum(nil))[:12]
 }
 
-// staticFileServer serves the embedded static directory.
-func staticFileServer() http.Handler {
+// staticFileServer serves the static directory: the operator's brand_dir where
+// it has a file, the embedded copy otherwise.
+func staticFileServer(brandDir string) http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		// The FS is embedded at compile time; a failure here is a bug, not a
 		// runtime condition.
 		panic(fmt.Sprintf("web: static sub-fs: %v", err))
 	}
-	return http.FileServer(http.FS(sub))
+	return http.FileServer(brandFS{dir: brandDir, embedded: http.FS(sub)})
+}
+
+// brandAssetVersion extends the embedded hash with the operator's overrides,
+// so replacing a logo changes every asset URL and browsers pick it up instead
+// of serving the previous one from a year-long cache.
+func brandAssetVersion(dir string) string {
+	if dir == "" {
+		return assetVersion
+	}
+	sum := sha256.New()
+	sum.Write([]byte(assetVersion))
+	names := make([]string, 0, 16)
+	for n := range brandedFiles(dir) {
+		names = append(names, n)
+	}
+	sort.Strings(names) // stable across runs and machines
+	for _, n := range names {
+		b, err := os.ReadFile(filepath.Join(dir, n))
+		if err != nil {
+			continue
+		}
+		sum.Write([]byte(n))
+		sum.Write(b)
+	}
+	return hex.EncodeToString(sum.Sum(nil))[:12]
 }
 
 // ---------------------------------------------------------------------------
@@ -329,8 +455,12 @@ type baseData struct {
 	ServerName          string
 	RegistrationEnabled bool
 	ClientDownloadURL   string
-	MinLogin            int
-	MinPassword         int
+	// Brand says which optional branding assets this deployment supplies, so
+	// templates can fall back to text instead of requesting an image that is
+	// not there.
+	Brand       brandAssets
+	MinLogin    int
+	MinPassword int
 
 	PlayersOnline int
 	ActiveFights  int
@@ -381,7 +511,8 @@ func (s *Server) newBase(w http.ResponseWriter, r *http.Request, title, navKey s
 		Flash:               consumeFlash(w, r),
 		Year:                time.Now().Year(),
 		Version:             version.Short(),
-		AssetVersion:        assetVersion,
+		AssetVersion:        s.assetVersion,
+		Brand:               s.brand,
 		GameAddr:            s.gameAddress(r),
 		ServerName:          s.serverName(),
 		RegistrationEnabled: s.cfg.RegistrationEnabled,
