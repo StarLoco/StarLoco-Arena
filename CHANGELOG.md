@@ -1,5 +1,113 @@
 # Changelog
 
+## [0.6.0](https://github.com/StarLoco/StarLoco-Arena/compare/v0.5.1...v0.6.0) (2026-09-04)
+
+
+### Features
+
+* **ai:** AP efficiency, safer positioning, hazard-aware movement (item 18) ([9cd0a5f](https://github.com/StarLoco/StarLoco-Arena/commit/9cd0a5fa91767a3f2820d934c9c6b8a28804b234))
+* **ai:** heal wounded allies (item 18) - the missing half of spell targeting ([eccd34e](https://github.com/StarLoco/StarLoco-Arena/commit/eccd34e38dc6dce363dc0a03ff2076357b9e4633))
+* **ai:** honest knowledge model + human-like targeting (item 18) ([548767d](https://github.com/StarLoco/StarLoco-Arena/commit/548767d0f3569ab8104d49503e51335cf1728716))
+* **chat:** send the real refusal errors for GM commands (3206, 3210) ([a373ff7](https://github.com/StarLoco/StarLoco-Arena/commit/a373ff7f6ddfc2f35396307754d5619a8101d513))
+* **chat:** tell the player why a chat action was refused (3214), and correct my own triage ([a864236](https://github.com/StarLoco/StarLoco-Arena/commit/a864236cbc41f3b86a9610ba117ff8260a0be664))
+* **config:** make the server-invented numbers configurable under rules: (item 7) ([75b7e5f](https://github.com/StarLoco/StarLoco-Arena/commit/75b7e5fe5df7caa7c0e5bf46a1cbbac44aa124d4))
+* **emotes:** implement the emote system (4701/4700) (B-134) ([97e72a0](https://github.com/StarLoco/StarLoco-Arena/commit/97e72a02eeeaf41e7435bed7cc8ad543f7655d55))
+* **fight:** fighters say "ouch !" on a critical hit (4902) (B-138) ([171b05c](https://github.com/StarLoco/StarLoco-Arena/commit/171b05cd2e323a9fc8cf20a642c74bea4555b161))
+* **gm:** server-wide announcements via /ANNOUNCE (2070) ([092c9ff](https://github.com/StarLoco/StarLoco-Arena/commit/092c9ff51e7be3a3139a1fc07ce7a541fd37f5c5))
+* **mcp:** let arena_up choose which server the client connects to ([5b286e2](https://github.com/StarLoco/StarLoco-Arena/commit/5b286e2fd9cfc998b8b4f9009f4bd7756f5e9b78))
+* **overworld:** implement /resetPosition, and decode the rest of the 4xxx cluster (B-135) ([40976a5](https://github.com/StarLoco/StarLoco-Arena/commit/40976a527cda6fa5204ad439eb8dca0101b2a0a5))
+* **overworld:** implement sitting - /sit, /stand, stand on move (B-139) ([ed8b32d](https://github.com/StarLoco/StarLoco-Arena/commit/ed8b32de72abb8f205ca0b7901ed526ec56fa90e))
+* **overworld:** same-world teleports use 4510 instead of re-entering the instance (B-142) ([df2d02e](https://github.com/StarLoco/StarLoco-Arena/commit/df2d02e57ffd17faf2838f7cff6534abef4867a8))
+* **security:** connection caps, timeouts, login throttle, and opt-out auto-admin ([087ff89](https://github.com/StarLoco/StarLoco-Arena/commit/087ff8904deebe757f976b2be3b635121f781fe0))
+* **social:** cap the friend/ignore lists and refuse with 3216 (B-133) ([8722a42](https://github.com/StarLoco/StarLoco-Arena/commit/8722a42cb8846980d3f237967e87bed6d7198c5c))
+* **stats:** populate the player statistics report (2401) (B-141) ([58b10a6](https://github.com/StarLoco/StarLoco-Arena/commit/58b10a6d68931b1a27bcf2e8ce6b9bb3493235b2))
+* **web:** add legal, privacy and terms pages, and self-service erasure ([5ad9c49](https://github.com/StarLoco/StarLoco-Arena/commit/5ad9c491922474aa263f520680f58e5c63f653af))
+* **web:** complete the legal pages against the obligations they missed ([6293b44](https://github.com/StarLoco/StarLoco-Arena/commit/6293b4443fdb8033976b8cfbcf4688b64a8d113f))
+* **web:** green online dot, fighter-framed CTA, tidier footer, no grid ([21d053b](https://github.com/StarLoco/StarLoco-Arena/commit/21d053be92ae96e04baf94c9833c7f15610387d5))
+* **web:** higher-quality logo, with a retina variant for the hero ([5b0ba03](https://github.com/StarLoco/StarLoco-Arena/commit/5b0ba03605aa1f62b8fed89854d83e3280479c71))
+* **web:** make the portal white-label ([ad8232f](https://github.com/StarLoco/StarLoco-Arena/commit/ad8232fd18a298a0982a02c4d1e0f1edb6efae80))
+* **web:** plain-http bug-report listener, because the 2012 client cannot do TLS ([01292f1](https://github.com/StarLoco/StarLoco-Arena/commit/01292f16fcb6518606f0f61ef016bb831874c0e6))
+* **web:** put the locale in the URL (/en /fr /es /de) and use the logo ([90557ee](https://github.com/StarLoco/StarLoco-Arena/commit/90557ee249ea3a23681c315a443c97347143935b))
+* **web:** real favicon from the AR mark, and a simpler hero headline ([973e12d](https://github.com/StarLoco/StarLoco-Arena/commit/973e12d573cee9b1fe881cf4ebfe32cb79f0dd8f))
+* **web:** receive the client's own bug reports and triage them in the console ([18906b8](https://github.com/StarLoco/StarLoco-Arena/commit/18906b88a1810057f9c015bacb8c7857a80d4a2e))
+* **web:** serve /discord and the login screen's account link ([9d593a3](https://github.com/StarLoco/StarLoco-Arena/commit/9d593a3fc9bb7e2d7161cd315a00c69516618a0e))
+* **web:** translate the portal into FR, EN, ES and DE ([19ed900](https://github.com/StarLoco/StarLoco-Arena/commit/19ed900b1557071c9eea41a4b9c73ff26e693e33))
+* **web:** trust X-Forwarded-For from configured proxies so rate limits stay per-visitor ([3a4b7b7](https://github.com/StarLoco/StarLoco-Arena/commit/3a4b7b76f5e6da354cc7cb62e4068212c762b3e5))
+
+
+### Bug fixes
+
+* **2v2:** tell the surviving partner when the other half disconnects (B-132) ([6063a85](https://github.com/StarLoco/StarLoco-Arena/commit/6063a85189148218bacbef6dee402d7c3058226f))
+* **chat:** answer unknown slash-commands with the translated 3206 (B-140) ([bd32ea6](https://github.com/StarLoco/StarLoco-Arena/commit/bd32ea60abf6a3ca389a1e3a5432ed8989b9c070))
+* **config:** stop publishing a client download link by default ([23e372f](https://github.com/StarLoco/StarLoco-Arena/commit/23e372f71b9fde977c0f82d88afcd2140cc257ff))
+* **deps:** patch 8 reachable CVEs, and document the plaintext-transport limit ([236fdb3](https://github.com/StarLoco/StarLoco-Arena/commit/236fdb36981c5fac7069bad4b8de81b0a998214f))
+* **docker:** bug-report screenshots failed with permission denied ([70df327](https://github.com/StarLoco/StarLoco-Arena/commit/70df3274ff7d800e3e5fdbae298deaa68e9159dd))
+* **emotes:** address 4700 by AoI membership, not proximity (B-136) ([fe5c983](https://github.com/StarLoco/StarLoco-Arena/commit/fe5c983076e8f792499c567b1aee5286455523b3))
+* **security:** close 6021 team-preset IDOR and roster duplication ([018d33b](https://github.com/StarLoco/StarLoco-Arena/commit/018d33b32ec0d869b4866d061212dd8056859786))
+* **security:** close the last client-enforced-rule gaps, and prove the rest are unreachable ([3b85cf3](https://github.com/StarLoco/StarLoco-Arena/commit/3b85cf3157571d0a6771b49f5f4eb9dca87b92bb))
+* **security:** close the last combat validation gaps ([3eac079](https://github.com/StarLoco/StarLoco-Arena/commit/3eac079f7c3ec39abd4e1a05224d236e51508bb5))
+* **security:** close the last small items - guild orphaning, roster cap, 28649, currency overflow ([0409728](https://github.com/StarLoco/StarLoco-Arena/commit/04097283f2ef31746033393365b013fbafb5d3c9))
+* **security:** close the remaining Medium and Low findings ([3b91c37](https://github.com/StarLoco/StarLoco-Arena/commit/3b91c37eabfa3580707bf9f538a15bc458f66de7))
+* **security:** close two unbounded card-minting holes (22003 and 5450) ([86b234b](https://github.com/StarLoco/StarLoco-Arena/commit/86b234ba39b36015d9b801464f1f6256fe433793))
+* **security:** contain panics and close two remote full-server crashes ([7682bf3](https://github.com/StarLoco/StarLoco-Arena/commit/7682bf351f21546cd643ae87b5b493b4049c4584))
+* **security:** enforce the card, equipment and inventory rules the client checks ([80f2aa7](https://github.com/StarLoco/StarLoco-Arena/commit/80f2aa764bac81b464570d72b86b3a9af08a6042))
+* **security:** enforce the roster and combat rules retail enforced server-side ([87c10e9](https://github.com/StarLoco/StarLoco-Arena/commit/87c10e95ad6da1efad0b7f85f0217f6e14e05840))
+* **security:** final sweep - progression, tournaments, guilds, debug endpoint ([6b54650](https://github.com/StarLoco/StarLoco-Arena/commit/6b54650fac90ea8631d350fa4e917a9db0f76b92))
+* **security:** reject empty/unusable fighter, team, guild and rank names ([a179b29](https://github.com/StarLoco/StarLoco-Arena/commit/a179b29ebd6554c65e4add8b50a4eaae8e8ee554))
+* **security:** retire the post-fight staleness class, add packet-rate control ([c271ae9](https://github.com/StarLoco/StarLoco-Arena/commit/c271ae99dd58693c67bd4e0e06b96d457b95fe3b))
+* **security:** sanitize and throttle channel chat (3140) ([d08e45b](https://github.com/StarLoco/StarLoco-Arena/commit/d08e45bddc2e8b6951fe57779f5af814c6c9b858))
+* **security:** stop duplicate logins leaking coach state into every subsystem ([ec69ce7](https://github.com/StarLoco/StarLoco-Arena/commit/ec69ce7fb587cd06c86288a4d2d1e6556c695a5e))
+* **security:** validate coach names server-side and stop coach-creation replay ([196073d](https://github.com/StarLoco/StarLoco-Arena/commit/196073df54d52d65e41bc81c095b1937b63ad80c))
+* **security:** validate spell loadouts against the fighter's breed (6011/6001) ([6dd5663](https://github.com/StarLoco/StarLoco-Arena/commit/6dd5663ccad4c9ea06bba466a9de9c2297484151))
+* **store:** coach creation failed on postgres (COLLATE NOCASE is SQLite-only) ([a65b170](https://github.com/StarLoco/StarLoco-Arena/commit/a65b170509767c93ce104e24062b650aea533cfb))
+* **team:** acknowledge a deleted preset so the client drops it (B-130) ([6561c0f](https://github.com/StarLoco/StarLoco-Arena/commit/6561c0f0ab3370186d3aceb12562dc97f0db90a4))
+* **team:** refuse a duplicate preset name with the client's own error (B-131) ([c15b4d8](https://github.com/StarLoco/StarLoco-Arena/commit/c15b4d82a9c6a2ace2b117cc427654938badc87e))
+* **web:** add HSTS behind HTTPS, warn on secure_cookies, document the portal audit ([76dc838](https://github.com/StarLoco/StarLoco-Arena/commit/76dc838687dbb5008c0746f871ea753607ad1efd))
+* **web:** keep the contact address readable behind a CDN ([5f8cadb](https://github.com/StarLoco/StarLoco-Arena/commit/5f8cadb726964d910d33ceaaad6990704e4b9cc0))
+* **web:** keep the hero headline on one line ([3499199](https://github.com/StarLoco/StarLoco-Arena/commit/34991999a1625be7e5c21ea66de242fc94d43647))
+* **web:** run the hero art the full width, fading into both borders ([bfc6a98](https://github.com/StarLoco/StarLoco-Arena/commit/bfc6a983fbf79156862479fa7cb50d9d460676f6))
+* **web:** stop cropping the header logo, and rebuild the hero around the art ([d91049c](https://github.com/StarLoco/StarLoco-Arena/commit/d91049ccf4dc185b470674249d9b0991cb095925))
+* **web:** the Home link was a dead end once signed in, and stop printing the game address ([418e8a1](https://github.com/StarLoco/StarLoco-Arena/commit/418e8a11ffd768c1008fc95055f3d7808b43ebfa))
+
+
+### Performance
+
+* **e2e:** run the wire suite in parallel - 141s to ~15s ([b6328bf](https://github.com/StarLoco/StarLoco-Arena/commit/b6328bf0d2c393f64a71ee34fd95ca17d484df77))
+
+
+### Documentation
+
+* **bugs:** B-132 - bound the 6029 claim with live-client evidence ([f6e5e62](https://github.com/StarLoco/StarLoco-Arena/commit/f6e5e62b499199cd4bea055cfac9ac78db35a47b))
+* **bugs:** B-137 - ran the experiment; the duplicate is rejected, not destructive ([bafd643](https://github.com/StarLoco/StarLoco-Arena/commit/bafd643ebf7204b7cd1e803574cbbe8dacb05a55))
+* **bugs:** file B-137 - same-world re-enter duplicates interactive elements (open) ([a16c21b](https://github.com/StarLoco/StarLoco-Arena/commit/a16c21b1a417c593cd37e7fa24f61e073330390d))
+* **client-testing:** in-fight frames cannot be live-validated here, and why ([0468172](https://github.com/StarLoco/StarLoco-Arena/commit/0468172e520b871c943d4579caaf19e7d8de6f56))
+* in-fight frames ARE live-validatable - the recorded limit was wrong ([122287b](https://github.com/StarLoco/StarLoco-Arena/commit/122287b861b3979b025d4f60dd56e2e844b4f8a6))
+* **inventory:** close item 14/6 - server-assigned card uids are impossible, with proof ([cbdd9ea](https://github.com/StarLoco/StarLoco-Arena/commit/cbdd9eaa08b83b4089aa578be190efd8fba5accc))
+* **opcodes:** decode 6032 as the COACH condition map, and close out the dx_2 family ([f4adf78](https://github.com/StarLoco/StarLoco-Arena/commit/f4adf78904e584ece9ecebe87a94b8e07fc7c879))
+* **opcodes:** decode the 0xx connection-stage cluster, and correct the "console is dead" claim ([bf088f2](https://github.com/StarLoco/StarLoco-Arena/commit/bf088f28ede17dff4c8f5375bbab4176a385d7b8))
+* **opcodes:** decode the scattered 2xxx/5xxx/8xxx/17xxx/25xxx rows ([6ebc120](https://github.com/StarLoco/StarLoco-Arena/commit/6ebc12021de42d867bd89d141ab5b942b5784d33))
+* **opcodes:** document the 28xxx tournament cluster, and correct a correction ([056d909](https://github.com/StarLoco/StarLoco-Arena/commit/056d909d38f5649ed7eb298cccb05b60c2bd34cc))
+* **opcodes:** finish the last vague rows; the dead-claim test caught one of them ([7409278](https://github.com/StarLoco/StarLoco-Arena/commit/740927812b02396641e8ec6d5d6fe018cf54b127))
+* **opcodes:** give the fight-setup and actor-batch rows real reasons ([d6e495f](https://github.com/StarLoco/StarLoco-Arena/commit/d6e495f8a703995aefdd22b63d4d82315dcbb36d))
+* **opcodes:** pin 6014 and stop short of implementing it ([fa0a606](https://github.com/StarLoco/StarLoco-Arena/commit/fa0a606d893fae41cdde5f55d8591e81a38673bf))
+* **opcodes:** read the dx_2 team-preset family and record what each reply does ([45f1098](https://github.com/StarLoco/StarLoco-Arena/commit/45f10988b7f7f28cc7b3b9ab3c6b8022b024fca1))
+* **opcodes:** record the negative results, starting with chat flood having no S2C frame ([cdd3dd3](https://github.com/StarLoco/StarLoco-Arena/commit/cdd3dd3a1f3cf8948d39e58a4ea159e1370c0bdf))
+* **opcodes:** the channel family is a no-op consumer, not a feature gap ([4069c78](https://github.com/StarLoco/StarLoco-Arena/commit/4069c78dfe46a49c5d581d28fff7da0919230745))
+* **opcodes:** triage all 100 unimplemented opcodes into work and non-work ([6745ca9](https://github.com/StarLoco/StarLoco-Arena/commit/6745ca940618d5d5747364efdef2b0bc9e861a0e))
+* record B-125 (postgres COLLATE NOCASE) and B-126 (proxied rate limits) ([f120dd2](https://github.com/StarLoco/StarLoco-Arena/commit/f120dd293bfa39acabd4c70ee235fce175bd4ece))
+* record B-127 and the bug-report feature; MCP points bugReportURL at the selected server ([c79475c](https://github.com/StarLoco/StarLoco-Arena/commit/c79475c5d3de2ec692a9b38d8489f834ef3796ac))
+* **roadmap:** close item 18, and catch the stale claim that closing it exposed ([a6f35e7](https://github.com/StarLoco/StarLoco-Arena/commit/a6f35e7f061b19eb218bf7c1ce685472c949e005))
+* **roadmap:** finish item 14 - pin the 5203 blocker in CI and repair the item ([7403fcf](https://github.com/StarLoco/StarLoco-Arena/commit/7403fcfd1156ead7d743414d9c45248f2a03fa6d))
+* **security:** record the client-enforced-rule hunt and correct the budget entry ([fc35541](https://github.com/StarLoco/StarLoco-Arena/commit/fc355417209a54a0f9013ba792cd83ae0abcb041))
+* **security:** record the final sweep and a fifth testing rule ([354eea7](https://github.com/StarLoco/StarLoco-Arena/commit/354eea7849c4fc90a5e5a957592a2bf02edacde7))
+* **security:** record the full audit - fixed, and explicitly NOT fixed ([5be92f5](https://github.com/StarLoco/StarLoco-Arena/commit/5be92f5112f99d846c06881b17b89ad8c59caac8))
+* **security:** record the remaining open items honestly ([0670823](https://github.com/StarLoco/StarLoco-Arena/commit/06708230135e83459bb50f8718721cacee78512f))
+* **security:** record the second pass; audit is fully remediated ([77b260b](https://github.com/StarLoco/StarLoco-Arena/commit/77b260b17953130dbfff6019fdd3ec877d68fcd4))
+* **stats:** 2401 is not Java-serialized - correct the estimate that was blocking it ([f8f4b52](https://github.com/StarLoco/StarLoco-Arena/commit/f8f4b52164147c5c4ce08a9502d038af9e6ccb40))
+* **status:** record the compliance pass and correct the mirror-link claims ([28d021a](https://github.com/StarLoco/StarLoco-Arena/commit/28d021ae082cd2c5c2fa94f7098233540027ce6a))
+* **web:** make the client wording true when an operator links a copy ([3c6093f](https://github.com/StarLoco/StarLoco-Arena/commit/3c6093fa69167d969df04bd749751e94262c1e32))
+* **web:** state plainly that we provide a pre-configured client ([06d8525](https://github.com/StarLoco/StarLoco-Arena/commit/06d8525a6baae958b811c5dbf4eda928a71741c1))
+
 ## [0.5.1](https://github.com/StarLoco/StarLoco-Arena/compare/v0.5.0...v0.5.1) (2026-08-27)
 
 
