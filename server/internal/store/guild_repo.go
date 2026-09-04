@@ -173,6 +173,18 @@ func (r *GuildRepo) AddMember(guildID, coachID uint) error {
 		if n > 0 {
 			return ErrAlreadyInGuild
 		}
+		// SECURITY/PERFORMANCE: bound the roster. refreshGuild rebuilds the full
+		// member list once per online member, so every join and rank edit is O(N)
+		// queries and O(N) frames - O(N^2) for the clan. Checked inside the same
+		// transaction as the insert so two concurrent joins cannot both pass.
+		var size int64
+		if err := tx.Model(&domain.GuildMember{}).
+			Where("guild_id = ?", guildID).Count(&size).Error; err != nil {
+			return err
+		}
+		if size >= GuildMaxMembers {
+			return ErrGuildFull
+		}
 		return tx.Create(&domain.GuildMember{
 			GuildID: guildID, CoachID: coachID,
 			RankLevel: GuildRankDefault, JoinedAt: time.Now().UTC(),
@@ -497,4 +509,53 @@ func (r *GuildRepo) SetDemon(guildID uint, demonID int16) error {
 		return tx.Model(&domain.Guild{}).Where("id = ?", guildID).
 			Update("demon_id", demonID).Error
 	})
+}
+
+// GuildMaxMembers caps a clan's roster.
+//
+// SECURITY/PERFORMANCE: there was no cap at all, and refreshGuild re-queries and
+// rebuilds the full member list once per online member - so a single rank edit or
+// join costs O(N) queries and O(N) frames, i.e. O(N^2) work for the clan. The
+// number is generous (retail clans are far smaller) and exists to bound that
+// fan-out, not to police play.
+const GuildMaxMembers = 120
+
+// ErrGuildFull is returned when a clan has reached GuildMaxMembers.
+var ErrGuildFull = errors.New("store: guild is full")
+
+// ErrGuildLastLeader is returned when removing a member would leave the clan with
+// no one holding leader rights.
+var ErrGuildLastLeader = errors.New("store: guild would have no leader")
+
+// CountMembers returns how many coaches are in a guild.
+func (r *GuildRepo) CountMembers(guildID uint) (int64, error) {
+	var n int64
+	err := r.db.Model(&domain.GuildMember{}).Where("guild_id = ?", guildID).Count(&n).Error
+	return n, err
+}
+
+// WouldOrphanGuild reports whether removing coachID would leave the guild with no
+// member at the leader rank.
+//
+// SECURITY: handleGuildLeave let a leader remove ITSELF with no succession and no
+// last-leader check. guilds.leader_coach_id then pointed at a non-member and no
+// rank-1 member remained, so destroy, every rank edit and demon affiliation
+// became permanently unreachable for that clan - while its name stayed reserved
+// (case-insensitively unique). Self-inflicted, but unrecoverable, and usable as a
+// name-squatting primitive.
+func (r *GuildRepo) WouldOrphanGuild(guildID, coachID uint) (bool, error) {
+	var leaders []domain.GuildMember
+	if err := r.db.Where("guild_id = ? AND rank_level = ?", guildID, GuildRankLeader).
+		Find(&leaders).Error; err != nil {
+		return false, err
+	}
+	if len(leaders) == 0 {
+		return false, nil // already leaderless; removing one more changes nothing
+	}
+	for _, m := range leaders {
+		if m.CoachID != coachID {
+			return false, nil // another leader remains
+		}
+	}
+	return true, nil
 }

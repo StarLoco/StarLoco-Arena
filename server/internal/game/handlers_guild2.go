@@ -83,6 +83,24 @@ func handleGuildLeave(s *Session, f *protocol.C2SFrame) error {
 			return nil
 		}
 	}
+	// SECURITY: never leave a clan with no leader.
+	//
+	// A leader could remove ITSELF with no succession and no last-leader check.
+	// guilds.leader_coach_id then pointed at a non-member and no rank-1 member
+	// remained, so destroy, every rank edit and demon affiliation became
+	// permanently unreachable - while the name stayed reserved
+	// (case-insensitively unique). Self-inflicted, but unrecoverable, and usable
+	// as a name-squatting primitive.
+	//
+	// The refusal is silent: the client has no status for it, and it can only be
+	// reached by someone who IS the last leader, who can promote a successor or
+	// destroy the clan instead.
+	if orphan, err := s.deps.Store.Guilds.WouldOrphanGuild(guildID, target); err == nil && orphan {
+		s.log.Info("guild leave refused: would leave the clan with no leader",
+			"guild", guildID, "coach", target)
+		return nil
+	}
+
 	if _, err := s.deps.Store.Guilds.RemoveMember(guildID, target); err != nil {
 		return err
 	}

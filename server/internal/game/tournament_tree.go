@@ -158,6 +158,27 @@ func handleTournamentTreeRequest(s *Session, f *protocol.C2SFrame) error {
 		}
 	}
 
+	// SECURITY: only an ENTRANT may read a bracket.
+	//
+	// tid came off the wire with no registration check, so any coach could read
+	// any tournament's full entrant list - and each request costs one
+	// Coaches.Get per occupied slot (up to 31 queries) for an arbitrary id, which
+	// is why this is also the cheapest DB-amplification handler in the family.
+	// The sibling opcode 28611 already checks; this one did not.
+	//
+	// The names are already public via the ladder, so the refusal is silent: an
+	// empty bracket is what the client shows for a tournament it is not in.
+	if tid != 0 && s.deps.Tournaments != nil &&
+		!s.deps.Tournaments.IsRegistered(s.Coach.ID, tid) {
+		s.log.Debug("bracket request refused: not an entrant",
+			"coach", s.Coach.ID, "tournament", tid)
+		frame, err := encodeTournamentTree(page, bracket{})
+		if err != nil {
+			return err
+		}
+		return s.Send(frame)
+	}
+
 	// The whole current bracket, not just the entrants: first-round seats PLUS
 	// everyone who has won through above them.
 	b := bracket{}

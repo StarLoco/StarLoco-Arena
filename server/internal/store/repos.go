@@ -381,8 +381,16 @@ func (r *CoachRepo) CreditCurrency(coachID uint, ctype uint8, delta int32) error
 		if err != nil {
 			return err
 		}
+		// SECURITY: saturate rather than wrap. Amount is int32 and the increment
+		// was unchecked, so a sufficiently large balance would overflow to
+		// NEGATIVE - and BuyCards' affordability test (wallet.Amount < amount)
+		// would then refuse every purchase, or worse, a negative delta path could
+		// wrap the other way. Not practically reachable today (the only faucets are
+		// a 50-token win reward and the 1000-token starter grant, so ~43M wins),
+		// which is exactly why it should be bounded now rather than after someone
+		// adds a bigger faucet.
 		return tx.Model(&domain.CoachCurrency{}).Where("id = ?", wallet.ID).
-			Update("amount", wallet.Amount+delta).Error
+			Update("amount", addCurrencySaturating(wallet.Amount, delta)).Error
 	})
 }
 
@@ -715,4 +723,17 @@ func (r *CoachRepo) Save(c *domain.Coach) error {
 	}
 	c.Mu.Unlock() // snapshot done; DB write no longer touches the struct
 	return r.db.Model(&domain.Coach{}).Where("id = ?", c.ID).Updates(fields).Error
+}
+
+// addCurrencySaturating adds delta to amount, clamping at the int32 bounds
+// instead of wrapping. See CreditCurrency for why.
+func addCurrencySaturating(amount, delta int32) int32 {
+	const maxI32, minI32 = int32(1<<31 - 1), int32(-1 << 31)
+	if delta > 0 && amount > maxI32-delta {
+		return maxI32
+	}
+	if delta < 0 && amount < minI32-delta {
+		return minI32
+	}
+	return amount + delta
 }

@@ -107,6 +107,20 @@ type WebConfig struct {
 	// can write to is not a takedown process, and under GDPR a controller
 	// must give data subjects a way to reach them.
 	ContactEmail string `yaml:"contact_email"`
+	// BrandDir is a directory of files that override the portal's built-in
+	// assets, so an operator can brand the site without rebuilding the binary
+	// or forking the repository.
+	//
+	// Any path under /static/ is looked up here FIRST and falls back to the
+	// embedded copy, so dropping in logo.png, favicon.ico, arena-bg.jpg or
+	// even app.css replaces just that file. The contents are hashed into the
+	// asset version, so a changed logo busts the browser cache like any other
+	// asset.
+	//
+	// This is what makes the published project white-label: what ships in git
+	// carries no operator's identity, no logo and no game artwork, and every
+	// deployment supplies its own.
+	BrandDir string `yaml:"brand_dir"`
 	// HostingProvider names the company hosting this server, shown in the
 	// legal notice.
 	//
@@ -366,6 +380,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("ARENA_WEB_HOSTING_PROVIDER"); v != "" {
 		c.Web.HostingProvider = v
+	}
+	if v := os.Getenv("ARENA_WEB_BRAND_DIR"); v != "" {
+		c.Web.BrandDir = v
 	}
 	if v := os.Getenv("ARENA_WEB_SERVER_NAME"); v != "" {
 		c.Web.ServerName = v

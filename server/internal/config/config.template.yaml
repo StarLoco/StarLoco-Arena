@@ -61,6 +61,18 @@ web:
   # call to make, not one inherited from the software.
   client_download_url: ""
 
+  # A directory of files that override the portal's built-in assets, so you can
+  # brand the site without rebuilding the binary or forking the repository.
+  #
+  # Any path under /static/ is looked up here FIRST and falls back to the embedded
+  # copy: dropping in logo.png, favicon.ico, arena-bg.jpg or even app.css replaces
+  # just that file. Contents are hashed into the asset version, so a changed logo
+  # busts the browser cache like any other asset.
+  #
+  # This is what makes the published project white-label - what ships in git
+  # carries no operator's identity, no logo and no game artwork.
+  # brand_dir: ""
+
   # The address players should type into their game client, shown on the portal
   # page. Leave empty to show the address the visitor is already using.
   # public_host: ""
