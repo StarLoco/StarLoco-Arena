@@ -302,14 +302,30 @@ Worth keeping as a note rather than deleting: "not testable" was an assumption I
 made without looking for the fixture, and it was the difference between a
 verified guard and a documented gap.
 
-### Environment limit, not a code gap
+### ~~Environment limit~~ — PARTLY CLOSED, and the claim was too broad
 
-**In-fight frames cannot be live-validated on the development machine.**
-Animations fail to load (`AnimCommunes.anm`), so no sprites render and the combat
-UI never attaches — 8020/8018/8028/8030 and 4902 report unhandled even though
-they work in real play. Every combat fix here is unit- and e2e-verified but has
-never been seen in a real client. Closing that needs a machine where the client's
-assets load.
+This said in-fight frames "cannot be live-validated" because animations fail to
+load, so the combat UI never attaches and every frame reports unhandled.
+
+**The conclusion did not follow.** Decoding happens before, and independently of,
+any UI consuming the result: `non traité` means the frame WAS parsed into its
+message class and then found no open screen, while a frame the client cannot
+parse throws `java.nio.BufferUnderflowException` in `ConnectionHandler`. The two
+are cleanly distinguishable — verified by controlled experiment, including a
+first attempt whose "well-formed" frame was itself malformed, which the oracle
+duly caught.
+
+A full AI practice fight has now been run against the real client with **19
+distinct in-fight opcodes decoding cleanly** — 8000, 8010, 8018, 8020, 8028,
+8030, 8038, 8040, 8100, 8104, 8106, 8112, 8120, 8200, 4902, 4524, 4102, 6006,
+6030 — including every frame previously recorded as unverifiable. The method is
+in [`CLIENT-TESTING.md`](./CLIENT-TESTING.md).
+
+**What remains genuinely unverifiable here** is narrower and worth stating
+precisely: whether the result LOOKS right — animations, positioning, whether the
+UI does the correct thing with a frame it parsed. That needs a machine where the
+client's assets load. Wire compatibility, which is this project's core
+constraint, is now measurable.
 
 ## What this work does NOT protect against
 
@@ -353,9 +369,14 @@ without breaking the client) is the kind of thing that gets lost.
 
 ### Also out of scope, deliberately
 
-- **No account lockout.** Login is rate-limited per IP; a distributed attacker
-  with many addresses is not stopped. Lockout invites denial-of-service against a
-  known account name, so the throttle is the deliberate trade.
+- **No account lockout — a decision, not a gap.** "Lockout" means disabling an
+  account after N failed passwords. It is deliberately NOT implemented, because
+  it hands anyone who knows a name a way to lock its owner out at will: the
+  attacker fails five logins against a known account and the real player cannot
+  play. Per-IP login throttling (`limits.login_attempts_per_minute`) bounds
+  guessing without giving anyone that lever. The residual case is a distributed
+  attacker with many addresses guessing one password — which bcrypt already makes
+  slow, and which lockout would "solve" by making the outage automatic.
 - **No intrusion detection or alerting.** Refusals are logged (`Warn`/`Error`) but
   nothing aggregates or alerts on them.
 - **Backups, key rotation and host hardening** are the operator's, not the

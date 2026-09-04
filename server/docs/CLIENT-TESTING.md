@@ -1,5 +1,74 @@
 # Client testing — notes
 
+## Validating in-fight frames without a rendering client
+
+**This document previously said in-fight frames could not be live-validated.
+That was wrong**, and the mistake is worth understanding because it cost this
+project real coverage.
+
+The reasoning was: animations fail to load in this environment
+(`AnimCommunes.anm` FileNotFoundException), so no sprites render, so the combat
+UI never attaches, so every in-fight frame reports
+`[DEFAUT DE CONCEPTION] Message (X) non traité, de type N` — therefore nothing
+can be checked.
+
+The flaw is the last step. **Decoding happens before, and independently of, any
+UI consuming the result.** `non traité` means the frame was parsed into its
+message class (the log even names the class) and then found no open screen. A
+frame the client cannot parse produces something else entirely.
+
+### The oracle
+
+| Log line | Meaning |
+|---|---|
+| `Message (aAt) non traité, de type 8000` | **Decoded correctly.** No UI consumer — expected here. |
+| `ERROR [ConnectionHandler-N] Exception` + `java.nio.BufferUnderflowException` | **Decode FAILED.** The frame does not match the client's parser. |
+
+Verified by controlled experiment, not assumed:
+
+- A correctly-formed 4601 (`[u16 nSit][i64×n][u16 nStand][i64×n]`) → `non traité`
+  only, **no exception**.
+- The same opcode truncated (`nSit=1` with no body) → `BufferUnderflowException`.
+
+The first attempt at that experiment used a *wrong* layout for the "good" frame
+and both threw — which is itself the point: the oracle detected a bad frame that
+had been believed good.
+
+### What this makes verifiable
+
+Running one practice fight to completion (`/c2s?opcode=26330&hex=0000000C0000`)
+and grepping the log for `BufferUnderflow` live-validates every frame the fight
+emits. A full AI fight produced **19 distinct in-fight opcodes, all decoding
+cleanly**:
+
+```
+8000 8010 8018 8020 8028 8030 8038 8040 8100 8104
+8106 8112 8120 8200 4902 4524 4102 6006 6030
+```
+
+That includes 8020/8018/8028/8030 and 4902 — the exact frames previously recorded
+as unverifiable.
+
+### What it still does NOT prove
+
+Only that the client can **parse** the frame. It says nothing about whether the
+result looks right on screen, whether an animation plays, or whether the UI does
+the correct thing with it. For a project whose core constraint is byte-exact wire
+compatibility with a client that cannot be changed, parseability is nonetheless
+the property that matters most — and it was being left unmeasured.
+
+### Recipe
+
+```powershell
+# 1. arena_up + arena_login
+# 2. start a practice fight through the dev endpoint
+Invoke-WebRequest "http://127.0.0.1:5599/c2s?opcode=26330&hex=0000000C0000&arch=2&coach=1"
+# 3. let it play out, then read the oracle
+#    arena_client_log filter: "BufferUnderflow|Unable to unserialize|Exception"
+#    Any hit that is not one of your own deliberate malformed injections is a
+#    real wire bug.
+```
+
 ## The client's own log is the fastest oracle
 
 `arena_client_log` tails `client/compiled/game/output.log`. That file is only
