@@ -245,6 +245,20 @@ func (d *Deps) buildFightTeamForMode(sess *Session, side uint8, cells []Pos, ros
 			pos = cells[i%len(cells)]
 		}
 		st := computeFighterStatsWithConditions(fr, d.FighterCards, d.Conditions, d.SphereBoards)
+		// SECURITY: re-apply spell legality HERE, not just when a loadout is saved.
+		//
+		// filterLoadoutSpells guards the 6011 write path, which stops a forged
+		// loadout being STORED - but it does nothing about one already in the
+		// database. A loadout saved before that guard existed, or written by any
+		// other means, would still be fielded: the door was closed and the room
+		// never cleaned. Filtering at fight build makes the rule retroactive with
+		// no migration, and costs one pass over at most six spells.
+		//
+		// Order matters: filter the fighter's OWN spells first, then let
+		// fighterWithSphereSpells append the sphere unlocks, which are derived
+		// server-side from bought nodes and are legitimate regardless of breed.
+		fr = fighterWithLegalSpells(d, fr)
+
 		// The fighter that FIGHTS knows its sphere spells as well as its own; both
 		// the cast validator and the AI read this one list.
 		fr = fighterWithSphereSpells(fr, d.SphereBoards)

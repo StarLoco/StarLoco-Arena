@@ -77,3 +77,33 @@ func filterLoadoutSpellIDs(deps *Deps, breedID uint8, ids []int32) []int32 {
 	}
 	return out
 }
+
+// fighterWithLegalSpells returns a copy of fr whose own spell list contains only
+// spells its breed may know.
+//
+// SECURITY: this is the RETROACTIVE half of the 6011 fix. Filtering on save stops
+// an illegal loadout being stored; it does nothing about one already stored. A
+// fighter whose spells were written before the guard existed - or by any path
+// that bypasses it - would still cast them, because castSpellByFighter trusts
+// Fighter.Spells. Applying the same filter when the fight is built closes that
+// without a data migration.
+//
+// Returns fr unchanged when nothing is dropped, so the common case allocates
+// nothing.
+func fighterWithLegalSpells(deps *Deps, fr *domain.Fighter) *domain.Fighter {
+	if fr == nil || len(fr.Spells) == 0 {
+		return fr
+	}
+	kept := filterLoadoutSpells(deps, fr.BreedID, fr.Spells)
+	if len(kept) == len(fr.Spells) {
+		return fr
+	}
+	if deps != nil && deps.Log != nil {
+		deps.Log.Warn("dropped illegal spells from a stored loadout at fight build",
+			"fighter", fr.ID, "breed", fr.BreedID,
+			"had", len(fr.Spells), "kept", len(kept))
+	}
+	out := *fr
+	out.Spells = kept
+	return &out
+}
