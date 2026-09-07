@@ -435,6 +435,38 @@ A separate attack surface with its own bug classes, audited on its own terms.
 
 Not implemented, deliberately, and for the same reason: disabling an account after N failed passwords hands anyone who knows a name a way to lock its owner out at will. Per-IP throttling bounds guessing without giving anyone that lever, and the login form does not reveal which names exist, so an attacker cannot even confirm a target.
 
+## Validations guard entry points — pre-existing bad data survives
+
+Worth stating as a general property, because it is easy to assume a fix is
+retroactive when it is not.
+
+**Every rule added in this work guards a write path.** A coach name is validated
+when the coach is created; a loadout when it is saved; an equip slot when the
+card is equipped; a guild rank when the rank is written. None of them inspect
+what is already in the database. So a row written before the guard existed — or
+by any path that bypassed it — survives until something next writes it.
+
+That is usually fine, because the value of a bad row is realised at write time.
+**Spells were the exception**, and the one case fixed: `castSpellByFighter` trusts
+`Fighter.Spells`, so a loadout stored before the 6011 guard would still be cast
+on every fight, indefinitely. `buildFightTeamFor` now re-filters at fight build,
+which makes that rule retroactive with no migration.
+
+The stored row is deliberately **not** rewritten. Cleaning the database is an
+operator decision, and a silent mass-delete of player data on upgrade is not
+something a security fix should do by itself.
+
+If you are upgrading a server that has been publicly reachable, the rows worth
+looking at by hand are:
+
+- `fighter_spells` — illegal spell ids (now neutralised at fight build, but still
+  stored)
+- `coach_cards` — duplicates of a `unique` template, and rows whose `pos` does
+  not match the card type's slot
+- `guild_ranks` — a non-leader rank carrying the leader right bit
+- `teams` — rosters over the 6000 budget, over 6 members, or with 3+ of a breed
+  (all now refused at fight start, so these fail loudly rather than silently)
+
 ## Testing conventions for security fixes
 
 Four rules, each of which caught a fix that would otherwise have shipped
